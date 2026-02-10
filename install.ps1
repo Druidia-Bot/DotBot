@@ -623,19 +623,42 @@ function Install-Shortcuts {
         $shortcut.Save()
         Write-OK "Start Menu shortcut created — search 'DotBot' to launch"
 
-        # Offer auto-start on login
+        # Register as background service via Task Scheduler (hidden, no window)
         Write-Host ""
-        $startup = Read-Host "  Start DotBot automatically on login? (y/N)"
-        if ($startup -eq "y" -or $startup -eq "Y") {
-            $startupDir = [Environment]::GetFolderPath("Startup")
-            $startupLnk = Join-Path $startupDir "DotBot.lnk"
-            $startupShortcut = $shell.CreateShortcut($startupLnk)
-            $startupShortcut.TargetPath = "powershell.exe"
-            $startupShortcut.Arguments = "-ExecutionPolicy Bypass -WindowStyle Minimized -File `"$launcherPath`""
-            $startupShortcut.WorkingDirectory = $Dir
-            $startupShortcut.Description = "Start DotBot on login"
-            $startupShortcut.Save()
-            Write-OK "DotBot will start automatically on login"
+        $autoStart = Read-Host "  Start DotBot automatically on login? (Y/n)"
+        if ($autoStart -ne "n" -and $autoStart -ne "N") {
+            try {
+                $Action = New-ScheduledTaskAction `
+                    -Execute "powershell.exe" `
+                    -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcherPath`" -Service" `
+                    -WorkingDirectory $Dir
+
+                $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+
+                $Settings = New-ScheduledTaskSettingsSet `
+                    -AllowStartIfOnBatteries `
+                    -DontStopIfGoingOnBatteries `
+                    -StartWhenAvailable `
+                    -ExecutionTimeLimit ([TimeSpan]::Zero)
+
+                Register-ScheduledTask `
+                    -TaskName "DotBot" `
+                    -Action $Action `
+                    -Trigger $Trigger `
+                    -Settings $Settings `
+                    -Description "DotBot AI Assistant — background agent" `
+                    -Force | Out-Null
+
+                Write-OK "Background service registered — DotBot starts automatically on login (hidden)"
+                Set-StepStatus -StepName "task_scheduler" -Status "success"
+            } catch {
+                Write-Warn "Task Scheduler registration failed: $($_.Exception.Message)"
+                Write-Host "    DotBot will still work — just won't auto-start on login." -ForegroundColor Gray
+                Set-StepStatus -StepName "task_scheduler" -Status "failed" -Tier 2 -ErrorMsg $_.Exception.Message
+            }
+        } else {
+            Write-Host "    Skipped — you can register later with:" -ForegroundColor DarkGray
+            Write-Host "    schtasks /create /tn DotBot /tr `"powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File '$launcherPath'`" /sc onlogon" -ForegroundColor DarkGray
         }
     } catch {
         Write-Warn "Could not create shortcuts: $($_.Exception.Message)"
