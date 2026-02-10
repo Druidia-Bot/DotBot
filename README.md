@@ -123,7 +123,7 @@ irm https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.ps1 | iex
 
 **Linux / macOS:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.sh -o /tmp/install.sh && sed -i 's/\r$//' /tmp/install.sh && bash /tmp/install.sh
 ```
 
 The installer will:

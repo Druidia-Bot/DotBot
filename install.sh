@@ -4,7 +4,7 @@
 # ============================================================
 #
 # One-liner install:
-#   curl -fsSL https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.sh -o /tmp/install.sh && sed -i 's/\r$//' /tmp/install.sh && bash /tmp/install.sh
 #
 # Or clone first and run locally:
 #   chmod +x install.sh && ./install.sh
