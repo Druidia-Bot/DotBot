@@ -279,7 +279,7 @@ export function generateToolCapabilitiesSummary(
     if (cat === "premium") {
       coreCategories.push(`${cat} (${tools.length})`);
       premiumTools.push(...tools);
-    } else if (["filesystem", "directory", "shell", "http", "clipboard", "browser", "system", "network", "secrets", "search", "tools", "skills", "codegen", "npm", "git", "runtime", "gui", "discord"].includes(cat)) {
+    } else if (["filesystem", "directory", "shell", "http", "clipboard", "browser", "system", "network", "secrets", "search", "tools", "skills", "codegen", "npm", "git", "runtime", "gui", "discord", "market", "reminder"].includes(cat)) {
       coreCategories.push(`${cat} (${tools.length})`);
     } else {
       learnedTools.push(...tools);

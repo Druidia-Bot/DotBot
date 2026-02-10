@@ -32,7 +32,7 @@ export async function handleMarket(
       return stockProfile(args);
     case "market.reddit_buzz":
       return redditBuzz(args);
-    case "market.fear_greed":
+    case "market.fear_greed_index":
       return fearGreed();
     case "market.insider_trades":
       return insiderTrades(args);

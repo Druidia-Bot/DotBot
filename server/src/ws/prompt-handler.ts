@@ -37,6 +37,7 @@ import {
 } from "../agents/agent-tasks.js";
 import { buildRequestContext } from "./context-builder.js";
 import { createRunner, sendAgentWork, sendRunLog } from "./runner-factory.js";
+import { getTimeEstimate } from "../agents/task-monitor.js";
 
 const log = createComponentLogger("ws.prompt");
 
@@ -322,13 +323,17 @@ export async function handlePrompt(
     const taskCountMsg = activeTaskCount(deviceId) > 1
       ? ` You now have ${activeTaskCount(deviceId)} tasks running.`
       : "";
+    const estimateMs = getTimeEstimate(decision.classification);
+    const estimateStr = estimateMs >= 60_000
+      ? `~${Math.round(estimateMs / 60_000)} minute${Math.round(estimateMs / 60_000) > 1 ? "s" : ""}`
+      : `~${Math.round(estimateMs / 1000)} seconds`;
     sendMessage(device.ws, {
       type: "response",
       id: message.id,
       timestamp: Date.now(),
       payload: {
         success: true,
-        response: `I've started **${personaId}** on "**${task.name}**". I'll stream progress as work happens — feel free to send corrections or ask me anything else while that runs.${taskCountMsg}`,
+        response: `On it — I've assigned **${personaId}** to work on "**${task.name}**" (est. ${estimateStr}, could be longer for complex tasks). I'll report back when it's done.${taskCountMsg}`,
         classification: decision.classification,
         threadIds: [],
         keyPoints: [],

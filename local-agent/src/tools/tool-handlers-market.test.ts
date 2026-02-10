@@ -469,7 +469,7 @@ describe("handleMarket — fear_greed", () => {
       }),
     } as any);
 
-    const result = await handleMarket("market.fear_greed", {});
+    const result = await handleMarket("market.fear_greed_index", {});
     expect(result.success).toBe(true);
     const parsed = JSON.parse(result.output);
     expect(parsed.value).toBe(35);
@@ -487,7 +487,7 @@ describe("handleMarket — fear_greed", () => {
       }),
     } as any);
 
-    const result = await handleMarket("market.fear_greed", {});
+    const result = await handleMarket("market.fear_greed_index", {});
     expect(result.success).toBe(true);
     const parsed = JSON.parse(result.output);
     expect(parsed.value).toBeNull();
@@ -502,7 +502,7 @@ describe("handleMarket — fear_greed", () => {
       json: () => Promise.resolve({ data: [] }),
     } as any);
 
-    const result = await handleMarket("market.fear_greed", {});
+    const result = await handleMarket("market.fear_greed_index", {});
     expect(result.success).toBe(false);
     expect(result.error).toContain("No Fear & Greed data available");
   });
@@ -513,7 +513,7 @@ describe("handleMarket — fear_greed", () => {
       status: 503,
     } as any);
 
-    const result = await handleMarket("market.fear_greed", {});
+    const result = await handleMarket("market.fear_greed_index", {});
     expect(result.success).toBe(false);
     expect(result.error).toContain("503");
   });

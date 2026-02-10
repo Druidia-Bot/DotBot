@@ -52,8 +52,13 @@ const pendingDiscordResponses = new Map<string, {
 // Typing indicator interval per channel
 const typingIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
-// Pending response timeout (clean up stale entries after 10 minutes)
-const PENDING_RESPONSE_TTL_MS = 10 * 60 * 1000;
+// Pending response timeout — must exceed watchdog KILL_TOTAL_MS (10min) + LLM processing time.
+// 30 minutes gives ample margin for long-running background tasks.
+const PENDING_RESPONSE_TTL_MS = 30 * 60 * 1000;
+
+// Fallback: track Discord-originated task IDs + channel so we can still
+// deliver agent_complete even if the pending entry expired.
+const discordTaskChannels = new Map<string, string>();
 
 // ============================================
 // INITIALIZATION
@@ -243,8 +248,14 @@ export function handleDiscordResponse(message: WSMessage): boolean {
           taskId: payload.agentTaskId,
         });
 
-        // Don't send the ack to Discord — the typing indicator is sufficient.
-        // Only the final agent_complete result gets sent to avoid duplicate messages.
+        // Durable fallback: remember this task came from Discord so we can
+        // still deliver agent_complete even if the pending entry expires.
+        discordTaskChannels.set(payload.agentTaskId, pending.channelId);
+
+        // Send the ack to Discord so the user knows we're working on it.
+        if (payload.response) {
+          sendToDiscord(pending.channelId, payload.response);
+        }
         return true;
       }
 
@@ -269,14 +280,23 @@ export function handleDiscordResponse(message: WSMessage): boolean {
       if (!taskId) return false;
 
       const pending = pendingDiscordResponses.get(`task_${taskId}`);
-      if (!pending) return false;
+
+      // Determine the target channel — prefer pending entry, fall back to
+      // durable task→channel map, then #conversation as last resort.
+      const channelId = pending?.channelId
+        || discordTaskChannels.get(taskId)
+        || null;
+
+      // Clean up durable fallback entry
+      discordTaskChannels.delete(taskId);
+
+      if (!channelId) return false;
 
       // Stop typing indicator
-      stopTyping(pending.channelId);
+      stopTyping(channelId);
 
-      // Clean up both entries
+      // Clean up both pending entries
       pendingDiscordResponses.delete(`task_${taskId}`);
-      // Find and clean up the original prompt entry too
       for (const [key, val] of pendingDiscordResponses) {
         if (val.taskId === taskId && key !== `task_${taskId}`) {
           pendingDiscordResponses.delete(key);
@@ -285,7 +305,7 @@ export function handleDiscordResponse(message: WSMessage): boolean {
       }
 
       if (message.payload.response) {
-        sendToDiscord(pending.channelId, message.payload.response);
+        sendToDiscord(channelId, message.payload.response);
       }
       return true;
     }

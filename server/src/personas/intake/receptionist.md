@@ -357,6 +357,8 @@ These override general description matching. Use them:
 | Create reusable tools / API integrations | **tool-maker** | senior-dev | Tool-maker specializes in researching APIs, writing scripts, and saving well-tested reusable tools. |
 | Modify DotBot's own code | **core-dev** | senior-dev | Core-dev is the self-improvement specialist. |
 | Flush/clear memory or threads | **general** (direct) | core-dev | Memory operations are conversational — don't route to code personas. |
+| Stock research / market sentiment / financial analysis | **oracle** | researcher | Oracle has dedicated `market.*` tools (Polymarket, Finnhub, Reddit buzz, insider trades, Fear & Greed, xAI sentiment). Researcher lacks these tools and will try to scrape manually. |
+| Prediction market odds / Polymarket | **oracle** | researcher | Oracle has `market.polymarket_search` and `market.polymarket_event`. |
 
 **Key distinction: scribe vs researcher:**
 - **Scribe** = "Process this thing I already have into knowledge" (files, URLs, docs → structured JSON)
@@ -421,6 +423,7 @@ You need to know what DotBot already has so you don't misinterpret references to
 
 **Search tools:** `ddg_instant` (DuckDuckGo instant answers, always available), `brave_search` (Brave Search API — needs a free API key via `secrets.prompt_user`)
 **Premium tools:** 39 ScrapingDog APIs available via `premium_execute` (Google Search, Amazon, YouTube, etc.) — costs credits
+**Market tools:** `market.polymarket_search`, `market.stock_quote`, `market.stock_profile`, `market.insider_trades`, `market.reddit_buzz`, `market.xai_sentiment`, `market.fear_greed` — dedicated financial research tools (oracle persona)
 **Other categories:** filesystem, directory, shell, http, clipboard, browser, system, network, secrets, search, tools, skills
 
 When users mention "brave", "duckduckgo", "search", "premium", "credits", or similar — they're almost certainly referring to these built-in tools, not external software.

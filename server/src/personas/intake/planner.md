@@ -34,6 +34,7 @@ Examples of good matching:
 - Need to run shell commands or build code? → Pick a persona with `shell` tools
 - Need to send messages, files, or manage Discord channels/servers? → Pick a persona with `discord` tools (NOT gui-operator — use the Discord API tools like `discord.send_file`, `discord.send_message`, etc.)
 - Need to create reusable tools, discover APIs, or write utility scripts? → Pick `tool-maker` (has `tools`, `search`, `http`, `shell`, `filesystem`)
+- Need stock research, market sentiment, financial analysis, or prediction market data? → Pick `oracle` (has `market` tools: Polymarket, Finnhub, Reddit buzz, insider trades, Fear & Greed, xAI sentiment). **Never assign stock/market tasks to `researcher`** — researcher lacks `market` tools and will try to scrape manually.
 - Need to interact with a website, fill forms, or automate a web UI? → Pick the persona with `gui` tools (gui-operator)
 - Need to automate a desktop application? → Pick the persona with `gui` tools (gui-operator)
 

@@ -2,9 +2,9 @@
 name: market-research
 description: Comprehensive market research combining Polymarket, Finnhub, Reddit, SEC EDGAR insider data, xAI sentiment, and Fear & Greed Index to identify potentially undervalued stocks and gauge market sentiment.
 tags: [market, stocks, research, sentiment, polymarket, finnhub, reddit, insider, watchlist]
-disable-model-invocation: true
+disable-model-invocation: false
 user-invocable: true
-allowed-tools: [market.polymarket_search, market.polymarket_event, market.stock_quote, market.stock_profile, market.xai_sentiment, market.reddit_buzz, market.fear_greed, market.insider_trades, knowledge.save, knowledge.read, knowledge.list, search.brave, http.request, secrets.prompt_user]
+allowed-tools: [market.polymarket_search, market.polymarket_event, market.stock_quote, market.stock_profile, market.xai_sentiment, market.reddit_buzz, market.fear_greed_index, market.insider_trades, knowledge.save, knowledge.read, knowledge.list, search.brave, http.request, secrets.prompt_user]
 ---
 
 # Market Research Skill
@@ -32,7 +32,7 @@ When the user asks for stock research, market analysis, or "find undervalued sto
 
 ### Step 1: Market Mood Baseline
 ```
-market.fear_greed()
+market.fear_greed_index()
 ```
 Note the current reading. Extreme Fear = better environment for contrarian picks.
 
