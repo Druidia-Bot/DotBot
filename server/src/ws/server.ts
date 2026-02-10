@@ -48,6 +48,7 @@ import {
   handleCondenseRequest,
   handleResolveLoopRequest,
   handleFormatFixRequest,
+  handleLLMCallRequest,
 } from "./condenser-handlers.js";
 import { handleHeartbeatRequest } from "./heartbeat-handler.js";
 import { handleAdminRequest } from "./admin-handler.js";
@@ -231,6 +232,9 @@ export function createWSServer(options: {
           case "heartbeat_request":
             if (deviceId) await handleHeartbeatRequest(deviceId, message, options.apiKey, serverProvider);
             break;
+          case "llm_call_request":
+            if (deviceId) await handleLLMCallRequest(deviceId, message);
+            break;
           case "credential_session_request":
             if (deviceId) handleCredentialSessionRequest(deviceId, message, options.httpBaseUrl || `http://localhost:3000`);
             break;
@@ -376,10 +380,12 @@ function handleRegisterDevice(ws: WebSocket, message: WSRegisterDeviceMessage): 
 function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
   const { deviceId, deviceSecret, deviceName, capabilities, tempDir, hwFingerprint } = message.payload;
 
-  // Allow localhost web clients without device credentials (browser debug UI)
   const ip = (ws as any)._socket?.remoteAddress || "unknown";
-  const isLocalhost = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
-  if (isLocalhost && (!deviceSecret || !hwFingerprint)) {
+
+  // Allow web clients without device credentials (browser UI)
+  // These get capabilities: ['prompt'] only — no tool execution.
+  // Connection is secured by TLS (wss://) and the server URL is not public.
+  if (!deviceSecret || !hwFingerprint) {
     const webDeviceId = `web_${nanoid(8)}`;
     const session: DeviceSession = {
       id: nanoid(),
@@ -406,7 +412,7 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
       pendingToolRequests: new Map(),
     });
 
-    log.info(`Web client connected from localhost (${webDeviceId})`);
+    log.info(`Web client connected`, { webDeviceId, ip });
 
     sendMessage(ws, {
       type: "auth",

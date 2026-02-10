@@ -59,6 +59,8 @@ export type WSMessageType =
   | "credential_stored"
   | "credential_proxy_request"
   | "credential_proxy_response"
+  | "llm_call_request"
+  | "llm_call_response"
   | "credential_resolve_request"
   | "credential_resolve_response"
   | "cancel_before_restart"

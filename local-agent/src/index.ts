@@ -28,6 +28,7 @@ import {
   notifyActivity,
   type PeriodicTaskDef,
 } from "./periodic/index.js";
+import { initServerLLM, handleServerLLMResponse } from "./server-llm.js";
 import {
   initCredentialProxy,
   handleProxyResponse,
@@ -399,6 +400,7 @@ async function handleMessage(message: WSMessage): Promise<void> {
         console.log("[Agent] Ready for commands.");
         // Initialize subsystems with server sender
         initCredentialProxy(send);
+        initServerLLM(send);
 
         // Wire admin tool handler to send admin_request over WS
         setAdminRequestSender(async (payload: any) => {
@@ -669,6 +671,10 @@ async function handleMessage(message: WSMessage): Promise<void> {
 
     case "credential_proxy_response":
       handleProxyResponse(message.payload);
+      break;
+
+    case "llm_call_response":
+      handleServerLLMResponse(message.payload);
       break;
 
     case "credential_resolve_response":

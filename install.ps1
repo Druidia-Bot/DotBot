@@ -846,6 +846,7 @@ if ($selectedMode -eq "server" -or $selectedMode -eq "both") {
             @{ Name = "GEMINI_API_KEY";    Prompt = "Google Gemini API Key (deep context — 1M tokens)"; Url = "https://aistudio.google.com/apikey" },
             @{ Name = "ANTHROPIC_API_KEY"; Prompt = "Anthropic API Key (architect — complex reasoning)"; Url = "https://console.anthropic.com/settings/keys" },
             @{ Name = "OPENAI_API_KEY";    Prompt = "OpenAI API Key (optional fallback)"; Url = "https://platform.openai.com/api-keys" },
+            @{ Name = "XAI_API_KEY";       Prompt = "xAI API Key (optional — oracle persona, market sentiment)"; Url = "https://console.x.ai/" },
             @{ Name = "SCRAPING_DOG_API_KEY"; Prompt = "ScrapingDog API Key (optional — premium web tools)"; Url = "https://www.scrapingdog.com/" }
         )
 

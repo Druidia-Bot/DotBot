@@ -17,6 +17,7 @@ import { createComponentLogger } from "../logging.js";
 const log = createComponentLogger("credentials");
 
 const RESOLVABLE_CREDENTIALS = new Set(["DISCORD_BOT_TOKEN"]);
+
 const resolvedThisConnection = new Map<string, Set<string>>();
 
 // ============================================

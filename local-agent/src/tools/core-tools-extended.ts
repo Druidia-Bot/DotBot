@@ -1415,12 +1415,11 @@ export const marketTools: DotBotTool[] = [
   {
     id: "market.xai_sentiment",
     name: "xai_sentiment",
-    description: "Ask xAI's Grok model about real-time sentiment on X/Twitter for a topic, stock, or event. Grok has access to live social data from X, making it uniquely suited for real-time sentiment analysis. Returns a sentiment summary with bullish/bearish signals, notable mentions, and trending narratives. Requires XAI_API_KEY credential.",
+    description: "Ask xAI's Grok model about real-time sentiment on X/Twitter for a topic, stock, or event. Grok has access to live social data from X, making it uniquely suited for real-time sentiment analysis. Returns a sentiment summary with bullish/bearish signals, notable mentions, and trending narratives. Uses the server's XAI_API_KEY.",
     source: "core",
     category: "market",
     executor: "local",
     runtime: "internal",
-    credentialRequired: "XAI_API_KEY",
     inputSchema: {
       type: "object",
       properties: {

@@ -88,39 +88,53 @@ function validateProxyUrl(urlStr: string): void {
   }
 }
 
+/**
+ * Execute a proxied HTTP request with an encrypted credential blob.
+ * Decrypts the blob, then delegates to executeDirectProxyRequest.
+ */
 export async function executeProxyRequest(
   encryptedBlob: string,
   request: ProxyHttpRequest,
   placement: CredentialPlacement,
 ): Promise<ProxyHttpResponse> {
-  // 0. Validate URL is safe (prevent SSRF)
-  validateProxyUrl(request.url);
-
-  // 1. Decrypt the credential (throws if tampered/wrong key/wrong domain)
-  // Extract domain from request URL for domain enforcement
+  // URL validation happens inside executeDirectProxyRequest
   const requestDomain = new URL(request.url).hostname;
   const credential = decryptCredential(encryptedBlob, requestDomain);
 
-  // 2. Build request headers with credential injected
+  return executeDirectProxyRequest(credential, request, placement);
+}
+
+/**
+ * Execute a proxied HTTP request with a plaintext credential.
+ * Internal helper — callers use executeProxyRequest() which handles decryption.
+ * 
+ * The plaintext credential is only in local variables — once this function
+ * returns, it's eligible for garbage collection.
+ */
+async function executeDirectProxyRequest(
+  credential: string,
+  request: ProxyHttpRequest,
+  placement: CredentialPlacement,
+): Promise<ProxyHttpResponse> {
+  validateProxyUrl(request.url);
+
+  // Build request headers with credential injected
   const headers = { ...request.headers };
   headers[placement.header] = placement.prefix + credential;
 
-  // 3. Build request body (multipart if files present, plain otherwise)
+  // Build request body (multipart if files present, plain otherwise)
   let fetchBody: any = request.body || undefined;
 
   if (request.files && request.files.length > 0) {
-    // Construct multipart/form-data for file uploads
     const boundary = `----DotBotBoundary${Date.now()}${Math.random().toString(36).slice(2)}`;
     const parts: Buffer[] = [];
 
-    // Add JSON payload if present (Discord uses payload_json for message content alongside files)
     if (request.body) {
       parts.push(Buffer.from(
         `--${boundary}\r\nContent-Disposition: form-data; name="payload_json"\r\nContent-Type: application/json\r\n\r\n${request.body}\r\n`
       ));
     }
 
-    // Add file parts
     for (const file of request.files) {
       const fileHeader = `--${boundary}\r\nContent-Disposition: form-data; name="${file.fieldName}"; filename="${file.filename}"\r\nContent-Type: ${file.contentType}\r\n\r\n`;
       parts.push(Buffer.from(fileHeader));
@@ -128,17 +142,15 @@ export async function executeProxyRequest(
       parts.push(Buffer.from("\r\n"));
     }
 
-    // Closing boundary
     parts.push(Buffer.from(`--${boundary}--\r\n`));
 
     fetchBody = Buffer.concat(parts);
-    // Override Content-Type for multipart (remove any JSON content-type)
     headers["Content-Type"] = `multipart/form-data; boundary=${boundary}`;
   }
 
-  // 4. Make the HTTP call with timeout
+  // Make the HTTP call with timeout
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30_000); // 30s timeout
+  const timer = setTimeout(() => controller.abort(), 30_000);
 
   try {
     const res = await fetch(request.url, {
@@ -149,10 +161,8 @@ export async function executeProxyRequest(
     });
     clearTimeout(timer);
 
-    // Read response body as text
     const body = await res.text();
 
-    // Collect a subset of response headers (avoid leaking internal headers)
     const responseHeaders: Record<string, string> = {};
     const safeHeaders = ["content-type", "x-ratelimit-remaining", "x-ratelimit-reset", "retry-after"];
     for (const key of safeHeaders) {

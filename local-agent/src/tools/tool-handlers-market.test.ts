@@ -6,7 +6,7 @@
  * - Finnhub stock quote/profile/insider trades (mock credentialProxyFetch + vaultHas)
  * - Reddit buzz (mock fetch)
  * - Fear & Greed Index (mock fetch)
- * - xAI sentiment (mock credentialProxyFetch + vaultHas)
+ * - xAI sentiment (mock serverLLMCall)
  * - Input validation, error handling, output truncation
  */
 
@@ -22,12 +22,19 @@ vi.mock("../credential-proxy.js", () => ({
   credentialProxyFetch: vi.fn(),
 }));
 
+// Mock server-llm before importing handler
+vi.mock("../server-llm.js", () => ({
+  serverLLMCall: vi.fn(),
+}));
+
 import { handleMarket } from "./tool-handlers-market.js";
 import { vaultHas } from "../credential-vault.js";
 import { credentialProxyFetch } from "../credential-proxy.js";
+import { serverLLMCall } from "../server-llm.js";
 
 const mockVaultHas = vi.mocked(vaultHas);
 const mockProxyFetch = vi.mocked(credentialProxyFetch);
+const mockServerLLMCall = vi.mocked(serverLLMCall);
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -530,23 +537,12 @@ describe("handleMarket — xai_sentiment", () => {
     expect(result.error).toBe("topic is required");
   });
 
-  it("returns setup instructions when key not in vault", async () => {
-    mockVaultHas.mockResolvedValue(false);
-    const result = await handleMarket("market.xai_sentiment", { topic: "NVDA" });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("xAI API key not configured");
-    expect(result.error).toContain("secrets.prompt_user");
-  });
-
   it("returns sentiment analysis on success", async () => {
-    mockVaultHas.mockResolvedValue(true);
-    mockProxyFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      headers: {},
-      body: JSON.stringify({
-        choices: [{ message: { content: "**Overall Sentiment**: Bullish (7/10)\n\nNVDA showing strong momentum..." } }],
-      }),
+    mockServerLLMCall.mockResolvedValueOnce({
+      success: true,
+      content: "**Overall Sentiment**: Bullish (7/10)\n\nNVDA showing strong momentum...",
+      model: "grok-4-1-fast-reasoning",
+      provider: "xai",
     });
 
     const result = await handleMarket("market.xai_sentiment", { topic: "NVDA" });
@@ -554,35 +550,26 @@ describe("handleMarket — xai_sentiment", () => {
     expect(result.output).toContain("Bullish");
   });
 
-  it("sends correct model and context to xAI", async () => {
-    mockVaultHas.mockResolvedValue(true);
-    mockProxyFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      headers: {},
-      body: JSON.stringify({ choices: [{ message: { content: "Analysis..." } }] }),
+  it("sends correct provider, model and context", async () => {
+    mockServerLLMCall.mockResolvedValueOnce({
+      success: true,
+      content: "Analysis...",
     });
 
     await handleMarket("market.xai_sentiment", { topic: "AAPL", context: "focus on earnings" });
 
-    expect(mockProxyFetch).toHaveBeenCalledOnce();
-    const callArgs = mockProxyFetch.mock.calls[0];
-    expect(callArgs[0]).toBe("/chat/completions");
-    expect(callArgs[1]).toBe("XAI_API_KEY");
-
-    const body = JSON.parse(callArgs[2].body!);
-    expect(body.model).toBe("grok-4-1-fast-reasoning");
-    expect(body.messages[1].content).toContain("AAPL");
-    expect(body.messages[1].content).toContain("focus on earnings");
+    expect(mockServerLLMCall).toHaveBeenCalledOnce();
+    const callArgs = mockServerLLMCall.mock.calls[0][0];
+    expect(callArgs.provider).toBe("xai");
+    expect(callArgs.model).toBe("grok-4-1-fast-reasoning");
+    expect(callArgs.messages[1].content).toContain("AAPL");
+    expect(callArgs.messages[1].content).toContain("focus on earnings");
   });
 
   it("handles empty xAI response", async () => {
-    mockVaultHas.mockResolvedValue(true);
-    mockProxyFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      headers: {},
-      body: JSON.stringify({ choices: [] }),
+    mockServerLLMCall.mockResolvedValueOnce({
+      success: true,
+      content: "",
     });
 
     const result = await handleMarket("market.xai_sentiment", { topic: "NVDA" });
@@ -590,31 +577,22 @@ describe("handleMarket — xai_sentiment", () => {
     expect(result.error).toContain("empty response");
   });
 
-  it("handles xAI API error", async () => {
-    mockVaultHas.mockResolvedValue(true);
-    mockProxyFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 429,
-      headers: {},
-      body: "Rate limit exceeded",
+  it("handles server LLM error", async () => {
+    mockServerLLMCall.mockResolvedValueOnce({
+      success: false,
+      error: 'No API key configured for provider "xai"',
     });
 
     const result = await handleMarket("market.xai_sentiment", { topic: "NVDA" });
     expect(result.success).toBe(false);
-    expect(result.error).toContain("429");
+    expect(result.error).toContain("xai");
   });
 
-  it("handles unparseable xAI response body", async () => {
-    mockVaultHas.mockResolvedValue(true);
-    mockProxyFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      headers: {},
-      body: "not json at all",
-    });
+  it("handles network failure", async () => {
+    mockServerLLMCall.mockRejectedValueOnce(new Error("Server LLM call timed out"));
 
     const result = await handleMarket("market.xai_sentiment", { topic: "NVDA" });
     expect(result.success).toBe(false);
-    expect(result.error).toContain("unparseable");
+    expect(result.error).toContain("timed out");
   });
 });

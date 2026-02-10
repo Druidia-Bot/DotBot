@@ -22,9 +22,9 @@ Before running the full analysis, verify tool availability:
 1. **Finnhub API Key** — call `market.stock_quote({ symbol: "AAPL" })` as a test
    - If it fails with "not configured": call `secrets.prompt_user({ key_name: "FINNHUB_API_KEY", prompt: "Enter your Finnhub API key (free at https://finnhub.io/register)", allowed_domain: "finnhub.io" })`
    - Then retry the test call
-2. **xAI API Key** (optional) — call `market.xai_sentiment({ topic: "test" })`
-   - If it fails: inform user that X/Twitter sentiment analysis won't be available, but continue with other sources
-   - Offer setup: `secrets.prompt_user({ key_name: "XAI_API_KEY", prompt: "Enter your xAI API key (get one at https://console.x.ai)", allowed_domain: "api.x.ai" })`
+2. **xAI Sentiment** (optional) — call `market.xai_sentiment({ topic: "test" })`
+   - xAI is a server-side LLM key — if it fails, the server doesn't have XAI_API_KEY configured
+   - Inform user that X/Twitter sentiment analysis won't be available, but continue with other sources
 
 ## Research Workflow
 

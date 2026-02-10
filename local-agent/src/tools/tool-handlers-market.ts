@@ -2,11 +2,12 @@
  * Market Research Tool Handlers
  * 
  * Implements: Polymarket search/event, Finnhub stock quote/profile/insider trades,
- * Reddit buzz, Fear & Greed Index, xAI sentiment (via credential proxy).
+ * Reddit buzz, Fear & Greed Index, xAI sentiment (via server LLM call).
  */
 
 import { credentialProxyFetch } from "../credential-proxy.js";
 import { vaultHas } from "../credential-vault.js";
+import { serverLLMCall } from "../server-llm.js";
 
 const FINNHUB_BASE = "https://finnhub.io/api/v1";
 const FINNHUB_CREDENTIAL_NAME = "FINNHUB_API_KEY";
@@ -355,28 +356,13 @@ async function redditBuzz(args: Record<string, any>): Promise<{ success: boolean
 }
 
 // ============================================
-// XAI SENTIMENT (via credential proxy)
+// XAI SENTIMENT (via server LLM call)
 // ============================================
-
-const XAI_BASE = "https://api.x.ai/v1";
-const XAI_CREDENTIAL_NAME = "XAI_API_KEY";
 
 async function xaiSentiment(args: Record<string, any>): Promise<{ success: boolean; output: string; error?: string }> {
   const topic = args.topic as string;
   if (!topic) return { success: false, output: "", error: "topic is required" };
   const context = args.context as string || "";
-
-  // xAI is a core server key — check process.env first (from ~/.bot/.env or system env),
-  // then fall back to credential vault + proxy for users who set it up that way.
-  const envKey = process.env.XAI_API_KEY;
-  const hasVaultKey = await vaultHas(XAI_CREDENTIAL_NAME);
-  if (!envKey && !hasVaultKey) {
-    return {
-      success: false,
-      output: "",
-      error: `xAI API key not configured. To set it up:\n1. Get an API key at https://console.x.ai/\n2. Add XAI_API_KEY=your_key to ~/.bot/.env\n   OR run: secrets.prompt_user({ key_name: "XAI_API_KEY", prompt: "Enter your xAI API key", allowed_domain: "api.x.ai" })`,
-    };
-  }
 
   const systemPrompt = `You are a market sentiment analyst with access to real-time social media data from X (Twitter). Analyze the current sentiment around the given topic.
 
@@ -393,61 +379,28 @@ Be specific and data-oriented. If you're uncertain about real-time data, say so.
     ? `Analyze current sentiment for: ${topic}\n\nAdditional context: ${context}`
     : `Analyze current sentiment for: ${topic}`;
 
-  const body = JSON.stringify({
-    model: "grok-4-1-fast-reasoning",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    max_tokens: 2048,
-    temperature: 0.3,
-  });
-
   try {
-    let responseBody: string;
-    let responseStatus: number;
+    // xAI is a core server LLM — just request a chat completion like any other provider.
+    const result = await serverLLMCall({
+      provider: "xai",
+      model: "grok-4-1-fast-reasoning",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      maxTokens: 2048,
+      temperature: 0.3,
+    });
 
-    if (envKey) {
-      // Direct fetch — key available in process.env (core server key path)
-      const res = await fetch(`${XAI_BASE}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${envKey}`,
-        },
-        body,
-      });
-      responseStatus = res.status;
-      responseBody = await res.text();
-    } else {
-      // Credential proxy path — key in vault, decrypted server-side
-      const result = await credentialProxyFetch("/chat/completions", XAI_CREDENTIAL_NAME, {
-        baseUrl: XAI_BASE,
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-        placement: { header: "Authorization", prefix: "Bearer " },
-      });
-      responseStatus = result.status;
-      responseBody = result.body;
+    if (!result.success) {
+      return { success: false, output: "", error: result.error || "xAI call failed" };
     }
 
-    if (responseStatus >= 400) {
-      return { success: false, output: "", error: `xAI API returned ${responseStatus}: ${responseBody.substring(0, 500)}` };
-    }
-
-    let data: any;
-    try {
-      data = JSON.parse(responseBody);
-    } catch {
-      return { success: false, output: "", error: `xAI returned unparseable response: ${responseBody.substring(0, 200)}` };
-    }
-    const content = data?.choices?.[0]?.message?.content;
-    if (!content) {
+    if (!result.content) {
       return { success: false, output: "", error: "xAI returned empty response" };
     }
 
-    return { success: true, output: content };
+    return { success: true, output: result.content };
   } catch (err) {
     return { success: false, output: "", error: `xAI sentiment analysis failed: ${err instanceof Error ? err.message : String(err)}` };
   }

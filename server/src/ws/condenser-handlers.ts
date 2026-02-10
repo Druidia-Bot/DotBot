@@ -10,6 +10,8 @@ import type { WSMessage } from "../types.js";
 import { createComponentLogger } from "../logging.js";
 import { devices, sendMessage } from "./devices.js";
 import { sendExecutionCommand, requestTools } from "./device-bridge.js";
+import { createLLMClient, getApiKeyForProvider } from "../llm/providers.js";
+import type { LLMProvider } from "../llm/types.js";
 
 const log = createComponentLogger("ws.condenser");
 
@@ -230,6 +232,89 @@ Reformat this file to match the template. Return ONLY the corrected file content
         correctedContent: null,
         filePath,
         error: error instanceof Error ? error.message : "Unknown error",
+      },
+    });
+  }
+}
+
+// ============================================
+// GENERIC LLM CALL
+// ============================================
+
+/**
+ * Handle an llm_call_request from the local agent.
+ * Makes a chat completion using the server's registered LLM clients.
+ * This is the standard way for tools to request server-side LLM calls.
+ */
+export async function handleLLMCallRequest(
+  deviceId: string,
+  message: WSMessage,
+): Promise<void> {
+  const device = devices.get(deviceId);
+  if (!device) return;
+
+  const { provider, model, messages, maxTokens, temperature } = message.payload;
+
+  if (!provider || !messages?.length) {
+    sendMessage(device.ws, {
+      type: "llm_call_response",
+      id: nanoid(),
+      timestamp: Date.now(),
+      payload: {
+        requestId: message.id,
+        success: false,
+        error: "provider and messages are required",
+      },
+    });
+    return;
+  }
+
+  try {
+    const apiKey = getApiKeyForProvider(provider as LLMProvider);
+    if (!apiKey && provider !== "local") {
+      sendMessage(device.ws, {
+        type: "llm_call_response",
+        id: nanoid(),
+        timestamp: Date.now(),
+        payload: {
+          requestId: message.id,
+          success: false,
+          error: `No API key configured for provider "${provider}"`,
+        },
+      });
+      return;
+    }
+
+    const client = createLLMClient({ provider: provider as LLMProvider, apiKey });
+    const result = await client.chat(messages, {
+      model,
+      maxTokens: maxTokens || 4096,
+      temperature: temperature ?? 0.5,
+    });
+
+    sendMessage(device.ws, {
+      type: "llm_call_response",
+      id: nanoid(),
+      timestamp: Date.now(),
+      payload: {
+        requestId: message.id,
+        success: true,
+        content: result.content,
+        model: result.model,
+        provider: result.provider,
+        usage: result.usage,
+      },
+    });
+  } catch (err: any) {
+    log.error("LLM call request failed", { error: err.message, provider });
+    sendMessage(device.ws, {
+      type: "llm_call_response",
+      id: nanoid(),
+      timestamp: Date.now(),
+      payload: {
+        requestId: message.id,
+        success: false,
+        error: err.message,
       },
     });
   }

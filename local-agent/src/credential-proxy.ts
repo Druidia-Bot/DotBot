@@ -166,8 +166,6 @@ export async function credentialProxyFetch(
   });
 }
 
-
-
 // ============================================
 // CREDENTIAL RESOLVE (for Discord Gateway)
 // ============================================
