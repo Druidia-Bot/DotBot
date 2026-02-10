@@ -103,7 +103,7 @@ On the user's Windows PC:
 
 ```powershell
 # Clone and build
-git clone <your-repo-url> ~/DotBot
+git clone https://github.com/Druidia-Bot/DotBot.git ~/DotBot
 cd ~/DotBot
 npm install
 npm run build -w shared -w local-agent

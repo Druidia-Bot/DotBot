@@ -4,7 +4,7 @@ Version 1.0
 
 ## Notice
 
-Copyright 2025 Wallace Society
+Copyright 2025 Audience AI
 
 ## Acceptance
 

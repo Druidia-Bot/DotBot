@@ -10,9 +10,15 @@ For the product philosophy, see [Guiding Principles](docs/GUIDING_PRINCIPLES.md)
 
 ## Why DotBot Exists
 
-Most AI assistants forget everything between sessions. Your data lives on someone else's servers. One bloated agent tries to handle every task with one model. API keys sit one prompt injection away from leaking. And when you connect your assistant to Discord? That chat token becomes an unguarded backdoor to your machine.
+We wanted to build an **agentic AI framework** that could do three things existing tools couldn't:
 
-DotBot was built because those aren't minor annoyances — they're fundamental architectural failures. Fixing them requires different design decisions, not better prompts.
+1. **Run via a lightweight client on a Windows machine** — a local agent that executes tools, manages files, stores memory, and connects to a cloud server for reasoning. No heavy IDE integration, no Docker containers, no VM overhead. Just a Node.js process that makes your machine AI-capable.
+
+2. **Act as a bridge to control one or more APIs from a web interface** — route tasks through specialized personas, each with curated tool access and the right model tier. The server handles orchestration; the client handles execution. Connect from a browser, Discord, or any WebSocket client.
+
+3. **Remember everything and own nothing** — persistent memory that grows over time, stored entirely on the user's machine as flat files. The cloud server is stateless. Your data never leaves your control.
+
+Existing AI assistants fail at this because they're built as monoliths — one agent, one model, one context window, data locked in a vendor's cloud. DotBot was designed from day one as a **distributed system** where reasoning, execution, and memory are architecturally separated across machine boundaries. That separation is what makes the security model, the multi-model routing, and the data ownership guarantees possible.
 
 ---
 
@@ -106,99 +112,69 @@ DotBot integrates with **Discord** as a first-class remote interface. Talk to it
 
 DotBot has two components: a **server** (runs on Linux, handles LLM orchestration) and a **local agent** (runs on the user's Windows PC, executes tools). They connect over WebSocket with device-level authentication.
 
-### Option A: Server Install (Linux)
+### Option A: Connect to DotBot Service ⭐ *(Coming Soon)*
 
-For self-hosters who want to run their own DotBot server on a VPS (Linode, DigitalOcean, etc.).
+The easiest way to use DotBot. Connect your local agent to our hosted server — no server setup required.
 
-**Prerequisites**: A fresh Ubuntu 22.04+ server, a domain pointed at its IP, at least one LLM API key.
-
-The automated setup script handles everything — Node.js, Caddy (reverse proxy + auto-HTTPS), systemd, firewall, log rotation:
-
-```bash
-# 1. SSH into your server
-ssh root@<YOUR_SERVER_IP>
-
-# 2. Clone the repo
-git clone <your-repo-url> /opt/dotbot
-
-# 3. Edit the setup script — set your DOMAIN
-nano /opt/dotbot/deploy/setup.sh
-
-# 4. Run it
-chmod +x /opt/dotbot/deploy/setup.sh
-/opt/dotbot/deploy/setup.sh
-
-# 5. Add your API keys
-nano /opt/dotbot/.env
-
-# 6. Start the server
-systemctl start dotbot
+```powershell
+# Windows — one command does everything
+irm https://getmy.bot/install.ps1 | iex
+# Select "DotBot Service" when prompted
 ```
 
-See [deploy/DEPLOY-CHECKLIST.md](deploy/DEPLOY-CHECKLIST.md) for the full step-by-step guide including DNS, verification, monitoring, and scaling.
+> **Status**: The DotBot managed service is currently in development. For now, use Option B or C to self-host.
 
-On first start, the server generates an **invite token**. When running as a systemd service, check the logs to find it:
+### Option B: Self-Host Server (Linux)
+
+Run your own DotBot server on a VPS (Linode, DigitalOcean, etc.). The installer handles everything — Node.js, Caddy (reverse proxy + auto-HTTPS), systemd, firewall, log rotation, and walks you through API key setup.
+
+```bash
+# SSH into your server, then:
+curl -fsSL https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install-dotbot.sh | bash
+```
+
+The script will:
+1. Clone the repo to `/opt/dotbot`
+2. Install Node.js, Caddy, build tools
+3. Prompt for your domain and API keys (all skippable)
+4. Build the server
+5. Configure systemd + Caddy + firewall
+6. Start the server
+
+On first start, the server generates an **invite token**:
 
 ```bash
 journalctl -u dotbot -n 30
+# Look for: 🔑 Invite Token Generated — dbot-XXXX-XXXX-XXXX-XXXX
 ```
 
-You'll see:
-```
-🔑 Invite Token Generated
-     dbot-A7KM-R3NP-W9TX-B2HF
-```
+Give this token to the person installing the client. It's single-use and expires in 7 days.
 
-Give this token to the person who will install the client. It's single-use and expires in 7 days.
+See [deploy/DEPLOY-CHECKLIST.md](deploy/DEPLOY-CHECKLIST.md) for the full step-by-step guide.
 
-To generate additional tokens later:
-```bash
-node server/dist/index.js --generate-invite --label "Alice laptop" --max-uses 1
-```
+### Option C: Install Client (Windows)
 
-### Option B: Client Install (Windows)
-
-For end users connecting to a hosted DotBot server.
-
-**Prerequisites**: Node.js 20+, Git, Python 3.11+ (for GUI automation), an invite token from the server admin.
+Connect a local agent to a DotBot server (self-hosted or the managed service). The installer checks prerequisites, clones, builds, and configures everything.
 
 ```powershell
-# 1. Clone and build
-git clone <your-repo-url> ~/DotBot
-cd ~/DotBot
-npm install
-npm run build -w shared -w local-agent
-
-# 2. Configure connection
-# Create ~/.bot/.env with your server URL and invite token:
-mkdir "$env:USERPROFILE\.bot" -Force
-@"
-DOTBOT_SERVER=wss://your-server.example.com/ws
-DOTBOT_INVITE_TOKEN=dbot-XXXX-XXXX-XXXX-XXXX
-"@ | Set-Content "$env:USERPROFILE\.bot\.env"
-
-# 3. Start the agent
-node local-agent/dist/index.js
+# Windows — one command does everything
+irm https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install-dotbot.ps1 | iex
+# Select "Local Agent" when prompted, enter your server URL and invite token
 ```
 
-On first connect, the agent presents the invite token, registers with the server, and receives permanent device credentials stored in `~/.bot/device.json`. The invite token is consumed and removed from `.env` automatically.
+On first connect, the agent presents the invite token, registers with the server, and receives permanent device credentials stored in `~/.bot/device.json`. The invite token is consumed automatically.
 
-### Option C: Development Setup (Both)
+### Option D: Development Setup (Both)
 
 For developers running server + agent on the same machine.
 
 ```bash
-# 1. Install, build, and run everything
-.\install.bat
-# Create .env with your LLM API keys
-.\run-dev.bat
-```
-
-This starts the server on `http://localhost:3000` + WebSocket on `ws://localhost:3001`, the local agent, and the browser client.
-
-```bash
-# Stop everything
-.\stop.bat
+git clone https://github.com/Druidia-Bot/DotBot.git
+cd DotBot
+.\install.bat          # Install dependencies + build
+# Create .env with your LLM API keys (copy from .env.example)
+.\run-dev.bat          # Start server + agent + browser client
+.\stop.bat             # Stop everything
 ```
 
 ### Device Authentication
@@ -281,16 +257,6 @@ Admin operations (token management, device listing/revocation) are available onl
 | [Guiding Principles](docs/GUIDING_PRINCIPLES.md) | Product philosophy — data ownership, security model, persona architecture, memory system, model selection, self-improvement, and design decisions |
 | [Coding Patterns](docs/CODING_PATTERNS.md) | Engineering decisions — tool design, native function calling, separation of concerns, credential security, model selection, flat files over databases |
 | [Deploy Checklist](deploy/DEPLOY-CHECKLIST.md) | Full step-by-step server deployment guide |
-
-### Upcoming Features
-
-| Document | Description |
-|----------|-------------|
-| [Architecture](docs/upcoming-features/ARCHITECTURE.md) | Detailed system architecture and component interactions |
-| [Fluid UI](docs/upcoming-features/FEATURE_FLUID_UI.md) | Adaptive interface that reshapes around context |
-| [Cross-Platform](docs/upcoming-features/FEATURE_CROSS_PLATFORM.md) | Cross-platform execution support |
-| [GUI Automation](docs/upcoming-features/FEATURE_GUI_AUTOMATION.md) | Browser and desktop automation capabilities |
-| [Install & Onboarding](docs/upcoming-features/INSTALL_AND_ONBOARDING_GAMEPLAN.md) | Install system, invite tokens, device auth, onboarding flow |
 
 ---
 
@@ -375,7 +341,7 @@ DEVICE_NAME=My-PC                      # Display name — defaults to hostname
 
 ## License
 
-Copyright 2025 Wallace Society
+Copyright 2025 Audience AI
 
 Licensed under the [Sustainable Use License](LICENSE.md).
 
