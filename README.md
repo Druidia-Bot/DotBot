@@ -110,66 +110,131 @@ DotBot integrates with **Discord** as a first-class remote interface. Talk to it
 
 ## Quick Start
 
-DotBot has two components: a **server** (runs on Linux, handles LLM orchestration) and a **local agent** (runs on the user's Windows PC, executes tools). They connect over WebSocket with device-level authentication.
+Pick the setup that matches what you want to do:
 
-### Install — One Command
+| Setup | Who It's For | What You Need |
+|-------|-------------|---------------|
+| **A. Full Setup** | Production use | A Linux VPS + a Windows PC |
+| **B. Dev Setup** | Developers, testing | One machine (any OS) |
+| **C. Client Only** | Connecting to someone else's server | A Windows PC + an invite token |
 
-The installer asks what you want to install (client, server, or both), and walks you through everything.
+---
 
-**Windows (PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.ps1 | iex
-```
+### Option A: Full Setup (Recommended)
 
-**Linux / macOS:**
+This is how DotBot is designed to run — server on a Linux VPS, agent on your Windows PC. The server handles AI reasoning; your PC executes the actions.
+
+**What you'll need before starting:**
+- A Linux server (Ubuntu/Debian) with a domain name pointed at it
+- A Windows PC
+- At least one AI API key (DeepSeek is cheapest — [get one here](https://platform.deepseek.com/api_keys))
+
+#### Step 1 — Install the server
+
+SSH into your Linux server and run:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.sh -o /tmp/install.sh && sed -i 's/\r$//' /tmp/install.sh && bash /tmp/install.sh
 ```
 
 The installer will:
-1. Ask if you want **DotBot Service** *(coming soon)*, **Local Agent**, **Server**, or **Both**
-2. Install prerequisites (Node.js, Git, Caddy for server)
-3. Clone the repo to `C:\Program Files\.bot` (Windows) or `/opt/.bot` (Linux)
-4. Prompt for API keys (all skippable — you need at least one LLM key)
-5. Build and configure everything
-6. For server installs: set up systemd + Caddy + firewall + auto-HTTPS
+1. Install Node.js, Caddy (HTTPS), and build tools
+2. Ask for your domain name
+3. Ask for your API keys (enter at least one — you can skip the rest)
+4. Build and start the server
+5. **Display an invite token** — copy this, you'll need it for Step 2
 
-> **DotBot Service** is our upcoming hosted server — connect your local agent without running your own server. Coming soon.
+Your server is now running with HTTPS, a firewall, and auto-restarts.
 
-### After Install
+#### Step 2 — Install the agent on your Windows PC
 
-**Server** — the installer generates an invite token and displays it at the end. Give this token to the person installing the client. It's single-use and expires in 7 days. To generate more:
-```bash
-cd /opt/.bot && sudo -u dotbot node server/dist/generate-invite.js
-```
-See [deploy/DEPLOY-CHECKLIST.md](deploy/DEPLOY-CHECKLIST.md) for the full guide.
-
-**Client** — on first connect, the agent presents the invite token, registers with the server, and receives permanent device credentials stored in `~/.bot/device.json`. The token is consumed automatically.
-
-**Run / Stop / Update (Windows):**
+Open PowerShell and run:
 ```powershell
-.\run.ps1                # Start server + agent + browser client
-.\run.ps1 -Server        # Server only
-.\run.ps1 -Agent         # Agent only
+irm https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.ps1 | iex
+```
+
+When prompted, paste your server URL and the invite token from Step 1. The agent registers with the server automatically — the token is consumed and you won't need it again.
+
+#### Step 3 — Use it
+
+Open `http://localhost:3000` in your browser, or talk to DotBot via Discord (set up Discord by asking DotBot: *"set up Discord"*).
+
+**Useful commands:**
+```powershell
+.\run.ps1                # Start agent + browser client
 .\run.ps1 -Stop          # Stop everything
 .\run.ps1 -Update        # Pull latest + rebuild + run
 ```
 
-**Update (Linux server):**
 ```bash
-sudo /opt/.bot/deploy/update.sh
+# On the Linux server:
+systemctl status dotbot                                       # Check server status
+bash /opt/.bot/deploy/update.sh                               # Update server
+cd /opt/.bot && sudo -u dotbot node server/dist/generate-invite.js  # New invite token
 ```
 
-### Device Authentication
+---
 
-DotBot uses **hardware-bound device credentials** instead of API keys:
+### Option B: Dev Setup (Both on One Machine)
 
-1. **First connect**: Agent presents invite token → server issues `deviceId` + `deviceSecret`
-2. **Every connect**: Agent sends credentials + SHA-256 hardware fingerprint (5 signals: motherboard, CPU, disk, machine GUID, BIOS)
-3. **Fingerprint mismatch**: Device immediately revoked, admin alerted via Discord
-4. **Rate limiting**: 3 failed auth attempts per IP in 15 minutes → blocked
+> ⚠️ **Development only.** This runs the server and agent on the same machine. Fine for testing and development, but not recommended for daily use.
 
-Admin operations (token management, device listing/revocation) are available only over the authenticated WebSocket connection to admin devices — no HTTP admin endpoints exist.
+**What you'll need:**
+- Node.js 20+ and Git installed
+- At least one AI API key
+
+```bash
+git clone https://github.com/Druidia-Bot/DotBot.git
+cd DotBot
+cp .env.example .env         # Edit .env and add your API keys
+npm install
+```
+
+**Windows:**
+```powershell
+.\run.ps1                    # Starts server + agent + opens browser client
+.\run.ps1 -Stop              # Stop everything
+```
+
+**Linux / macOS:**
+```bash
+bash run-dev.sh              # Starts server + agent
+bash run-dev.sh --stop       # Stop everything
+bash run-dev.sh --update     # Pull + rebuild + run
+```
+
+---
+
+### Option C: Client Only
+
+Someone else is running the server — you just need to connect your agent.
+
+**What you'll need:**
+- A Windows PC
+- The server URL and invite token (get these from whoever runs the server)
+
+```powershell
+irm https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.ps1 | iex
+```
+
+Enter the server URL and invite token when prompted. Done.
+
+---
+
+### Need More Invite Tokens?
+
+Invite tokens are single-use and expire in 7 days. Generate more on the server:
+```bash
+cd /opt/.bot && sudo -u dotbot node server/dist/generate-invite.js
+```
+
+### How Authentication Works
+
+DotBot uses **hardware-bound device credentials** — no passwords or API keys to manage:
+
+1. **First connect** — agent presents invite token → server issues permanent device credentials
+2. **Every connect** — agent sends credentials + a hardware fingerprint (motherboard, CPU, disk, machine GUID, BIOS)
+3. **If someone copies your credentials to another machine** — fingerprint mismatch → device revoked, admin alerted
+4. **Brute force protection** — 3 failed attempts in 15 minutes → IP blocked
 
 ---
 
