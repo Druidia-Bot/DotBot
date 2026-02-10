@@ -864,24 +864,23 @@ Write-Host "  ✅ DotBot installation complete!" -ForegroundColor Green
 Write-Host "  ════════════════════════════════════════" -ForegroundColor Green
 Write-Host ""
 
-if ($selectedMode -eq "server" -or $selectedMode -eq "both") {
-    Write-Host "  Starting DotBot server..." -ForegroundColor Green
-    Start-Process powershell -ArgumentList @(
-        "-NoExit", "-Command",
-        "Set-Location '$InstallDir'; Write-Host '  DotBot Server' -ForegroundColor Cyan; Write-Host '  Press Ctrl+C to stop' -ForegroundColor Gray; Write-Host ''; node server/dist/index.js"
-    )
-    Start-Sleep -Seconds 2
-}
+# Start DotBot as a hidden background service
+$launcherPath = Join-Path $InstallDir "launch.ps1"
+$taskExists = $false
+try { $taskExists = [bool](Get-ScheduledTask -TaskName "DotBot" -ErrorAction SilentlyContinue) } catch {}
 
-if ($selectedMode -eq "agent" -or $selectedMode -eq "both") {
-    Write-Host "  Starting DotBot agent..." -ForegroundColor Green
+if ($taskExists) {
+    Write-Host "  Starting DotBot service (hidden)..." -ForegroundColor Green
+    Start-ScheduledTask -TaskName "DotBot" -ErrorAction SilentlyContinue
+} elseif (Test-Path $launcherPath) {
+    Write-Host "  Starting DotBot service (hidden)..." -ForegroundColor Green
     Start-Process powershell -ArgumentList @(
-        "-NoExit", "-Command",
-        "Set-Location '$InstallDir'; Write-Host '  DotBot Local Agent' -ForegroundColor Cyan; Write-Host '  Press Ctrl+C to stop' -ForegroundColor Gray; Write-Host ''; node local-agent/dist/index.js"
+        "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $launcherPath, "-Service"
     )
-    Start-Sleep -Seconds 2
 }
+Start-Sleep -Seconds 3
 
+# Open browser client
 $clientPath = Join-Path $InstallDir "client\index.html"
 if (Test-Path $clientPath) {
     Write-Host "  Opening DotBot in your browser..." -ForegroundColor Green
@@ -904,8 +903,14 @@ if (Test-Path $clientPath) {
 }
 
 Write-Host ""
-Write-Host "  To stop DotBot later, close the PowerShell windows or run:" -ForegroundColor Gray
-Write-Host "    powershell -File '$InstallDir\run.ps1' -Stop" -ForegroundColor Gray
+Write-Host "  DotBot is running as a background service (no visible window)." -ForegroundColor Green
+Write-Host "  It will start automatically on login." -ForegroundColor Gray
+Write-Host ""
+Write-Host "  Manage DotBot:" -ForegroundColor Gray
+Write-Host "    Search 'DotBot' in Start Menu    — launch with visible console" -ForegroundColor Gray
+Write-Host "    schtasks /run /tn DotBot          — start the background service" -ForegroundColor Gray
+Write-Host "    schtasks /end /tn DotBot          — stop the background service" -ForegroundColor Gray
+Write-Host "    Get-Content ~\.bot\agent.log -Tail 50  — view logs" -ForegroundColor Gray
 Write-Host ""
 
 $failedSteps = $installStatus.steps.GetEnumerator() | Where-Object { $_.Value.status -eq "failed" }
