@@ -4,10 +4,10 @@
 # ============================================================
 #
 # One-liner install:
-#   curl -fsSL https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install-dotbot.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.sh | bash
 #
 # Or clone first and run locally:
-#   chmod +x install-dotbot.sh && ./install-dotbot.sh
+#   chmod +x install.sh && ./install.sh
 #
 # What this does:
 #   1. Clones the DotBot repo
@@ -26,7 +26,7 @@ set -euo pipefail
 # ============================================================
 
 REPO_URL="https://github.com/Druidia-Bot/DotBot.git"
-DEPLOY_DIR="/opt/dotbot"
+DEPLOY_DIR="/opt/.bot"
 BOT_USER="dotbot"
 NODE_VERSION="20"
 INSTALLER_VERSION="1.0.0"
@@ -67,7 +67,7 @@ echo ""
 # ============================================================
 
 if [ "$(id -u)" -ne 0 ]; then
-  err "This script must be run as root. Try: sudo bash install-dotbot.sh"
+  err "This script must be run as root. Try: sudo bash install.sh"
 fi
 
 # Check for supported OS
@@ -522,5 +522,5 @@ echo "    systemctl restart dotbot    # Restart server"
 echo "    nano $DEPLOY_DIR/.env       # Edit API keys"
 echo ""
 echo "  Next: Install the local agent on your Windows machine:"
-echo "    irm https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install-dotbot.ps1 | iex"
+echo "    irm https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.ps1 | iex"
 echo ""

@@ -33,7 +33,7 @@ set -euo pipefail
 
 DOMAIN="dotbot.yourdomain.com"     # Your domain (must have DNS A record pointing here)
 REPO_URL="https://github.com/Druidia-Bot/DotBot.git"                         # Git repo URL (leave empty to rsync manually)
-DEPLOY_DIR="/opt/dotbot"
+DEPLOY_DIR="/opt/.bot"
 BOT_USER="dotbot"
 NODE_VERSION="20"
 

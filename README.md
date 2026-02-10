@@ -112,69 +112,53 @@ DotBot integrates with **Discord** as a first-class remote interface. Talk to it
 
 DotBot has two components: a **server** (runs on Linux, handles LLM orchestration) and a **local agent** (runs on the user's Windows PC, executes tools). They connect over WebSocket with device-level authentication.
 
-### Option A: Connect to DotBot Service ⭐ *(Coming Soon)*
+### Install — One Command
 
-The easiest way to use DotBot. Connect your local agent to our hosted server — no server setup required.
+The installer detects your OS, asks what you want to install (client, server, or both), and walks you through everything.
 
+**Windows (PowerShell):**
 ```powershell
-# Windows — one command does everything
-irm https://getmy.bot/install.ps1 | iex
-# Select "DotBot Service" when prompted
+irm https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.ps1 | iex
 ```
 
-> **Status**: The DotBot managed service is currently in development. For now, use Option B or C to self-host.
-
-### Option B: Self-Host Server (Linux)
-
-Run your own DotBot server on a VPS (Linode, DigitalOcean, etc.). The installer handles everything — Node.js, Caddy (reverse proxy + auto-HTTPS), systemd, firewall, log rotation, and walks you through API key setup.
-
+**Linux / macOS:**
 ```bash
-# SSH into your server, then:
-curl -fsSL https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install-dotbot.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.sh | bash
 ```
 
-The script will:
-1. Clone the repo to `/opt/dotbot`
-2. Install Node.js, Caddy, build tools
-3. Prompt for your domain and API keys (all skippable)
-4. Build the server
-5. Configure systemd + Caddy + firewall
-6. Start the server
+The installer will:
+1. Ask if you want **DotBot Service** *(coming soon)*, **Local Agent**, **Server**, or **Both**
+2. Install prerequisites (Node.js, Git, Caddy for server)
+3. Clone the repo to `C:\Program Files\.bot` (Windows) or `/opt/.bot` (Linux)
+4. Prompt for API keys (all skippable — you need at least one LLM key)
+5. Build and configure everything
+6. For server installs: set up systemd + Caddy + firewall + auto-HTTPS
 
-On first start, the server generates an **invite token**:
+> **DotBot Service** is our upcoming hosted server — connect your local agent without running your own server. Coming soon.
 
+### After Install
+
+**Server** — on first start, an invite token is generated:
 ```bash
 journalctl -u dotbot -n 30
 # Look for: 🔑 Invite Token Generated — dbot-XXXX-XXXX-XXXX-XXXX
 ```
+Give this token to the person installing the client. Single-use, expires in 7 days. See [deploy/DEPLOY-CHECKLIST.md](deploy/DEPLOY-CHECKLIST.md) for the full guide.
 
-Give this token to the person installing the client. It's single-use and expires in 7 days.
+**Client** — on first connect, the agent presents the invite token, registers with the server, and receives permanent device credentials stored in `~/.bot/device.json`. The token is consumed automatically.
 
-See [deploy/DEPLOY-CHECKLIST.md](deploy/DEPLOY-CHECKLIST.md) for the full step-by-step guide.
-
-### Option C: Install Client (Windows)
-
-Connect a local agent to a DotBot server (self-hosted or the managed service). The installer checks prerequisites, clones, builds, and configures everything.
-
+**Run / Stop / Update (Windows):**
 ```powershell
-# Windows — one command does everything
-irm https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install-dotbot.ps1 | iex
-# Select "Local Agent" when prompted, enter your server URL and invite token
+.\run.ps1                # Start server + agent + browser client
+.\run.ps1 -Server        # Server only
+.\run.ps1 -Agent         # Agent only
+.\run.ps1 -Stop          # Stop everything
+.\run.ps1 -Update        # Pull latest + rebuild + run
 ```
 
-On first connect, the agent presents the invite token, registers with the server, and receives permanent device credentials stored in `~/.bot/device.json`. The invite token is consumed automatically.
-
-### Option D: Development Setup (Both)
-
-For developers running server + agent on the same machine.
-
+**Update (Linux server):**
 ```bash
-git clone https://github.com/Druidia-Bot/DotBot.git
-cd DotBot
-.\install.bat          # Install dependencies + build
-# Create .env with your LLM API keys (copy from .env.example)
-.\run-dev.bat          # Start server + agent + browser client
-.\stop.bat             # Stop everything
+sudo /opt/.bot/deploy/update.sh
 ```
 
 ### Device Authentication

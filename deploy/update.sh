@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-DEPLOY_DIR="/opt/dotbot"
+DEPLOY_DIR="/opt/.bot"
 BOT_USER="dotbot"
 
 RED='\033[0;31m'
