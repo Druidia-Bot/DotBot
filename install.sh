@@ -502,6 +502,11 @@ fi
 # Done
 # ============================================================
 
+# Generate an invite token for the first client
+echo ""
+echo "  Generating invite token..."
+INVITE_TOKEN=$(cd "$DEPLOY_DIR" && sudo -u "$BOT_USER" node server/dist/index.js --generate-invite 2>&1 | grep -oP 'dbot-[A-Za-z0-9-]+' | head -1)
+
 echo ""
 echo -e "${GREEN}╔═══════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║           DotBot Server Installed!                 ║${NC}"
@@ -511,9 +516,19 @@ echo "  Domain:    https://$DOMAIN"
 echo "  Health:    https://$DOMAIN/"
 echo "  WebSocket: wss://$DOMAIN/ws"
 echo ""
-echo "  Get your invite token:"
-echo "    journalctl -u dotbot -n 30"
-echo "    # Look for: 🔑 Invite Token Generated"
+if [ -n "$INVITE_TOKEN" ]; then
+  echo -e "  ${CYAN}🔑 Invite Token: ${YELLOW}${INVITE_TOKEN}${NC}"
+  echo ""
+  echo "  Use this token when connecting your local agent."
+  echo "  It's single-use and expires in 7 days."
+else
+  echo -e "  ${YELLOW}⚠️  Could not generate invite token automatically.${NC}"
+  echo "  Generate one manually:"
+  echo "    cd $DEPLOY_DIR && sudo -u $BOT_USER node server/dist/index.js --generate-invite"
+fi
+echo ""
+echo "  Need more tokens later?"
+echo "    cd $DEPLOY_DIR && sudo -u $BOT_USER node server/dist/index.js --generate-invite"
 echo ""
 echo "  Useful commands:"
 echo "    systemctl status dotbot     # Check server status"

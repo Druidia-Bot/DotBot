@@ -138,12 +138,11 @@ The installer will:
 
 ### After Install
 
-**Server** — on first start, an invite token is generated:
+**Server** — the installer generates an invite token and displays it at the end. Give this token to the person installing the client. It's single-use and expires in 7 days. To generate more:
 ```bash
-journalctl -u dotbot -n 30
-# Look for: 🔑 Invite Token Generated — dbot-XXXX-XXXX-XXXX-XXXX
+cd /opt/.bot && sudo -u dotbot node server/dist/index.js --generate-invite
 ```
-Give this token to the person installing the client. Single-use, expires in 7 days. See [deploy/DEPLOY-CHECKLIST.md](deploy/DEPLOY-CHECKLIST.md) for the full guide.
+See [deploy/DEPLOY-CHECKLIST.md](deploy/DEPLOY-CHECKLIST.md) for the full guide.
 
 **Client** — on first connect, the agent presents the invite token, registers with the server, and receives permanent device credentials stored in `~/.bot/device.json`. The token is consumed automatically.
 
