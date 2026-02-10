@@ -184,19 +184,19 @@ export const PROVIDER_CONFIGS: Record<LLMProvider, Omit<LLMProviderConfig, "apiK
   xai: {
     provider: "xai",
     baseUrl: "https://api.x.ai/v1",
-    defaultModel: "grok-2",
+    defaultModel: "grok-4-1-fast-reasoning",
     models: {
-      "grok-2": {
-        name: "Grok 2",
+      "grok-4-1-fast-reasoning": {
+        name: "Grok 4.1 Fast Reasoning",
         contextWindow: 131072,
-        costPer1kInput: 0.002,
-        costPer1kOutput: 0.010
+        costPer1kInput: 0.003,
+        costPer1kOutput: 0.015
       },
-      "grok-2-mini": {
-        name: "Grok 2 Mini",
+      "grok-4-1-fast-non-reasoning": {
+        name: "Grok 4.1 Fast Non-Reasoning",
         contextWindow: 131072,
-        costPer1kInput: 0.0002,
-        costPer1kOutput: 0.001
+        costPer1kInput: 0.001,
+        costPer1kOutput: 0.005
       }
     }
   },
@@ -349,7 +349,7 @@ export const TIER_CONFIGS: Record<ModelTier, TierConfig> = {
       anthropic: "claude-3-5-haiku-20241022",
       openai: "gpt-4o-mini",
       gemini: "gemini-2.5-flash",
-      xai: "grok-2-mini",
+      xai: "grok-4-1-fast-non-reasoning",
       local: "qwen2.5-0.5b-instruct-q4_k_m"
     }
   },
@@ -362,7 +362,7 @@ export const TIER_CONFIGS: Record<ModelTier, TierConfig> = {
       anthropic: "claude-sonnet-4-20250514",
       openai: "gpt-4o",
       gemini: "gemini-3-pro-preview",
-      xai: "grok-2",
+      xai: "grok-4-1-fast-reasoning",
       local: "qwen2.5-0.5b-instruct-q4_k_m"
     }
   },
@@ -375,7 +375,7 @@ export const TIER_CONFIGS: Record<ModelTier, TierConfig> = {
       anthropic: "claude-opus-4-6",
       openai: "gpt-4o",
       gemini: "gemini-3-pro-preview",
-      xai: "grok-2",
+      xai: "grok-4-1-fast-reasoning",
       local: "qwen2.5-0.5b-instruct-q4_k_m"
     }
   }

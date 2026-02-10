@@ -186,17 +186,18 @@ function getFallback(role: ModelRole): { provider: LLMProvider; model: string; t
       { provider: "gemini", model: "gemini-2.5-flash", temperature: 0.0, maxTokens: 4096 },
       { provider: "openai", model: "gpt-4o-mini", temperature: 0.0, maxTokens: 4096 },
       { provider: "anthropic", model: "claude-3-5-haiku-20241022", temperature: 0.0, maxTokens: 4096 },
-      { provider: "xai", model: "grok-2", temperature: 0.0, maxTokens: 4096 },
+      { provider: "xai", model: "grok-4-1-fast-reasoning", temperature: 0.0, maxTokens: 4096 },
       { provider: "local", model: "qwen2.5-0.5b-instruct-q4_k_m", temperature: 0.3, maxTokens: 1024 },
     ],
     deep_context: [
       { provider: "anthropic", model: "claude-opus-4-6", temperature: 0.3, maxTokens: 8192 },
+      { provider: "xai", model: "grok-4-1-fast-non-reasoning", temperature: 0.3, maxTokens: 8192 },
       { provider: "deepseek", model: "deepseek-chat", temperature: 0.0, maxTokens: 4096 },
     ],
     architect: [
       { provider: "deepseek", model: "deepseek-reasoner", temperature: 0.0, maxTokens: 8192 },
       { provider: "gemini", model: "gemini-3-pro-preview", temperature: 0.0, maxTokens: 8192 },
-      { provider: "xai", model: "grok-2", temperature: 0.0, maxTokens: 8192 },
+      { provider: "xai", model: "grok-4-1-fast-reasoning", temperature: 0.0, maxTokens: 8192 },
     ],
     local: [
       { provider: "deepseek", model: "deepseek-chat", temperature: 0.3, maxTokens: 1024 },
@@ -204,7 +205,7 @@ function getFallback(role: ModelRole): { provider: LLMProvider; model: string; t
     gui_fast: [
       { provider: "openai", model: "gpt-4o-mini", temperature: 0.0, maxTokens: 4096 },
       { provider: "deepseek", model: "deepseek-chat", temperature: 0.0, maxTokens: 4096 },
-      { provider: "xai", model: "grok-2-mini", temperature: 0.0, maxTokens: 4096 },
+      { provider: "xai", model: "grok-4-1-fast-non-reasoning", temperature: 0.0, maxTokens: 4096 },
       { provider: "local", model: "qwen2.5-0.5b-instruct-q4_k_m", temperature: 0.3, maxTokens: 1024 },
     ],
   };

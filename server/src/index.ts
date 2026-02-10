@@ -89,7 +89,7 @@ const availableProviders = [
   GEMINI_API_KEY && "Gemini 3 Pro (deep context)",
   ANTHROPIC_API_KEY && "Claude Opus 4.6 (architect)",
   OPENAI_API_KEY && "OpenAI (fallback)",
-  XAI_API_KEY && "xAI Grok 2 (oracle / fallback)",
+  XAI_API_KEY && "xAI Grok 4.1 (oracle / deep_context fallback)",
   "Qwen 2.5 0.5B (local, node-llama-cpp)",
 ].filter(Boolean);
 

@@ -39,6 +39,12 @@ describe("createLLMClient", () => {
     expect(client.provider).toBe("openai");
   });
 
+  it("creates an xAI client with API key", () => {
+    const client = createLLMClient({ provider: "xai", apiKey: "test-key" });
+    expect(client).toBeInstanceOf(OpenAICompatibleClient);
+    expect(client.provider).toBe("xai");
+  });
+
   it("creates a local LLM client without API key", () => {
     const client = createLLMClient({ provider: "local" });
     expect(client).toBeInstanceOf(LocalLLMClient);
@@ -72,6 +78,10 @@ describe("createLLMClient validation", () => {
     expect(() => createLLMClient({ provider: "openai" })).toThrow("OpenAI requires an API key");
   });
 
+  it("throws for xAI without API key", () => {
+    expect(() => createLLMClient({ provider: "xai" })).toThrow("xAI requires an API key");
+  });
+
   it("throws for unknown provider", () => {
     expect(() => createLLMClient({ provider: "unknown" as any, apiKey: "key" })).toThrow("Unknown provider");
   });
@@ -86,6 +96,7 @@ describe("PROVIDER_CONFIGS", () => {
     expect(PROVIDER_CONFIGS.deepseek).toBeDefined();
     expect(PROVIDER_CONFIGS.anthropic).toBeDefined();
     expect(PROVIDER_CONFIGS.openai).toBeDefined();
+    expect(PROVIDER_CONFIGS.xai).toBeDefined();
     expect(PROVIDER_CONFIGS.local).toBeDefined();
   });
 
@@ -112,6 +123,27 @@ describe("TIER_CONFIGS", () => {
   it("each tier has preferredModels", () => {
     for (const tier of Object.values(TIER_CONFIGS)) {
       expect(tier.preferredModels).toBeDefined();
+    }
+  });
+
+  it("tier preferredModels reference valid xAI models", () => {
+    const xaiModels = Object.keys(PROVIDER_CONFIGS.xai.models);
+    for (const tier of Object.values(TIER_CONFIGS)) {
+      const xaiModel = tier.preferredModels.xai;
+      if (xaiModel) {
+        expect(xaiModels, `tier ${tier.tier} references unknown xAI model '${xaiModel}'`).toContain(xaiModel);
+      }
+    }
+  });
+
+  it("tier preferredModels reference valid models for all providers", () => {
+    for (const tier of Object.values(TIER_CONFIGS)) {
+      for (const [provider, model] of Object.entries(tier.preferredModels)) {
+        const config = PROVIDER_CONFIGS[provider as keyof typeof PROVIDER_CONFIGS];
+        expect(config, `provider ${provider} not found in PROVIDER_CONFIGS`).toBeDefined();
+        const models = Object.keys(config.models);
+        expect(models, `tier ${tier.tier} references unknown ${provider} model '${model}'`).toContain(model);
+      }
     }
   });
 });

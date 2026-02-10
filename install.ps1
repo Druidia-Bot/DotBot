@@ -779,19 +779,34 @@ Write-Host "  ✅ DotBot installation complete!" -ForegroundColor Green
 Write-Host "  ════════════════════════════════════════" -ForegroundColor Green
 Write-Host ""
 
-if ($selectedMode -eq "agent" -or $selectedMode -eq "both") {
-    Write-Host "  To start DotBot:" -ForegroundColor White
-    Write-Host "    cd $InstallDir" -ForegroundColor Gray
-    Write-Host "    node local-agent/dist/index.js" -ForegroundColor Gray
-    Write-Host ""
+if ($selectedMode -eq "server" -or $selectedMode -eq "both") {
+    Write-Host "  Starting DotBot server..." -ForegroundColor Green
+    Start-Process powershell -ArgumentList @(
+        "-NoExit", "-Command",
+        "Set-Location '$InstallDir'; Write-Host '  DotBot Server' -ForegroundColor Cyan; Write-Host '  Press Ctrl+C to stop' -ForegroundColor Gray; Write-Host ''; node server/dist/index.js"
+    )
+    Start-Sleep -Seconds 2
 }
 
-if ($selectedMode -eq "server" -or $selectedMode -eq "both") {
-    Write-Host "  To start the server:" -ForegroundColor White
-    Write-Host "    cd $InstallDir" -ForegroundColor Gray
-    Write-Host "    node server/dist/index.js" -ForegroundColor Gray
-    Write-Host ""
+if ($selectedMode -eq "agent" -or $selectedMode -eq "both") {
+    Write-Host "  Starting DotBot agent..." -ForegroundColor Green
+    Start-Process powershell -ArgumentList @(
+        "-NoExit", "-Command",
+        "Set-Location '$InstallDir'; Write-Host '  DotBot Local Agent' -ForegroundColor Cyan; Write-Host '  Press Ctrl+C to stop' -ForegroundColor Gray; Write-Host ''; node local-agent/dist/index.js"
+    )
+    Start-Sleep -Seconds 2
 }
+
+$clientPath = Join-Path $InstallDir "client\index.html"
+if (Test-Path $clientPath) {
+    Write-Host "  Opening DotBot in your browser..." -ForegroundColor Green
+    Start-Process $clientPath
+}
+
+Write-Host ""
+Write-Host "  To stop DotBot later, close the PowerShell windows or run:" -ForegroundColor Gray
+Write-Host "    powershell -File '$InstallDir\run.ps1' -Stop" -ForegroundColor Gray
+Write-Host ""
 
 $failedSteps = $installStatus.steps.GetEnumerator() | Where-Object { $_.Value.status -eq "failed" }
 if ($failedSteps) {

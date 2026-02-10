@@ -2,7 +2,7 @@
  * Market Research Tool Handlers
  * 
  * Implements: Polymarket search/event, Finnhub stock quote/profile/insider trades,
- * Reddit buzz, Fear & Greed Index. xAI sentiment is server-proxied.
+ * Reddit buzz, Fear & Greed Index, xAI sentiment (via credential proxy).
  */
 
 import { credentialProxyFetch } from "../credential-proxy.js";
@@ -60,10 +60,12 @@ async function polymarketSearch(args: Record<string, any>): Promise<{ success: b
     });
 
     if (!resp.ok) {
-      return { success: false, output: "", error: `Polymarket API returned ${resp.status}: ${await resp.text()}` };
+      const errText = await resp.text().catch(() => "(no body)");
+      return { success: false, output: "", error: `Polymarket API returned ${resp.status}: ${errText.substring(0, 500)}` };
     }
 
-    const markets = await resp.json() as any[];
+    const raw = await resp.json();
+    const markets = Array.isArray(raw) ? raw : [];
     if (!markets.length) {
       return { success: true, output: `No Polymarket events found for "${query}".` };
     }
@@ -79,7 +81,8 @@ async function polymarketSearch(args: Record<string, any>): Promise<{ success: b
       active: m.active ?? true,
     }));
 
-    return { success: true, output: JSON.stringify(results, null, 2) };
+    const output = JSON.stringify(results, null, 2);
+    return { success: true, output: output.length > 8000 ? output.substring(0, 8000) + "\n...[truncated]" : output };
   } catch (err) {
     return { success: false, output: "", error: `Polymarket search failed: ${err instanceof Error ? err.message : String(err)}` };
   }
@@ -107,7 +110,8 @@ async function polymarketEvent(args: Record<string, any>): Promise<{ success: bo
     });
 
     if (!resp.ok) {
-      return { success: false, output: "", error: `Polymarket API returned ${resp.status}` };
+      const errText = await resp.text().catch(() => "(no body)");
+      return { success: false, output: "", error: `Polymarket API returned ${resp.status}: ${errText.substring(0, 500)}` };
     }
 
     const data = await resp.json();
@@ -159,12 +163,10 @@ async function finnhubFetch(path: string): Promise<{ success: boolean; output: s
     });
 
     if (result.status >= 400) {
-      const body = typeof result.body === "string" ? result.body : JSON.stringify(result.body);
-      return { success: false, output: "", error: `Finnhub returned ${result.status}: ${body.substring(0, 500)}` };
+      return { success: false, output: "", error: `Finnhub returned ${result.status}: ${result.body.substring(0, 500)}` };
     }
 
-    const body = typeof result.body === "string" ? result.body : JSON.stringify(result.body, null, 2);
-    return { success: true, output: body.substring(0, 8000) };
+    return { success: true, output: result.body.substring(0, 8000) };
   } catch (err) {
     return { success: false, output: "", error: `Finnhub request failed: ${err instanceof Error ? err.message : String(err)}` };
   }
@@ -266,8 +268,8 @@ async function insiderTrades(args: Record<string, any>): Promise<{ success: bool
       return { success: true, output: `No insider transactions found for ${symbol} between ${fromDate} and ${toDate}.` };
     }
 
-    const buys = transactions.filter((t: any) => t.transactionCode === "P" || t.change > 0);
-    const sells = transactions.filter((t: any) => t.transactionCode === "S" || t.change < 0);
+    const buys = transactions.filter((t: any) => t.transactionCode === "P");
+    const sells = transactions.filter((t: any) => t.transactionCode === "S");
 
     const summary = {
       symbol,
@@ -291,7 +293,8 @@ async function insiderTrades(args: Record<string, any>): Promise<{ success: bool
 async function redditBuzz(args: Record<string, any>): Promise<{ success: boolean; output: string; error?: string }> {
   const query = args.query as string;
   if (!query) return { success: false, output: "", error: "query is required" };
-  const timeframe = args.timeframe || "week";
+  const validTimeframes = ["day", "week", "month", "year"];
+  const timeframe = validTimeframes.includes(args.timeframe) ? args.timeframe : "week";
   const limit = Math.min(args.limit || 15, 50);
 
   const subreddits = ["wallstreetbets", "stocks", "investing", "smallstreetbets", "pennystocks", "stockmarket", "options"];
@@ -344,7 +347,8 @@ async function redditBuzz(args: Record<string, any>): Promise<{ success: boolean
       posts,
     };
 
-    return { success: true, output: JSON.stringify(result, null, 2) };
+    const output = JSON.stringify(result, null, 2);
+    return { success: true, output: output.length > 8000 ? output.substring(0, 8000) + "\n...[truncated]" : output };
   } catch (err) {
     return { success: false, output: "", error: `Reddit search failed: ${err instanceof Error ? err.message : String(err)}` };
   }
@@ -387,7 +391,7 @@ Be specific and data-oriented. If you're uncertain about real-time data, say so.
     : `Analyze current sentiment for: ${topic}`;
 
   const body = JSON.stringify({
-    model: "grok-2",
+    model: "grok-4-1-fast-reasoning",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
@@ -406,11 +410,15 @@ Be specific and data-oriented. If you're uncertain about real-time data, say so.
     });
 
     if (result.status >= 400) {
-      const errBody = typeof result.body === "string" ? result.body : JSON.stringify(result.body);
-      return { success: false, output: "", error: `xAI API returned ${result.status}: ${errBody.substring(0, 500)}` };
+      return { success: false, output: "", error: `xAI API returned ${result.status}: ${result.body.substring(0, 500)}` };
     }
 
-    const data = typeof result.body === "string" ? JSON.parse(result.body) : result.body;
+    let data: any;
+    try {
+      data = JSON.parse(result.body);
+    } catch {
+      return { success: false, output: "", error: `xAI returned unparseable response: ${result.body.substring(0, 200)}` };
+    }
     const content = data?.choices?.[0]?.message?.content;
     if (!content) {
       return { success: false, output: "", error: "xAI returned empty response" };
@@ -447,11 +455,15 @@ async function fearGreed(): Promise<{ success: boolean; output: string; error?: 
     const current = entries[0];
     const previous = entries[1];
 
+    const currentValue = parseInt(current.value, 10);
+    const currentTs = parseInt(current.timestamp, 10);
+    const previousValue = previous ? parseInt(previous.value, 10) : null;
+
     const result = {
-      value: parseInt(current.value, 10),
-      classification: current.value_classification,
-      timestamp: new Date(parseInt(current.timestamp, 10) * 1000).toISOString(),
-      previousValue: previous ? parseInt(previous.value, 10) : null,
+      value: Number.isNaN(currentValue) ? null : currentValue,
+      classification: current.value_classification || "Unknown",
+      timestamp: Number.isNaN(currentTs) ? new Date().toISOString() : new Date(currentTs * 1000).toISOString(),
+      previousValue: previousValue !== null && Number.isNaN(previousValue) ? null : previousValue,
       previousClassification: previous?.value_classification || null,
       note: "0 = Extreme Fear, 25 = Fear, 50 = Neutral, 75 = Greed, 100 = Extreme Greed. This is the crypto Fear & Greed Index from alternative.me — directionally similar to equity sentiment.",
     };
