@@ -34,6 +34,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"  # Speeds up Invoke-WebRequest
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
 
 # ============================================
 # CONSTANTS
