@@ -171,12 +171,24 @@ function Get-InstallMode {
 function Get-AgentConfig {
     if (-not $ServerUrl) {
         Write-Host ""
-        $ServerUrl = Read-Host "  Enter DotBot server WebSocket URL (e.g. wss://dotbot.example.com:3001)"
+        $ServerUrl = Read-Host "  Enter DotBot server WebSocket URL (e.g. wss://dotbot.example.com/ws)"
         if (-not $ServerUrl) {
             $ServerUrl = "ws://localhost:3001"
             Write-Warn "No URL entered — defaulting to $ServerUrl"
         }
     }
+
+    # Normalize: trim trailing slash
+    $ServerUrl = $ServerUrl.TrimEnd('/')
+
+    # Auto-append /ws for remote servers (Caddy proxies /ws → :3001)
+    # Skip for localhost URLs which connect directly to port 3001
+    if ($ServerUrl -match '^wss?://' -and $ServerUrl -notmatch 'localhost|127\.0\.0\.1' -and $ServerUrl -notmatch '/ws$') {
+        $ServerUrl = "$ServerUrl/ws"
+        Write-Warn "Appended /ws — using: $ServerUrl"
+        Write-Host "    (Remote servers use Caddy which routes /ws to the WebSocket port)" -ForegroundColor DarkGray
+    }
+
     if (-not $InviteToken) {
         Write-Host ""
         $InviteToken = Read-Host "  Enter your invite token (e.g. dbot-XXXX-XXXX-XXXX-XXXX)"
