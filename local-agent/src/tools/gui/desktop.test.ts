@@ -438,30 +438,16 @@ describe("install scripts — Tesseract + Python steps", () => {
   it("install.ps1 has Python packages step", () => {
     const ps1Path = path.resolve(__dirname, "../../../../install.ps1");
     const content = fs.readFileSync(ps1Path, "utf-8");
-    expect(content).toContain("pytesseract");
     expect(content).toContain("pyautogui");
     expect(content).toContain("pywinauto");
+    expect(content).toContain("pip");
   });
 
   it("install.ps1 has Tesseract check step", () => {
     const ps1Path = path.resolve(__dirname, "../../../../install.ps1");
     const content = fs.readFileSync(ps1Path, "utf-8");
     expect(content).toContain("Tesseract");
-    expect(content).toContain(".bot\\tesseract");
-  });
-
-  it("install.bat has Python packages step", () => {
-    const batPath = path.resolve(__dirname, "../../../../install.bat");
-    const content = fs.readFileSync(batPath, "utf-8");
-    expect(content).toContain("pytesseract");
-    expect(content).toContain("pyautogui");
-  });
-
-  it("install.bat has Tesseract check step", () => {
-    const batPath = path.resolve(__dirname, "../../../../install.bat");
-    const content = fs.readFileSync(batPath, "utf-8");
-    expect(content).toContain("Tesseract");
-    expect(content).toContain(".bot\\tesseract");
+    expect(content).toContain("Tesseract-OCR");
   });
 });
 

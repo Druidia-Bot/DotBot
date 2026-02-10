@@ -68,7 +68,7 @@ export interface DiscordInteraction {
 }
 
 export interface GatewayCallbacks {
-  onMessage: (message: DiscordMessage) => void;
+  onMessage: (message: DiscordMessage) => void | Promise<void>;
   onInteraction?: (interaction: DiscordInteraction) => void;
   onReady: (botUserId: string) => void;
   onDisconnect: () => void;
@@ -252,7 +252,7 @@ export class DiscordGateway {
         break;
 
       case "MESSAGE_CREATE":
-        this.callbacks.onMessage({
+        Promise.resolve(this.callbacks.onMessage({
           id: data.id,
           channel_id: data.channel_id,
           guild_id: data.guild_id,
@@ -263,6 +263,8 @@ export class DiscordGateway {
           },
           content: data.content,
           timestamp: data.timestamp,
+        })).catch(err => {
+          console.error("[Discord] Error in message handler:", err);
         });
         break;
 

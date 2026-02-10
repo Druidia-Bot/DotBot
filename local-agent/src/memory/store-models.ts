@@ -628,16 +628,29 @@ export async function mergeMentalModels(
   if (!keep || !absorb) return null;
   if (keepSlug === absorbSlug) return null;
 
+  try {
+  // ── Ensure arrays exist on both sides ──
+  keep.beliefs = keep.beliefs || [];
+  keep.openLoops = keep.openLoops || [];
+  keep.relationships = keep.relationships || [];
+  keep.constraints = keep.constraints || [];
+  keep.questions = keep.questions || [];
+  keep.conversations = keep.conversations || [];
+  keep.resolvedIssues = keep.resolvedIssues || [];
+
   // ── Beliefs: dedupe by attribute, keep highest confidence ──
-  for (const ab of absorb.beliefs) {
+  for (const ab of absorb.beliefs || []) {
     const existing = keep.beliefs.find(b => b.attribute === ab.attribute);
     if (existing) {
-      if (ab.confidence > existing.confidence) {
+      if ((ab.confidence ?? 0) > (existing.confidence ?? 0)) {
         existing.value = ab.value;
         existing.confidence = ab.confidence;
       }
-      existing.evidence.push(...(ab.evidence || []));
-      if (ab.lastConfirmedAt > existing.lastConfirmedAt) {
+      if (ab.evidence?.length) {
+        existing.evidence = existing.evidence || [];
+        existing.evidence.push(...ab.evidence);
+      }
+      if (ab.lastConfirmedAt && (!existing.lastConfirmedAt || ab.lastConfirmedAt > existing.lastConfirmedAt)) {
         existing.lastConfirmedAt = ab.lastConfirmedAt;
       }
     } else {
@@ -646,20 +659,20 @@ export async function mergeMentalModels(
   }
 
   // ── Open loops: skip exact description duplicates ──
-  for (const al of absorb.openLoops) {
+  for (const al of absorb.openLoops || []) {
     const dup = keep.openLoops.some(l => l.description === al.description);
     if (!dup) keep.openLoops.push(al);
   }
 
   // ── Relationships: dedupe by targetSlug + type ──
-  for (const ar of absorb.relationships) {
+  for (const ar of absorb.relationships || []) {
     // Skip self-referencing relationships (absorb pointing to keep or vice versa)
     if (ar.targetSlug === keepSlug) continue;
     const existing = keep.relationships.find(
       r => r.targetSlug === ar.targetSlug && r.type === ar.type
     );
     if (existing) {
-      existing.confidence = Math.max(existing.confidence, ar.confidence);
+      existing.confidence = Math.max(existing.confidence ?? 0, ar.confidence ?? 0);
       existing.context = ar.context || existing.context;
     } else {
       keep.relationships.push(ar);
@@ -668,20 +681,14 @@ export async function mergeMentalModels(
 
   // ── Constraints: skip exact description duplicates ──
   for (const ac of absorb.constraints || []) {
-    const dup = (keep.constraints || []).some(c => c.description === ac.description);
-    if (!dup) {
-      keep.constraints = keep.constraints || [];
-      keep.constraints.push(ac);
-    }
+    const dup = keep.constraints.some(c => c.description === ac.description);
+    if (!dup) keep.constraints.push(ac);
   }
 
   // ── Questions: skip exact question duplicates ──
   for (const aq of absorb.questions || []) {
-    const dup = (keep.questions || []).some(q => q.question === aq.question);
-    if (!dup) {
-      keep.questions = keep.questions || [];
-      keep.questions.push(aq);
-    }
+    const dup = keep.questions.some(q => q.question === aq.question);
+    if (!dup) keep.questions.push(aq);
   }
 
   // ── Conversations: concat, sort, cap ──
@@ -692,11 +699,11 @@ export async function mergeMentalModels(
   }
 
   // ── Resolved issues: concat ──
-  keep.resolvedIssues = [...(keep.resolvedIssues || []), ...(absorb.resolvedIssues || [])];
+  keep.resolvedIssues = [...keep.resolvedIssues, ...(absorb.resolvedIssues || [])];
 
   // ── Scalar fields ──
   keep.accessCount = (keep.accessCount || 0) + (absorb.accessCount || 0);
-  if (absorb.createdAt < keep.createdAt) {
+  if (absorb.createdAt && (!keep.createdAt || absorb.createdAt < keep.createdAt)) {
     keep.createdAt = absorb.createdAt;
   }
   keep.lastUpdatedAt = new Date().toISOString();
@@ -743,4 +750,8 @@ export async function mergeMentalModels(
   await rebuildMemoryIndex();
 
   return { merged: keep, repointed, absorbedSlug: absorbSlug };
+  } catch (err) {
+    console.error(`[MergeModels] Failed to merge "${absorbSlug}" into "${keepSlug}":`, err);
+    return null;
+  }
 }

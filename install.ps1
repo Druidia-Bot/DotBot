@@ -202,7 +202,7 @@ function Install-Git {
 
     Write-Step "1/11" "Installing Git via winget..."
     try {
-        winget install --id Git.Git -e --accept-source-agreements --accept-package-agreements --silent 2>$null
+        winget install --id Git.Git -e --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
         # Refresh PATH
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
         if (Test-Command "git") {
@@ -238,7 +238,7 @@ function Install-NodeJS {
 
     Write-Step "2/11" "Installing Node.js ${NODE_MAJOR} LTS via winget..."
     try {
-        winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements --silent 2>$null
+        winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
         if (Test-Command "node") {
             $ver = (node --version 2>$null) -replace 'v',''
@@ -291,7 +291,7 @@ function Install-Python {
 
     Write-Step "3/11" "Installing Python 3.11 via winget..."
     try {
-        winget install --id Python.Python.3.11 -e --accept-source-agreements --accept-package-agreements --silent 2>$null
+        winget install --id Python.Python.3.11 -e --accept-source-agreements --accept-package-agreements --silent 2>&1 | Out-Null
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
         $ver = Test-RealPython "python"
         if ($ver) {
@@ -312,7 +312,7 @@ function Install-Python {
 # ============================================
 
 function Install-PipPackages {
-    param([bool]$PythonOK)
+    param($PythonOK)
     Write-Step "4/11" "Checking pip packages..."
 
     if (-not $PythonOK) {
@@ -322,7 +322,7 @@ function Install-PipPackages {
     }
 
     try {
-        python -m pip install --quiet --upgrade --user pyautogui pywinauto pyperclip pillow 2>$null
+        python -m pip install --quiet --upgrade --user pyautogui pywinauto pyperclip pillow 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "pip install exited with code $LASTEXITCODE" }
         Write-OK "pip packages installed"
         Set-StepStatus -StepName "pip_packages" -Status "success" -Tier 2
@@ -376,7 +376,7 @@ function Install-CloneRepo {
     }
 
     try {
-        git clone $RepoUrl $Dir 2>$null
+        git clone $RepoUrl $Dir 2>&1 | Out-Null
         if (Test-Path (Join-Path $Dir "package.json")) {
             $commit = (git -C $Dir rev-parse --short HEAD 2>$null)
             Write-OK "Cloned to $Dir (commit: $commit)"
@@ -400,7 +400,7 @@ function Install-NpmDeps {
 
     try {
         Push-Location $Dir
-        npm install --silent 2>$null
+        npm install --silent 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "npm install exited with code $LASTEXITCODE" }
         Pop-Location
         Write-OK "npm dependencies installed"
@@ -425,7 +425,7 @@ function Install-Build {
     try {
         # Always build shared first
         Push-Location (Join-Path $Dir "shared")
-        npm run build --silent 2>$null
+        npm run build --silent 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "shared/ build exited with code $LASTEXITCODE" }
         Pop-Location
         Write-OK "shared/ built"
@@ -440,7 +440,7 @@ function Install-Build {
     if ($SelectedMode -eq "agent" -or $SelectedMode -eq "both") {
         try {
             Push-Location (Join-Path $Dir "local-agent")
-            npm run build --silent 2>$null
+            npm run build --silent 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "local-agent/ build exited with code $LASTEXITCODE" }
             Pop-Location
             Write-OK "local-agent/ built"
@@ -456,7 +456,7 @@ function Install-Build {
     if ($SelectedMode -eq "server" -or $SelectedMode -eq "both") {
         try {
             Push-Location (Join-Path $Dir "server")
-            npm run build --silent 2>$null
+            npm run build --silent 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "server/ build exited with code $LASTEXITCODE" }
             Pop-Location
             Write-OK "server/ built"
@@ -571,7 +571,7 @@ function Install-Playwright {
 
     try {
         Push-Location $Dir
-        npx playwright install chromium --with-deps 2>$null
+        npx playwright install chromium --with-deps 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Playwright install exited with code $LASTEXITCODE" }
         Pop-Location
         Write-OK "Playwright Chromium installed"

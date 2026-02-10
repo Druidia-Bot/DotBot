@@ -385,6 +385,8 @@ async function pruneIndex(allModels: any[]): Promise<void> {
 
 const MAX_MERGE_CANDIDATES_PER_CYCLE = 5;
 const AUTO_MERGE_THRESHOLD = 0.85;
+const MAX_REVIEWED_PAIRS = 500;
+const LOCAL_LLM_TIMEOUT_MS = 15_000;
 
 interface DuplicateDetectionResult {
   merged: number;
@@ -473,7 +475,12 @@ async function detectAndMergeDuplicates(
 
   console.log(`[SleepCycle] Evaluating ${toEvaluate.length} candidate pair(s) for duplicate models`);
 
+  const mergedSlugs = new Set<string>();
+
   for (const candidate of toEvaluate) {
+    // Skip candidates that reference a model we already merged this cycle
+    if (mergedSlugs.has(candidate.a.slug) || mergedSlugs.has(candidate.b.slug)) continue;
+
     try {
       const similarity = await scorePairWithLocalLLM(candidate.a, candidate.b);
       console.log(`[SleepCycle] Similarity: ${candidate.a.name} ↔ ${candidate.b.name} = ${similarity.toFixed(2)}`);
@@ -487,6 +494,7 @@ async function detectAndMergeDuplicates(
         const mergeResult = await store.mergeMentalModels(keepSlug, absorbSlug);
         if (mergeResult) {
           result.merged++;
+          mergedSlugs.add(absorbSlug);
           console.log(`[SleepCycle] Auto-merged "${absorbSlug}" into "${keepSlug}" (similarity: ${similarity.toFixed(2)}, repointed: ${mergeResult.repointed})`);
         }
       } else {
@@ -496,6 +504,16 @@ async function detectAndMergeDuplicates(
     } catch (err) {
       console.error(`[SleepCycle] Failed to evaluate pair ${candidate.pairKey}:`, err);
       // Don't mark as reviewed on error — retry next cycle
+    }
+  }
+
+  // Cap reviewed pairs to prevent unbounded growth
+  if (result.newReviewedPairs.length > 0) {
+    const allReviewed = [...(state.reviewedPairs || []), ...result.newReviewedPairs];
+    if (allReviewed.length > MAX_REVIEWED_PAIRS) {
+      // Keep the most recent pairs, drop the oldest
+      state.reviewedPairs = allReviewed.slice(-MAX_REVIEWED_PAIRS);
+      result.newReviewedPairs = [];
     }
   }
 
@@ -527,7 +545,13 @@ Reply with ONLY a number from 0.0 to 1.0:
 
   const systemPrompt = "You compare two entity profiles and return a single similarity score. Reply with ONLY a decimal number between 0.0 and 1.0. No explanation.";
 
-  const response = await queryLocalLLM(prompt, systemPrompt, 16);
+  // Race with timeout to prevent hanging
+  const response = await Promise.race([
+    queryLocalLLM(prompt, systemPrompt, 16),
+    new Promise<string>((_, reject) =>
+      setTimeout(() => reject(new Error("Local LLM timed out")), LOCAL_LLM_TIMEOUT_MS)
+    ),
+  ]);
 
   // Parse the numeric response
   const match = response.match(/([01]\.?\d*)/);

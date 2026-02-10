@@ -15,12 +15,15 @@ export interface PromptHints {
   multiItem?: boolean;
 }
 
+const CLASSIFIER_TIMEOUT_MS = 3_000;
+const MAX_PROMPT_LENGTH = 500;
+
 /**
  * Classify a user prompt using the local LLM.
  * Returns hints that the server can use to improve routing.
  * 
  * Fast (~200-500ms) and cheap (runs on-device).
- * Returns empty hints if the local LLM is not ready or errors out.
+ * Returns empty hints if the local LLM is not ready, times out, or errors out.
  */
 export async function classifyPromptLocally(prompt: string): Promise<PromptHints> {
   const hints: PromptHints = {};
@@ -32,18 +35,29 @@ export async function classifyPromptLocally(prompt: string): Promise<PromptHints
   if (prompt.length < 40) return hints;
 
   try {
-    const response = await queryLocalLLM(
-      `Message: "${prompt}"\n\nDoes this message contain multiple UNRELATED requests or tasks? (e.g. "delete X, also update Y, and merge Z")\nReply YES or NO.`,
-      "You classify user messages. Reply with ONLY yes or no. Nothing else.",
-      8,
-    );
+    // Truncate long prompts — the small model doesn't need the full text
+    const truncated = prompt.length > MAX_PROMPT_LENGTH
+      ? prompt.slice(0, MAX_PROMPT_LENGTH) + "..."
+      : prompt;
+
+    // Race with timeout — never block the user's prompt path
+    const response = await Promise.race([
+      queryLocalLLM(
+        `Message: ${truncated}\n\nDoes this message contain multiple UNRELATED requests or tasks? (e.g. "delete X, also update Y, and merge Z")\nReply YES or NO.`,
+        "You classify user messages. Reply with ONLY yes or no. Nothing else.",
+        8,
+      ),
+      new Promise<string>((_, reject) =>
+        setTimeout(() => reject(new Error("classifier timeout")), CLASSIFIER_TIMEOUT_MS)
+      ),
+    ]);
 
     const normalized = response.trim().toLowerCase();
     if (normalized.startsWith("yes")) {
       hints.multiItem = true;
     }
   } catch {
-    // Local LLM failed — no hints, server falls back to regex heuristic
+    // Local LLM failed or timed out — no hints, server falls back to regex heuristic
   }
 
   return hints;
