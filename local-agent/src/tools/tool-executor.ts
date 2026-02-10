@@ -19,6 +19,7 @@ import { handleDiscord } from "./tool-handlers-discord.js";
 import { handleReminder } from "./tool-handlers-reminder.js";
 import { handleAdmin } from "./tool-handlers-admin.js";
 import { handleEmail } from "./tool-handlers-email.js";
+import { handleMarket } from "./tool-handlers-market.js";
 import { getTool } from "./registry.js";
 import { vaultHas } from "../credential-vault.js";
 import { credentialProxyFetch } from "../credential-proxy.js";
@@ -582,6 +583,7 @@ export async function executeTool(toolId: string, args: Record<string, any>): Pr
       case "reminder":   return await handleReminder(toolId, args);
       case "admin":      return await handleAdmin(toolId, args);
       case "email":      return await handleEmail(toolId, args);
+      case "market":     return await handleMarket(toolId, args);
       default:
         // Catch-all: check if this is a registered non-core tool (API or custom script)
         return await executeRegisteredTool(toolId, args);

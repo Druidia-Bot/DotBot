@@ -8,7 +8,7 @@
 // CORE TYPES
 // ============================================
 
-export type LLMProvider = "deepseek" | "anthropic" | "openai" | "gemini" | "local";
+export type LLMProvider = "deepseek" | "anthropic" | "openai" | "gemini" | "xai" | "local";
 
 export interface LLMMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -181,6 +181,25 @@ export const PROVIDER_CONFIGS: Record<LLMProvider, Omit<LLMProviderConfig, "apiK
       }
     }
   },
+  xai: {
+    provider: "xai",
+    baseUrl: "https://api.x.ai/v1",
+    defaultModel: "grok-2",
+    models: {
+      "grok-2": {
+        name: "Grok 2",
+        contextWindow: 131072,
+        costPer1kInput: 0.002,
+        costPer1kOutput: 0.010
+      },
+      "grok-2-mini": {
+        name: "Grok 2 Mini",
+        contextWindow: 131072,
+        costPer1kInput: 0.0002,
+        costPer1kOutput: 0.001
+      }
+    }
+  },
   local: {
     provider: "local",
     defaultModel: "qwen2.5-0.5b-instruct-q4_k_m",
@@ -330,6 +349,7 @@ export const TIER_CONFIGS: Record<ModelTier, TierConfig> = {
       anthropic: "claude-3-5-haiku-20241022",
       openai: "gpt-4o-mini",
       gemini: "gemini-2.5-flash",
+      xai: "grok-2-mini",
       local: "qwen2.5-0.5b-instruct-q4_k_m"
     }
   },
@@ -342,6 +362,7 @@ export const TIER_CONFIGS: Record<ModelTier, TierConfig> = {
       anthropic: "claude-sonnet-4-20250514",
       openai: "gpt-4o",
       gemini: "gemini-3-pro-preview",
+      xai: "grok-2",
       local: "qwen2.5-0.5b-instruct-q4_k_m"
     }
   },
@@ -354,6 +375,7 @@ export const TIER_CONFIGS: Record<ModelTier, TierConfig> = {
       anthropic: "claude-opus-4-6",
       openai: "gpt-4o",
       gemini: "gemini-3-pro-preview",
+      xai: "grok-2",
       local: "qwen2.5-0.5b-instruct-q4_k_m"
     }
   }

@@ -401,8 +401,11 @@ function Install-NpmDeps {
 
     try {
         Push-Location $Dir
-        npm install --silent 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "npm install exited with code $LASTEXITCODE" }
+        $npmOut = npm install 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            $npmOut | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+            throw "npm install exited with code $LASTEXITCODE"
+        }
         Pop-Location
         Write-OK "npm dependencies installed"
         Set-StepStatus -StepName "npm_install" -Status "success"
@@ -426,8 +429,11 @@ function Install-Build {
     try {
         # Always build shared first
         Push-Location (Join-Path $Dir "shared")
-        npm run build --silent 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "shared/ build exited with code $LASTEXITCODE" }
+        $buildOut = npm run build 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            $buildOut | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+            throw "shared/ build exited with code $LASTEXITCODE"
+        }
         Pop-Location
         Write-OK "shared/ built"
         Set-StepStatus -StepName "build_shared" -Status "success"
@@ -441,8 +447,11 @@ function Install-Build {
     if ($SelectedMode -eq "agent" -or $SelectedMode -eq "both") {
         try {
             Push-Location (Join-Path $Dir "local-agent")
-            npm run build --silent 2>$null | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "local-agent/ build exited with code $LASTEXITCODE" }
+            $buildOut = npm run build 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                $buildOut | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+                throw "local-agent/ build exited with code $LASTEXITCODE"
+            }
             Pop-Location
             Write-OK "local-agent/ built"
             Set-StepStatus -StepName "build_agent" -Status "success"
@@ -457,8 +466,11 @@ function Install-Build {
     if ($SelectedMode -eq "server" -or $SelectedMode -eq "both") {
         try {
             Push-Location (Join-Path $Dir "server")
-            npm run build --silent 2>$null | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw "server/ build exited with code $LASTEXITCODE" }
+            $buildOut = npm run build 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                $buildOut | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+                throw "server/ build exited with code $LASTEXITCODE"
+            }
             Pop-Location
             Write-OK "server/ built"
             Set-StepStatus -StepName "build_server" -Status "success"

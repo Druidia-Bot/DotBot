@@ -46,6 +46,7 @@ const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "";
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || "";
+const XAI_API_KEY = process.env.XAI_API_KEY || "";
 
 // Determine which provider to use
 let LLM_PROVIDER: "deepseek" | "anthropic" | "openai" | "gemini" = "deepseek";
@@ -80,6 +81,7 @@ registerApiKeys({
   anthropic: ANTHROPIC_API_KEY,
   openai: OPENAI_API_KEY,
   gemini: GEMINI_API_KEY,
+  xai: XAI_API_KEY,
 });
 
 const availableProviders = [
@@ -87,6 +89,7 @@ const availableProviders = [
   GEMINI_API_KEY && "Gemini 3 Pro (deep context)",
   ANTHROPIC_API_KEY && "Claude Opus 4.6 (architect)",
   OPENAI_API_KEY && "OpenAI (fallback)",
+  XAI_API_KEY && "xAI Grok 2 (oracle / fallback)",
   "Qwen 2.5 0.5B (local, node-llama-cpp)",
 ].filter(Boolean);
 
@@ -95,7 +98,7 @@ console.log(`📋 Available models: ${availableProviders.join(", ")}`);
 
 // Probe local LLM for offline fallback (non-blocking, non-fatal)
 // Skip if cloud API keys are available — local model is only useful when offline
-const hasCloudKeys = !!(DEEPSEEK_API_KEY || ANTHROPIC_API_KEY || OPENAI_API_KEY || GEMINI_API_KEY);
+const hasCloudKeys = !!(DEEPSEEK_API_KEY || ANTHROPIC_API_KEY || OPENAI_API_KEY || GEMINI_API_KEY || XAI_API_KEY);
 if (!hasCloudKeys) {
   (async () => {
     const probe = await probeLocalModel();

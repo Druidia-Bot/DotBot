@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "debug": "node --inspect=9230 --import tsx src/index.ts",
-    "build": "tsc && xcopy src\\memory\\prompts dist\\memory\\prompts /E /I /Y /Q && xcopy src\\tools\\gui\\desktop dist\\tools\\gui\\desktop /E /I /Y /Q",
+    "build": "tsc && xcopy src\\memory\\default-content dist\\memory\\default-content /E /I /Y /Q && xcopy src\\tools\\gui\\desktop dist\\tools\\gui\\desktop /E /I /Y /Q",
     "start": "node dist/index.js",
     "test": "vitest"
   },

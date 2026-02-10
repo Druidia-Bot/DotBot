@@ -268,6 +268,21 @@ WS_PORT=3001
   fi
   echo ""
 
+  # xAI
+  echo -e "  ${BOLD}xAI API Key${NC} (optional — oracle persona, market sentiment)"
+  echo "    Get one: https://console.x.ai/"
+  ask "    XAI_API_KEY: "
+  read -r KEY_VAL
+  if [ -n "$KEY_VAL" ]; then
+    ENV_CONTENT+="XAI_API_KEY=$KEY_VAL\n"
+    KEY_COUNT=$((KEY_COUNT + 1))
+    log "XAI_API_KEY set"
+  else
+    ENV_CONTENT+="# XAI_API_KEY=\n"
+    echo "    Skipped"
+  fi
+  echo ""
+
   # ScrapingDog
   echo -e "  ${BOLD}ScrapingDog API Key${NC} (optional — premium web tools)"
   echo "    Get one: https://www.scrapingdog.com/"

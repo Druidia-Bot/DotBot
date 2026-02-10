@@ -27,6 +27,7 @@ import {
   reminderTools,
   adminTools,
   emailTools,
+  marketTools,
 } from "./core-tools-extended.js";
 import { guiTools } from "./gui/index.js";
 
@@ -662,6 +663,7 @@ export const CORE_TOOLS: DotBotTool[] = [
   ...reminderTools,
   ...adminTools,
   ...emailTools,
+  ...marketTools,
   ...guiTools,
 ];
 

@@ -65,6 +65,15 @@ export function createLLMClient(options: LLMClientOptions): ILLMClient {
       if (!apiKey) throw new Error("Gemini requires an API key");
       return new GeminiClient(apiKey, baseUrl || config.baseUrl);
 
+    case "xai":
+      if (!apiKey) throw new Error("xAI requires an API key");
+      return new OpenAICompatibleClient(
+        "xai",
+        apiKey,
+        baseUrl || config.baseUrl!,
+        config.defaultModel
+      );
+
     case "local":
       return new LocalLLMClient();
       
