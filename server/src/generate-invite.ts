@@ -14,9 +14,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 config({ path: resolve(__dirname, "../../.env") });
 
+import { initDatabase } from "./db/index.js";
 import { initBotEnvironment } from "./init.js";
 import { createInviteToken } from "./auth/invite-tokens.js";
 
+initDatabase();
 initBotEnvironment();
 
 const labelIdx = process.argv.indexOf("--label");
