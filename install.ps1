@@ -495,7 +495,7 @@ function Remove-UnneededPackages {
 
     $deleted = @()
     if ($SelectedMode -eq "agent") {
-        foreach ($d in @("server", "deploy", "client", ".vscode")) {
+        foreach ($d in @("server", "deploy", ".vscode")) {
             $p = Join-Path $Dir $d
             if (Test-Path $p) { Remove-Item -Recurse -Force $p; $deleted += $d }
         }
@@ -593,6 +593,52 @@ function Install-Playwright {
         Pop-Location
         Write-Warn "Playwright install failed — headless browser unavailable"
         Set-StepStatus -StepName "playwright" -Status "failed" -Tier 2 -ErrorMsg $_.Exception.Message
+    }
+}
+
+# ============================================
+# SHORTCUTS
+# ============================================
+
+function Install-Shortcuts {
+    param([string]$Dir)
+
+    try {
+        $shell = New-Object -ComObject WScript.Shell
+        $startMenu = [Environment]::GetFolderPath("Programs")
+        $launcherPath = Join-Path $Dir "launch.ps1"
+
+        if (-not (Test-Path $launcherPath)) {
+            Write-Warn "launch.ps1 not found — skipping shortcut creation"
+            return
+        }
+
+        # Start Menu shortcut
+        $lnkPath = Join-Path $startMenu "DotBot.lnk"
+        $shortcut = $shell.CreateShortcut($lnkPath)
+        $shortcut.TargetPath = "powershell.exe"
+        $shortcut.Arguments = "-ExecutionPolicy Bypass -NoExit -File `"$launcherPath`""
+        $shortcut.WorkingDirectory = $Dir
+        $shortcut.Description = "Start DotBot"
+        $shortcut.Save()
+        Write-OK "Start Menu shortcut created — search 'DotBot' to launch"
+
+        # Offer auto-start on login
+        Write-Host ""
+        $startup = Read-Host "  Start DotBot automatically on login? (y/N)"
+        if ($startup -eq "y" -or $startup -eq "Y") {
+            $startupDir = [Environment]::GetFolderPath("Startup")
+            $startupLnk = Join-Path $startupDir "DotBot.lnk"
+            $startupShortcut = $shell.CreateShortcut($startupLnk)
+            $startupShortcut.TargetPath = "powershell.exe"
+            $startupShortcut.Arguments = "-ExecutionPolicy Bypass -WindowStyle Minimized -File `"$launcherPath`""
+            $startupShortcut.WorkingDirectory = $Dir
+            $startupShortcut.Description = "Start DotBot on login"
+            $startupShortcut.Save()
+            Write-OK "DotBot will start automatically on login"
+        }
+    } catch {
+        Write-Warn "Could not create shortcuts: $($_.Exception.Message)"
     }
 }
 
@@ -767,6 +813,10 @@ if ($selectedMode -eq "server" -or $selectedMode -eq "both") {
 if ($selectedMode -eq "agent" -or $selectedMode -eq "both") {
     Install-Playwright -Dir $InstallDir
 }
+
+# ── Shortcuts ──
+
+Install-Shortcuts -Dir $InstallDir
 
 # ── Save final status ──
 
