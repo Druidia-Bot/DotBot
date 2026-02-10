@@ -1,0 +1,5 @@
+# Force LF line endings for shell scripts (bash breaks on CRLF)
+*.sh text eol=lf
+
+# Force LF for other unix-specific files
+deploy/** text eol=lf
