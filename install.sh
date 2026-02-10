@@ -178,6 +178,7 @@ fi
 
 chown -R "$BOT_USER:$BOT_USER" "$DEPLOY_DIR"
 chown -R "$BOT_USER:$BOT_USER" "/home/$BOT_USER/.bot"
+chmod +x "$DEPLOY_DIR"/deploy/*.sh
 
 # ============================================================
 # 4. API Key Setup
