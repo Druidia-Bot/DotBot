@@ -88,6 +88,11 @@
     >
       <span id="toggleDebugText">Hide Debug</span>
     </button>
+    <button 
+      onclick="showServerSettings()"
+      class="px-3 py-1 text-xs bg-dot-panel border border-dot-border rounded hover:bg-gray-800 transition"
+      title="Server Settings"
+    >⚙️</button>
   </header>
   
   <!-- Main Layout -->
@@ -157,16 +162,46 @@
   <!-- Disconnect Overlay -->
   <div id="disconnectOverlay" class="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50">
     <h2 class="text-5xl font-bold text-red-500 mb-4">⚡ DISCONNECTED</h2>
-    <p class="text-gray-500 mb-6">Server connection lost</p>
-    <div id="reconnectStatus" class="text-dot-cyan text-sm">Attempting to reconnect...</div>
+    <p id="disconnectReason" class="text-gray-500 mb-2">Server connection lost</p>
+    <p id="disconnectUrl" class="text-gray-600 text-xs mb-6 font-mono"></p>
+    <div id="reconnectStatus" class="text-dot-cyan text-sm mb-4">Attempting to reconnect...</div>
+    <button onclick="showServerSettings()" class="px-4 py-2 bg-dot-panel border border-dot-border rounded hover:bg-gray-800 text-sm transition">⚙️ Change Server</button>
+  </div>
+
+  <!-- Server Settings Modal -->
+  <div id="serverSettingsModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] hidden">
+    <div class="bg-dot-panel border border-dot-border rounded-lg p-6 w-[420px]">
+      <h3 class="text-lg font-bold text-dot-cyan mb-4">Server Connection</h3>
+      <label class="block text-sm text-gray-400 mb-1">WebSocket URL</label>
+      <input id="serverUrlInput" type="text" placeholder="wss://your-server.com:3001"
+        onkeydown="if(event.key==='Enter')saveServerSettings()"
+        class="w-full px-3 py-2 bg-dot-bg border border-dot-border rounded text-gray-200 text-sm font-mono focus:outline-none focus:border-dot-cyan mb-4" />
+      <p class="text-xs text-gray-500 mb-4">Enter the WebSocket URL of your DotBot server.<br/>Use <span class="text-gray-400">ws://</span> for local or <span class="text-gray-400">wss://</span> for remote.</p>
+      <div class="flex gap-2 justify-end">
+        <button onclick="closeServerSettings()" class="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition">Cancel</button>
+        <button onclick="saveServerSettings()" class="px-4 py-2 bg-dot-cyan text-black text-sm font-semibold rounded hover:bg-cyan-400 transition">Connect</button>
+      </div>
+    </div>
   </div>
 
   <script>
-    const WS_URL = 'ws://localhost:3001';
+    // Resolve server URL: ?ws= param → localStorage → ws://localhost:3001
+    function resolveWsUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const paramUrl = params.get('ws');
+      if (paramUrl) {
+        localStorage.setItem('dotbot_ws_url', paramUrl);
+        try { window.history.replaceState({}, '', window.location.pathname); } catch(e) {}
+        return paramUrl;
+      }
+      return localStorage.getItem('dotbot_ws_url') || 'ws://localhost:3001';
+    }
+    let WS_URL = resolveWsUrl();
     const DEVICE_ID = 'web-client-' + Math.random().toString(36).substr(2, 9);
     
     let ws = null;
     let isConnected = false;
+    let authErrorReason = '';
     let currentStreamMessage = null;
     let currentStreamRaw = '';
     let debugPanelVisible = true;
@@ -551,7 +586,7 @@
       ws.onclose = () => {
         log('WebSocket disconnected', 'error');
         setConnected(false);
-        setTimeout(connect, 3000);
+        if (!authErrorReason) setTimeout(connect, 3000);
       };
       
       ws.onerror = (err) => {
@@ -567,6 +602,18 @@
       
       const overlay = document.getElementById('disconnectOverlay');
       overlay.style.display = connected ? 'none' : 'flex';
+      document.getElementById('disconnectUrl').textContent = WS_URL;
+      if (connected) {
+        authErrorReason = '';
+      } else if (authErrorReason) {
+        document.getElementById('disconnectReason').textContent = authErrorReason;
+        document.getElementById('reconnectStatus').textContent = 'Will not retry — fix the issue and reconnect';
+        document.getElementById('reconnectStatus').className = 'text-red-400 text-sm mb-4';
+      } else {
+        document.getElementById('disconnectReason').textContent = 'Server connection lost';
+        document.getElementById('reconnectStatus').textContent = 'Attempting to reconnect...';
+        document.getElementById('reconnectStatus').className = 'text-dot-cyan text-sm mb-4';
+      }
     }
     
     function handleMessage(msg) {
@@ -582,6 +629,14 @@
             llmModel = msg.payload.model || 'default';
             llmInfo.textContent = `${llmProvider} / ${llmModel}`;
           }
+          break;
+
+        case 'auth_failed':
+          log('Auth failed: ' + (msg.payload?.message || msg.payload?.reason), 'error');
+          authErrorReason = msg.payload?.message || msg.payload?.reason || 'Authentication failed';
+          addMessage('⚠️ ' + authErrorReason, 'system');
+          setConnected(false);
+          if (ws) { ws.onclose = null; ws.close(); ws = null; }
           break;
           
         case 'response':
@@ -829,8 +884,31 @@
       inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + 'px';
     });
     
+    // Server settings
+    function showServerSettings() {
+      document.getElementById('serverUrlInput').value = WS_URL;
+      document.getElementById('serverSettingsModal').classList.remove('hidden');
+      document.getElementById('serverUrlInput').focus();
+    }
+    
+    function closeServerSettings() {
+      document.getElementById('serverSettingsModal').classList.add('hidden');
+    }
+    
+    function saveServerSettings() {
+      const newUrl = document.getElementById('serverUrlInput').value.trim();
+      if (!newUrl) return;
+      localStorage.setItem('dotbot_ws_url', newUrl);
+      WS_URL = newUrl;
+      closeServerSettings();
+      authErrorReason = '';
+      if (ws) { ws.onclose = null; ws.close(); }
+      connect();
+    }
+    
     // Start connection
     log('DotBot Client initialized', 'info');
+    log('Server: ' + WS_URL, 'info');
     log('Device ID: ' + DEVICE_ID, 'info');
     connect();
   </script>

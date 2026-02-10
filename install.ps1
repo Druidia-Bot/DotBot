@@ -801,6 +801,21 @@ $clientPath = Join-Path $InstallDir "client\index.html"
 if (Test-Path $clientPath) {
     Write-Host "  Opening DotBot in your browser..." -ForegroundColor Green
     Start-Process $clientPath
+
+    # Hint: if the server is remote, the browser needs the URL configured
+    $agentEnvFile = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".bot\.env"
+    $serverWsUrl = ""
+    if (Test-Path $agentEnvFile) {
+        $envRaw = Get-Content $agentEnvFile -Raw
+        if ($envRaw -match 'DOTBOT_SERVER=(.+)') {
+            $serverWsUrl = $Matches[1].Trim()
+        }
+    }
+    if ($serverWsUrl -and $serverWsUrl -ne "ws://localhost:3001") {
+        Write-Host ""
+        Write-Host "  ℹ️  In the browser, click ⚙️ and set your server URL to:" -ForegroundColor Yellow
+        Write-Host "     $serverWsUrl" -ForegroundColor Cyan
+    }
 }
 
 Write-Host ""
