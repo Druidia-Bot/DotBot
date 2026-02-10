@@ -131,6 +131,31 @@ export async function executeFullPipeline(
   setTaskId(taskId);
 
   if (isActionable) {
+    // Multi-item detection: two layers of defense against misclassified multi-item messages.
+    // 1. Local LLM hint (trusted — Qwen 0.5B ran on-device before the message reached us)
+    // 2. Regex heuristic (fallback — when local LLM is unavailable or didn't run)
+    if (decision.classification !== "COMPOUND") {
+      const localLLMSaysMulti = request.hints?.multiItem === true;
+      const regexSaysMulti = looksLikeMultipleItems(request.prompt);
+
+      if (localLLMSaysMulti || regexSaysMulti) {
+        const source = localLLMSaysMulti ? "local LLM" : "regex heuristic";
+        journal.log("pipeline", `COMPOUND override (${source}) — message looks like multiple items`, {
+          originalClassification: decision.classification,
+          originalConfidence: decision.confidence,
+          source,
+        });
+        log.info("Heuristic COMPOUND override", {
+          originalClassification: decision.classification,
+          originalConfidence: decision.confidence,
+          persona: decision.personaId,
+          source,
+        });
+        decision.classification = "COMPOUND";
+        decision.confidence = 0.5; // Force planner path
+      }
+    }
+
     // Fast path: skip planner + judge when we have a clear single-persona task.
     // Like Cascade — get the message, pick the persona, start working. No committee.
     // Planner is only needed for COMPOUND tasks or uncertain routing.
@@ -384,3 +409,46 @@ function resolveThreadId(request: EnhancedPromptRequest): string {
   return threadId;
 }
 
+/**
+ * Heuristic: does this message contain multiple distinct items/requests?
+ * 
+ * Signals (need 2+ to trigger):
+ * - Numbered items ("1.", "2.", etc.)
+ * - Bullet points ("- item", "• item")
+ * - Multiple sentences separated by periods with distinct topics
+ * - Semicolons or "also" / "and also" / "additionally" splitting clauses
+ * - Line breaks between distinct items
+ * - Comma-separated imperative clauses ("delete X, merge Y, update Z")
+ * 
+ * Deliberately conservative — a normal multi-sentence message won't trigger this.
+ * The goal is to catch lists of unrelated tasks stuffed into one message.
+ */
+function looksLikeMultipleItems(prompt: string): boolean {
+  let signals = 0;
+
+  // Numbered list items: "1.", "2)", "1:", etc.
+  const numberedItems = prompt.match(/(?:^|\n)\s*\d+[\.\)\:]\s/gm);
+  if (numberedItems && numberedItems.length >= 2) signals++;
+
+  // Bullet points
+  const bulletItems = prompt.match(/(?:^|\n)\s*[-•*]\s+\S/gm);
+  if (bulletItems && bulletItems.length >= 2) signals++;
+
+  // Line breaks separating substantive content (not just formatting)
+  const lines = prompt.split(/\n+/).filter(l => l.trim().length > 15);
+  if (lines.length >= 3) signals++;
+
+  // Multiple distinct action verbs at sentence starts
+  const actionStarts = prompt.match(/(?:^|[.!?\n]\s*)(?:delete|remove|merge|update|create|add|close|mark|send|fix|check|set|install|configure|move|rename|save)\s/gi);
+  if (actionStarts && actionStarts.length >= 3) signals++;
+
+  // Transition words suggesting additional unrelated items
+  const transitions = prompt.match(/\b(?:also|additionally|and also|plus|another thing|on another note|separately|oh and|btw)\b/gi);
+  if (transitions && transitions.length >= 1) signals++;
+
+  // Parenthetical status markers like "(done)", "(completed)", "(close this)"
+  const statusMarkers = prompt.match(/\((?:done|completed|close|finished|resolved|fixed)\)/gi);
+  if (statusMarkers && statusMarkers.length >= 2) signals++;
+
+  return signals >= 2;
+}

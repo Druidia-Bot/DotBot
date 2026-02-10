@@ -335,6 +335,11 @@ export interface EnhancedPromptRequest {
   activeTasks?: TaskSnapshot[];
   /** Agent identity skeleton — compact self-model for context injection */
   agentIdentity?: string;
+  /** Pre-classification hints from local LLM (runs on-device before sending) */
+  hints?: {
+    /** Local LLM detected multiple unrelated requests in the message */
+    multiItem?: boolean;
+  };
 }
 
 /** Lightweight task snapshot for receptionist context (subset of full Task) */

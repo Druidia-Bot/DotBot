@@ -258,20 +258,32 @@ function Install-NodeJS {
 # TIER 2: PYTHON
 # ============================================
 
+function Test-RealPython {
+    param([string]$Cmd)
+    try {
+        $resolved = Get-Command $Cmd -ErrorAction SilentlyContinue
+        if (-not $resolved) { return $null }
+        # Skip Windows App Execution Alias stubs (they live in WindowsApps)
+        if ($resolved.Source -match 'WindowsApps') { return $null }
+        $out = & $Cmd --version 2>&1
+        if ($LASTEXITCODE -ne 0) { return $null }
+        $verStr = "$out"
+        if ($verStr -match '3\.(1[1-9]|[2-9]\d)') { return $verStr -replace 'Python ','' }
+    } catch { return $null }
+    return $null
+}
+
 function Install-Python {
     Write-Step "3/11" "Checking Python..."
     $pythonCmd = $null
     foreach ($cmd in @("python", "python3")) {
-        if (Test-Command $cmd) {
-            $ver = & $cmd --version 2>$null
-            if ($ver -match '3\.(1[1-9]|[2-9]\d)') {
-                $pythonCmd = $cmd
-                break
-            }
+        $ver = Test-RealPython $cmd
+        if ($ver) {
+            $pythonCmd = $cmd
+            break
         }
     }
     if ($pythonCmd) {
-        $ver = (& $pythonCmd --version 2>$null) -replace 'Python ',''
         Write-OK "Python $ver already installed"
         Set-StepStatus -StepName "python" -Status "success" -Tier 2 -Version $ver
         return $true
@@ -281,8 +293,8 @@ function Install-Python {
     try {
         winget install --id Python.Python.3.11 -e --accept-source-agreements --accept-package-agreements --silent 2>$null
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-        if (Test-Command "python") {
-            $ver = (python --version 2>$null) -replace 'Python ',''
+        $ver = Test-RealPython "python"
+        if ($ver) {
             Write-OK "Python $ver installed"
             Set-StepStatus -StepName "python" -Status "success" -Tier 2 -Version $ver
             return $true

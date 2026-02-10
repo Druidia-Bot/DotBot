@@ -18,6 +18,7 @@ import type { DiscordMessage, DiscordInteraction } from "./gateway.js";
 import { resolveCredential } from "../credential-proxy.js";
 import { credentialProxyFetch } from "../credential-proxy.js";
 import { vaultHas } from "../credential-vault.js";
+import { classifyPromptLocally } from "../llm/prompt-classifier.js";
 import type { WSMessage } from "../types.js";
 
 // ============================================
@@ -147,7 +148,7 @@ export function isDiscordAdapterRunning(): boolean {
 // INCOMING: Discord → DotBot
 // ============================================
 
-function handleDiscordMessage(message: DiscordMessage): void {
+async function handleDiscordMessage(message: DiscordMessage): Promise<void> {
   // Ignore bot messages (including our own)
   if (message.author.bot) return;
 
@@ -194,6 +195,8 @@ function handleDiscordMessage(message: DiscordMessage): void {
   startTypingLoop(message.channel_id);
 
   if (wsSend) {
+    // Run local LLM pre-classification (fast, on-device)
+    const hints = await classifyPromptLocally(message.content);
     wsSend({
       type: "prompt",
       id: promptId,
@@ -202,6 +205,7 @@ function handleDiscordMessage(message: DiscordMessage): void {
         prompt: message.content,
         source: "discord",
         sourceUserId: message.author.id,
+        hints,
       },
     });
   }
@@ -525,6 +529,7 @@ async function handleDiscordInteraction(interaction: DiscordInteraction): Promis
     startTypingLoop(interaction.channel_id);
 
     if (wsSend) {
+      const hints = await classifyPromptLocally(promptText);
       wsSend({
         type: "prompt",
         id: promptId,
@@ -533,6 +538,7 @@ async function handleDiscordInteraction(interaction: DiscordInteraction): Promis
           prompt: promptText,
           source: "discord_button",
           sourceUserId: interaction.user.id,
+          hints,
         },
       });
     }

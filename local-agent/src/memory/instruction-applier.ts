@@ -123,6 +123,8 @@ async function applySingle(instruction: CondenserInstruction): Promise<boolean> 
       return await identity.setName(instruction.value);
     case "identity_set_role":
       return await identity.setRole(instruction.value);
+    case "merge_models":
+      return await handleMergeModels(instruction);
     default:
       return false;
   }
@@ -420,6 +422,15 @@ async function handleUpdateKeywords(inst: Extract<CondenserInstruction, { action
   model.lastUpdatedAt = new Date().toISOString();
   await store.saveMentalModel(model);
   return true;
+}
+
+// ============================================
+// MERGE OPERATIONS
+// ============================================
+
+async function handleMergeModels(inst: Extract<CondenserInstruction, { action: "merge_models" }>): Promise<boolean> {
+  const result = await store.mergeMentalModels(inst.keepSlug, inst.absorbSlug);
+  return result !== null;
 }
 
 // ============================================

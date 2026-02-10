@@ -167,8 +167,23 @@ async function runCycle(): Promise<void> {
       }
     }
 
+    // ── Phase 2.5: Detect and merge duplicate models ──
+    const mergeResult = await detectAndMergeDuplicates(allModels, state);
+    if (mergeResult.merged > 0) {
+      console.log(`[SleepCycle] Merged ${mergeResult.merged} duplicate model pair(s)`);
+      totalInstructionsApplied += mergeResult.merged;
+    }
+    if (mergeResult.newReviewedPairs.length > 0) {
+      state.reviewedPairs = [
+        ...(state.reviewedPairs || []),
+        ...mergeResult.newReviewedPairs,
+      ];
+    }
+
     // ── Phase 3: Prune the index ──
-    await pruneIndex(allModels);
+    // Re-fetch models if merges happened (allModels is stale)
+    const modelsForPrune = mergeResult.merged > 0 ? await store.getAllMentalModels() : allModels;
+    await pruneIndex(modelsForPrune);
 
     // ── Phase 4: Clean up expired agent work threads ──
     const agentWorkCleaned = await cleanupExpiredAgentWork();
@@ -188,6 +203,7 @@ async function runCycle(): Promise<void> {
     threadsProcessed,
     loopsInvestigated,
     instructionsApplied: totalInstructionsApplied,
+    reviewedPairs: state.reviewedPairs,
   });
 
   running = false;
@@ -361,6 +377,181 @@ async function pruneIndex(allModels: any[]): Promise<void> {
 
   // Rebuild the index from whatever remains in models/
   await store.rebuildMemoryIndex();
+}
+
+// ============================================
+// PHASE 2.5: DUPLICATE MODEL DETECTION
+// ============================================
+
+const MAX_MERGE_CANDIDATES_PER_CYCLE = 5;
+const AUTO_MERGE_THRESHOLD = 0.85;
+
+interface DuplicateDetectionResult {
+  merged: number;
+  newReviewedPairs: string[];
+}
+
+/**
+ * Detect and merge duplicate mental models using the local LLM.
+ * 
+ * 1. Generate candidate pairs (same category, not already reviewed)
+ * 2. Score each pair using the local LLM (cheap, runs on-device)
+ * 3. Auto-merge if score >= 0.85
+ * 4. Track reviewed pairs so we don't re-check every cycle
+ */
+async function detectAndMergeDuplicates(
+  allModels: any[],
+  state: SleepCycleState
+): Promise<DuplicateDetectionResult> {
+  const result: DuplicateDetectionResult = { merged: 0, newReviewedPairs: [] };
+
+  if (allModels.length < 2) return result;
+
+  // Check if local LLM is available
+  let isLocalReady = false;
+  try {
+    const { isLocalModelReady } = await import("../llm/local-llm.js");
+    isLocalReady = isLocalModelReady();
+  } catch {
+    // local LLM module not available
+  }
+  if (!isLocalReady) {
+    console.log("[SleepCycle] Local LLM not ready — skipping duplicate detection");
+    return result;
+  }
+
+  const reviewedSet = new Set(state.reviewedPairs || []);
+
+  // Generate candidate pairs: same category, not already reviewed
+  const candidates: { a: any; b: any; pairKey: string }[] = [];
+  for (let i = 0; i < allModels.length; i++) {
+    for (let j = i + 1; j < allModels.length; j++) {
+      const a = allModels[i];
+      const b = allModels[j];
+
+      // Same category is a prerequisite (person ≠ project)
+      if (a.category !== b.category) continue;
+
+      // Canonical pair key (sorted so A:B === B:A)
+      const pairKey = [a.slug, b.slug].sort().join(":");
+      if (reviewedSet.has(pairKey)) continue;
+
+      candidates.push({ a, b, pairKey });
+    }
+  }
+
+  if (candidates.length === 0) return result;
+
+  // Pre-filter: quick name/keyword heuristics to rank candidates
+  const scored = candidates.map(c => {
+    let score = 0;
+    // Name substring containment (e.g., "Jesse" ⊂ "Jesse Wallace")
+    const aLow = c.a.name.toLowerCase();
+    const bLow = c.b.name.toLowerCase();
+    if (aLow.includes(bLow) || bLow.includes(aLow)) score += 3;
+    // Shared keywords
+    const aKw = new Set(extractModelKeywords(c.a));
+    const bKw = extractModelKeywords(c.b);
+    const overlap = bKw.filter(k => aKw.has(k)).length;
+    if (overlap >= 2) score += 2;
+    if (overlap >= 4) score += 1;
+    // Shared belief attributes
+    const aAttrs = new Set((c.a.beliefs || []).map((b: any) => b.attribute));
+    const sharedAttrs = (c.b.beliefs || []).filter((b: any) => aAttrs.has(b.attribute)).length;
+    if (sharedAttrs >= 1) score += 2;
+    if (sharedAttrs >= 3) score += 1;
+    return { ...c, heuristicScore: score };
+  });
+
+  // Only send top candidates to the LLM (sorted by heuristic score, min score 2)
+  scored.sort((a, b) => b.heuristicScore - a.heuristicScore);
+  const toEvaluate = scored
+    .filter(s => s.heuristicScore >= 2)
+    .slice(0, MAX_MERGE_CANDIDATES_PER_CYCLE);
+
+  if (toEvaluate.length === 0) return result;
+
+  console.log(`[SleepCycle] Evaluating ${toEvaluate.length} candidate pair(s) for duplicate models`);
+
+  for (const candidate of toEvaluate) {
+    try {
+      const similarity = await scorePairWithLocalLLM(candidate.a, candidate.b);
+      console.log(`[SleepCycle] Similarity: ${candidate.a.name} ↔ ${candidate.b.name} = ${similarity.toFixed(2)}`);
+
+      if (similarity >= AUTO_MERGE_THRESHOLD) {
+        // Auto-merge: keep the model with more beliefs (richer data)
+        const keepSlug = (candidate.a.beliefs?.length || 0) >= (candidate.b.beliefs?.length || 0)
+          ? candidate.a.slug : candidate.b.slug;
+        const absorbSlug = keepSlug === candidate.a.slug ? candidate.b.slug : candidate.a.slug;
+
+        const mergeResult = await store.mergeMentalModels(keepSlug, absorbSlug);
+        if (mergeResult) {
+          result.merged++;
+          console.log(`[SleepCycle] Auto-merged "${absorbSlug}" into "${keepSlug}" (similarity: ${similarity.toFixed(2)}, repointed: ${mergeResult.repointed})`);
+        }
+      } else {
+        // Not similar enough — mark as reviewed so we skip next cycle
+        result.newReviewedPairs.push(candidate.pairKey);
+      }
+    } catch (err) {
+      console.error(`[SleepCycle] Failed to evaluate pair ${candidate.pairKey}:`, err);
+      // Don't mark as reviewed on error — retry next cycle
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Use the local LLM to score similarity between two mental models.
+ * Returns a float 0.0 - 1.0 where 1.0 = definitely the same entity.
+ */
+async function scorePairWithLocalLLM(modelA: any, modelB: any): Promise<number> {
+  const { queryLocalLLM } = await import("../llm/local-llm.js");
+  const { buildModelSkeleton } = await import("./store-models.js");
+
+  const skelA = buildModelSkeleton(modelA);
+  const skelB = buildModelSkeleton(modelB);
+
+  const prompt = `Model A:
+${skelA}
+
+Model B:
+${skelB}
+
+Are these two models about the SAME entity (same person, place, thing, etc.)?
+Reply with ONLY a number from 0.0 to 1.0:
+- 1.0 = definitely the same entity
+- 0.5 = possibly the same, not sure
+- 0.0 = definitely different entities`;
+
+  const systemPrompt = "You compare two entity profiles and return a single similarity score. Reply with ONLY a decimal number between 0.0 and 1.0. No explanation.";
+
+  const response = await queryLocalLLM(prompt, systemPrompt, 16);
+
+  // Parse the numeric response
+  const match = response.match(/([01]\.?\d*)/);
+  if (match) {
+    const score = parseFloat(match[1]);
+    if (!isNaN(score) && score >= 0 && score <= 1) return score;
+  }
+
+  // If the LLM returned garbage, return 0 (don't merge)
+  console.warn(`[SleepCycle] Local LLM returned unparseable similarity score: "${response.trim()}"`);
+  return 0;
+}
+
+/**
+ * Extract keywords from a mental model for heuristic pre-filtering.
+ */
+function extractModelKeywords(model: any): string[] {
+  const words: string[] = [];
+  words.push(...model.name.toLowerCase().split(/\s+/));
+  if (model.description) words.push(...model.description.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3));
+  for (const b of model.beliefs || []) {
+    words.push(b.attribute.toLowerCase());
+  }
+  return [...new Set(words)];
 }
 
 // ============================================

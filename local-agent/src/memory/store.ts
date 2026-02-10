@@ -29,8 +29,9 @@ export {
   searchMentalModels,
   buildModelSkeleton, getModelSkeletons,
   getDeepMemoryIndex, getDeepModel, promoteModel, searchAndPromote,
+  mergeMentalModels,
 } from "./store-models.js";
-export type { ScoredModelEntry } from "./store-models.js";
+export type { ScoredModelEntry, MergeResult } from "./store-models.js";
 export {
   getSkill, getAllSkills, saveSkill, createSkill, deleteSkill,
   searchSkills, addSupportingFile, readSupportingFile,

@@ -590,3 +590,157 @@ function truncSkel(s: string, max: number): string {
   if (clean.length <= max) return clean;
   return clean.slice(0, max - 3) + "...";
 }
+
+// ============================================
+// MERGE OPERATIONS
+// ============================================
+
+export interface MergeResult {
+  merged: MentalModel;
+  repointed: number;
+  absorbedSlug: string;
+}
+
+/**
+ * Merge two mental models. The `keepSlug` model absorbs the `absorbSlug` model.
+ * 
+ * - Beliefs: union by attribute. On conflict, keep highest confidence, append evidence.
+ * - Open loops: union. Skip exact description duplicates.
+ * - Relationships: union by targetSlug+type. On conflict, keep highest confidence.
+ * - Constraints: union by description. Skip exact duplicates.
+ * - Questions: union. Skip exact question duplicates.
+ * - Conversations: concat, sort by timestamp, cap at 50.
+ * - Resolved issues: concat.
+ * - Access count: sum.
+ * - Created at: keep earliest.
+ * 
+ * After absorbing, repoints all OTHER models that have relationships pointing
+ * at the absorbed model to point at the kept model instead. Then deletes the
+ * absorbed model and rebuilds the index.
+ */
+export async function mergeMentalModels(
+  keepSlug: string,
+  absorbSlug: string
+): Promise<MergeResult | null> {
+  const keep = await getMentalModel(keepSlug) || await getDeepModel(keepSlug);
+  const absorb = await getMentalModel(absorbSlug) || await getDeepModel(absorbSlug);
+
+  if (!keep || !absorb) return null;
+  if (keepSlug === absorbSlug) return null;
+
+  // ── Beliefs: dedupe by attribute, keep highest confidence ──
+  for (const ab of absorb.beliefs) {
+    const existing = keep.beliefs.find(b => b.attribute === ab.attribute);
+    if (existing) {
+      if (ab.confidence > existing.confidence) {
+        existing.value = ab.value;
+        existing.confidence = ab.confidence;
+      }
+      existing.evidence.push(...(ab.evidence || []));
+      if (ab.lastConfirmedAt > existing.lastConfirmedAt) {
+        existing.lastConfirmedAt = ab.lastConfirmedAt;
+      }
+    } else {
+      keep.beliefs.push(ab);
+    }
+  }
+
+  // ── Open loops: skip exact description duplicates ──
+  for (const al of absorb.openLoops) {
+    const dup = keep.openLoops.some(l => l.description === al.description);
+    if (!dup) keep.openLoops.push(al);
+  }
+
+  // ── Relationships: dedupe by targetSlug + type ──
+  for (const ar of absorb.relationships) {
+    // Skip self-referencing relationships (absorb pointing to keep or vice versa)
+    if (ar.targetSlug === keepSlug) continue;
+    const existing = keep.relationships.find(
+      r => r.targetSlug === ar.targetSlug && r.type === ar.type
+    );
+    if (existing) {
+      existing.confidence = Math.max(existing.confidence, ar.confidence);
+      existing.context = ar.context || existing.context;
+    } else {
+      keep.relationships.push(ar);
+    }
+  }
+
+  // ── Constraints: skip exact description duplicates ──
+  for (const ac of absorb.constraints || []) {
+    const dup = (keep.constraints || []).some(c => c.description === ac.description);
+    if (!dup) {
+      keep.constraints = keep.constraints || [];
+      keep.constraints.push(ac);
+    }
+  }
+
+  // ── Questions: skip exact question duplicates ──
+  for (const aq of absorb.questions || []) {
+    const dup = (keep.questions || []).some(q => q.question === aq.question);
+    if (!dup) {
+      keep.questions = keep.questions || [];
+      keep.questions.push(aq);
+    }
+  }
+
+  // ── Conversations: concat, sort, cap ──
+  keep.conversations = [...keep.conversations, ...(absorb.conversations || [])];
+  keep.conversations.sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
+  if (keep.conversations.length > 50) {
+    keep.conversations = keep.conversations.slice(-50);
+  }
+
+  // ── Resolved issues: concat ──
+  keep.resolvedIssues = [...(keep.resolvedIssues || []), ...(absorb.resolvedIssues || [])];
+
+  // ── Scalar fields ──
+  keep.accessCount = (keep.accessCount || 0) + (absorb.accessCount || 0);
+  if (absorb.createdAt < keep.createdAt) {
+    keep.createdAt = absorb.createdAt;
+  }
+  keep.lastUpdatedAt = new Date().toISOString();
+
+  // ── Repoint relationships in ALL other models ──
+  let repointed = 0;
+  const allModels = await getAllMentalModels();
+  for (const model of allModels) {
+    if (model.slug === keepSlug || model.slug === absorbSlug) continue;
+    let changed = false;
+    for (const rel of model.relationships) {
+      if (rel.targetSlug === absorbSlug) {
+        // Check if this would create a duplicate (already has a relationship to keepSlug with same type)
+        const existing = model.relationships.find(
+          r => r.targetSlug === keepSlug && r.type === rel.type
+        );
+        if (existing) {
+          existing.confidence = Math.max(existing.confidence, rel.confidence);
+          // Mark for removal by setting targetSlug to empty (cleaned below)
+          rel.targetSlug = "";
+        } else {
+          rel.targetSlug = keepSlug;
+        }
+        changed = true;
+        repointed++;
+      }
+    }
+    if (changed) {
+      // Remove any relationships that were marked empty (duplicates)
+      model.relationships = model.relationships.filter(r => r.targetSlug !== "");
+      model.lastUpdatedAt = new Date().toISOString();
+      await saveMentalModel(model);
+    }
+  }
+
+  // ── Save the merged model and delete the absorbed one ──
+  await saveMentalModel(keep);
+  await deleteMentalModel(absorbSlug);
+
+  // Also try to delete from deep memory if it was demoted
+  const deepPath = path.join(DEEP_MEMORY_DIR, `${absorbSlug}.json`);
+  try { await fs.unlink(deepPath); } catch { /* not in deep — fine */ }
+
+  await rebuildMemoryIndex();
+
+  return { merged: keep, repointed, absorbedSlug: absorbSlug };
+}

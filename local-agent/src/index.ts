@@ -788,12 +788,24 @@ function promptUser(): void {
     }
     
     if (trimmed) {
-      // Send prompt to server
-      send({
-        type: "prompt",
-        id: nanoid(),
-        timestamp: Date.now(),
-        payload: { prompt: trimmed }
+      // Run local LLM pre-classification, then send prompt to server
+      import("./llm/prompt-classifier.js").then(({ classifyPromptLocally }) =>
+        classifyPromptLocally(trimmed).then(hints => {
+          send({
+            type: "prompt",
+            id: nanoid(),
+            timestamp: Date.now(),
+            payload: { prompt: trimmed, hints }
+          });
+        })
+      ).catch(() => {
+        // Fallback: send without hints if classifier import fails
+        send({
+          type: "prompt",
+          id: nanoid(),
+          timestamp: Date.now(),
+          payload: { prompt: trimmed }
+        });
       });
     }
     

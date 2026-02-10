@@ -76,6 +76,24 @@ This is a critical routing decision. Think of it as staffing:
 
 **When in doubt:** If the task has a clear "gather/analyze" phase followed by a "create/save" phase, it's COMPOUND. If it's all one kind of work, it's ACTION.
 
+### Multi-Item Messages = COMPOUND
+
+When a user sends a message containing **multiple unrelated items**, **always classify as COMPOUND** — even if each individual item seems simple. The Planner will decompose them properly.
+
+**Telltale signs of a multi-item message:**
+- Multiple distinct requests separated by periods, commas, or line breaks
+- Status updates on several different topics ("X is done, Y is done, also do Z")
+- Mix of actions: "delete A, merge B and C, update D"
+- Parenthetical status markers: "(done)", "(completed)", "(close this)"
+
+| Request | Classification | Why |
+|---------|---------------|-----|
+| "Delete the cowboy model, merge Jesse and Jesse Wallace, and mark Discord as done" | COMPOUND | 3 unrelated operations on different entities |
+| "I bought getmy.bot, typing indicator is done, also merge these two models" | COMPOUND | Status updates + action items on different topics |
+| "Update my profile name" | ACTION | Single operation, single entity |
+
+**CRITICAL:** A message with 3+ distinct action items is NEVER a single ACTION, even if each item is simple. Classify as COMPOUND so the Planner can assign the right persona per item.
+
 ## Output Format
 
 You MUST respond with valid JSON:

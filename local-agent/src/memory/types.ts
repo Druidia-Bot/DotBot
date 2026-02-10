@@ -380,7 +380,8 @@ export type CondenserInstruction =
   | { action: "identity_add_communication_style"; value: string }
   | { action: "identity_remove_communication_style"; value: string }
   | { action: "identity_set_name"; value: string }
-  | { action: "identity_set_role"; value: string };
+  | { action: "identity_set_role"; value: string }
+  | { action: "merge_models"; keepSlug: string; absorbSlug: string };
 
 /**
  * Request from local agent to server: "condense this thread"
@@ -449,6 +450,8 @@ export interface SleepCycleState {
   threadsProcessed: number;
   loopsInvestigated: number;
   instructionsApplied: number;
+  /** Model pairs already reviewed for similarity — "slugA:slugB" format, confirmed distinct */
+  reviewedPairs?: string[];
 }
 
 

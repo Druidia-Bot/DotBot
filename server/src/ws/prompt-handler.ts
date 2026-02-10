@@ -180,6 +180,11 @@ export async function handlePrompt(
     deviceId, userId, prompt
   );
 
+  // Pass through local LLM hints (if present)
+  if (message.payload.hints) {
+    enhancedRequest.hints = message.payload.hints;
+  }
+
   // Warn the user if the local agent is disconnected — they'll have no history, no tools, no memory
   if (!agentConnected) {
     log.warn("Processing prompt without local-agent — no history, tools, or memory available", { userId });
