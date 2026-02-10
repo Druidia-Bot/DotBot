@@ -114,7 +114,7 @@ DotBot has two components: a **server** (runs on Linux, handles LLM orchestratio
 
 ### Install — One Command
 
-The installer detects your OS, asks what you want to install (client, server, or both), and walks you through everything.
+The installer asks what you want to install (client, server, or both), and walks you through everything.
 
 **Windows (PowerShell):**
 ```powershell
