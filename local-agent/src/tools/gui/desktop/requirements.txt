@@ -1,0 +1,7 @@
+# Desktop GUI automation dependencies (Windows)
+# Used by gui_agent.py for native app automation
+pyautogui>=0.9.54
+pywinauto>=0.6.8
+Pillow>=10.0.0
+comtypes>=1.4.1
+pytesseract>=0.3.10

@@ -1,0 +1,3 @@
+@echo off
+echo Opening DotBot Client...
+start "" "%~dp0client\index.html"

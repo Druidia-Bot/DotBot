@@ -1,0 +1,40 @@
+{
+  "name": "dotbot-server",
+  "version": "0.1.0",
+  "description": "DotBot Cloud Service - Think in the cloud, act locally",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "debug": "node --inspect=9229 --import tsx src/index.ts",
+    "build": "tsc && node -e \"const fs=require('fs');const path=require('path');function cpDir(s,d){fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s)){const sp=path.join(s,f),dp=path.join(d,f);fs.statSync(sp).isDirectory()?cpDir(sp,dp):f.endsWith('.md')&&fs.copyFileSync(sp,dp)}}cpDir('src/personas','dist/personas');cpDir('src/prompts','dist/prompts')\"",
+    "start": "node dist/index.js",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@dotbot/shared": "*",
+    "@hono/node-server": "^1.13.0",
+    "adm-zip": "^0.5.16",
+    "better-sqlite3": "^12.6.2",
+    "dotenv": "^16.4.0",
+    "hono": "^4.7.0",
+    "nanoid": "^5.0.9",
+    "node-llama-cpp": "^3.15.1",
+    "qrcode": "^1.5.4",
+    "tar-stream": "^2.2.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.13.1",
+    "@types/qrcode": "^1.5.6",
+    "@types/tar-stream": "^3.1.4",
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

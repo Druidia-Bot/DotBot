@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DotBot</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'dot-bg': '#0a0a0a',
+            'dot-panel': '#111111',
+            'dot-header': '#1a1a2e',
+            'dot-border': '#333333',
+            'dot-cyan': '#00d9ff',
+            'dot-user': '#1e3a5f',
+            'dot-assistant': '#2a2a3e',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: #1a1a1a; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #555; }
+    .log-entry { font-family: 'Fira Code', 'Consolas', monospace; }
+    .tab-active { border-bottom: 2px solid #00d9ff; color: #00d9ff; }
+    .tab-inactive { border-bottom: 2px solid transparent; color: #6b7280; }
+    .tab-inactive:hover { color: #9ca3af; }
+    .agent-card { border-left: 3px solid #00d9ff; cursor: pointer; }
+    .agent-card.completed { border-left-color: #22c55e; }
+    .agent-card.failed { border-left-color: #ef4444; }
+    .agent-card:hover { background: rgba(255,255,255,0.03); }
+    .agent-timeline { max-height: 300px; overflow-y: auto; }
+    .timeline-event { font-family: 'Fira Code', 'Consolas', monospace; font-size: 10px; }
+    .timeline-event.tool_call { color: #00d9ff; }
+    .timeline-event.tool_result { color: #9ca3af; }
+    .timeline-event.tool_result.success { color: #22c55e; }
+    .timeline-event.tool_result.fail { color: #ef4444; }
+    .timeline-event.status { color: #facc15; }
+    @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+
+    /* Markdown rendered content */
+    .md-content h1 { font-size: 1.25rem; font-weight: 700; margin: 0.75rem 0 0.5rem; color: #e5e7eb; }
+    .md-content h2 { font-size: 1.1rem; font-weight: 600; margin: 0.6rem 0 0.4rem; color: #d1d5db; }
+    .md-content h3 { font-size: 1rem; font-weight: 600; margin: 0.5rem 0 0.3rem; color: #d1d5db; }
+    .md-content p { margin: 0.4rem 0; line-height: 1.6; }
+    .md-content ul, .md-content ol { margin: 0.4rem 0 0.4rem 1.25rem; }
+    .md-content ul { list-style-type: disc; }
+    .md-content ol { list-style-type: decimal; }
+    .md-content li { margin: 0.15rem 0; line-height: 1.5; }
+    .md-content li > ul, .md-content li > ol { margin: 0.1rem 0 0.1rem 1rem; }
+    .md-content strong { color: #f3f4f6; font-weight: 600; }
+    .md-content em { color: #d1d5db; font-style: italic; }
+    .md-content code { background: rgba(0,0,0,0.4); color: #00d9ff; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.85em; font-family: 'Fira Code', 'Consolas', monospace; }
+    .md-content pre { background: rgba(0,0,0,0.5); border: 1px solid #333; border-radius: 6px; padding: 0.75rem; margin: 0.5rem 0; overflow-x: auto; }
+    .md-content pre code { background: none; color: #e5e7eb; padding: 0; font-size: 0.8em; }
+    .md-content blockquote { border-left: 3px solid #00d9ff; padding: 0.25rem 0.75rem; margin: 0.5rem 0; color: #9ca3af; background: rgba(0,217,255,0.05); border-radius: 0 4px 4px 0; }
+    .md-content a { color: #00d9ff; text-decoration: underline; text-underline-offset: 2px; }
+    .md-content a:hover { color: #67e8f9; }
+    .md-content hr { border: none; border-top: 1px solid #333; margin: 0.75rem 0; }
+    .md-content table { border-collapse: collapse; margin: 0.5rem 0; width: 100%; }
+    .md-content th, .md-content td { border: 1px solid #333; padding: 0.35rem 0.6rem; text-align: left; font-size: 0.9em; }
+    .md-content th { background: rgba(0,0,0,0.3); color: #d1d5db; font-weight: 600; }
+    .md-content > *:first-child { margin-top: 0; }
+    .md-content > *:last-child { margin-bottom: 0; }
+  </style>
+</head>
+<body class="bg-dot-bg text-gray-200 h-screen flex flex-col overflow-hidden">
+  
+  <!-- Header -->
+  <header class="bg-dot-header border-b border-dot-border px-4 py-3 flex items-center gap-4 shrink-0">
+    <h1 class="text-xl font-bold text-dot-cyan">🤖 DotBot</h1>
+    <div class="ml-auto flex items-center gap-2 text-sm">
+      <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+      <span id="statusText">Disconnected</span>
+    </div>
+    <button 
+      id="toggleDebug" 
+      onclick="toggleDebugPanel()"
+      class="px-3 py-1 text-xs bg-dot-panel border border-dot-border rounded hover:bg-gray-800 transition"
+    >
+      <span id="toggleDebugText">Hide Debug</span>
+    </button>
+  </header>
+  
+  <!-- Main Layout -->
+  <div class="flex-1 flex overflow-hidden">
+    
+    <!-- Left Panel (Tabbed: Debug | Agents) -->
+    <aside id="debugPanel" class="w-[450px] bg-dot-panel border-r border-dot-border flex flex-col shrink-0 transition-all duration-300">
+      <!-- Tab Bar -->
+      <div class="flex border-b border-dot-border bg-gray-900/50 shrink-0">
+        <button id="tabDebug" onclick="switchTab('debug')" class="flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wide tab-active transition">
+          Debug
+        </button>
+        <button id="tabAgents" onclick="switchTab('agents')" class="flex-1 px-3 py-2 text-xs font-semibold uppercase tracking-wide tab-inactive transition relative">
+          Agents
+          <span id="agentCountBadge" class="hidden absolute top-1 right-2 w-4 h-4 bg-dot-cyan text-black text-[10px] font-bold rounded-full flex items-center justify-center">0</span>
+        </button>
+        <div class="flex items-center gap-2 px-2">
+          <button onclick="clearLogs()" class="text-xs text-gray-500 hover:text-gray-300">Clear</button>
+          <span id="llmInfo" class="text-xs text-dot-cyan">...</span>
+        </div>
+      </div>
+      
+      <!-- Debug Tab Content -->
+      <div id="tabContentDebug" class="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-thin text-[11px]">
+        <div id="debugLogs"></div>
+      </div>
+      
+      <!-- Agents Tab Content -->
+      <div id="tabContentAgents" class="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin hidden">
+        <div id="agentTasksList" class="space-y-2">
+          <div id="noAgentsMsg" class="text-center text-sm text-gray-500 py-8">
+            No agent tasks yet. Send a request to see agents here.
+          </div>
+        </div>
+      </div>
+    </aside>
+    
+    <!-- Chat Area (Right) -->
+    <main class="flex-1 flex flex-col min-w-0">
+      <!-- Messages -->
+      <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
+        <div class="text-center text-sm text-gray-500 py-4">
+          Welcome to DotBot. Type a message to get started.
+        </div>
+      </div>
+      
+      <!-- Input Area -->
+      <div class="border-t border-dot-border bg-dot-header p-4">
+        <div class="flex gap-3 max-w-4xl mx-auto">
+          <textarea 
+            id="input" 
+            placeholder="Type your message..." 
+            rows="1"
+            onkeydown="handleKeyDown(event)"
+            class="flex-1 px-4 py-3 bg-dot-bg border border-dot-border rounded-lg text-gray-200 placeholder-gray-500 resize-none focus:outline-none focus:border-dot-cyan transition"
+          ></textarea>
+          <button 
+            id="sendBtn" 
+            onclick="sendMessage()"
+            class="px-6 py-3 bg-dot-cyan text-black font-semibold rounded-lg hover:bg-cyan-400 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed transition"
+          >Send</button>
+        </div>
+      </div>
+    </main>
+  </div>
+  
+  <!-- Disconnect Overlay -->
+  <div id="disconnectOverlay" class="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50">
+    <h2 class="text-5xl font-bold text-red-500 mb-4">⚡ DISCONNECTED</h2>
+    <p class="text-gray-500 mb-6">Server connection lost</p>
+    <div id="reconnectStatus" class="text-dot-cyan text-sm">Attempting to reconnect...</div>
+  </div>
+
+  <script>
+    const WS_URL = 'ws://localhost:3001';
+    const DEVICE_ID = 'web-client-' + Math.random().toString(36).substr(2, 9);
+    
+    let ws = null;
+    let isConnected = false;
+    let currentStreamMessage = null;
+    let currentStreamRaw = '';
+    let debugPanelVisible = true;
+    let llmProvider = 'unknown';
+    let llmModel = 'unknown';
+    let activeTab = 'debug';
+    
+    // Agent task tracking
+    const agentTasks = new Map(); // taskId → { taskId, taskName, personaId, status, startedAt, activity, toolCalls, events[], expanded }
+    let agentTimerInterval = null;
+    
+    const messagesEl = document.getElementById('messages');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('sendBtn');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const debugLogs = document.getElementById('debugLogs');
+    const debugPanel = document.getElementById('debugPanel');
+    const llmInfo = document.getElementById('llmInfo');
+    const agentTasksList = document.getElementById('agentTasksList');
+    const noAgentsMsg = document.getElementById('noAgentsMsg');
+    const agentCountBadge = document.getElementById('agentCountBadge');
+    
+    // Log types and colors
+    const LOG_COLORS = {
+      'client-send': 'text-blue-400',
+      'client-recv': 'text-green-400', 
+      'server': 'text-purple-400',
+      'llm': 'text-yellow-400',
+      'error': 'text-red-400',
+      'info': 'text-gray-400',
+      'gateway': 'text-orange-400',
+      'planner': 'text-pink-400',
+      'chairman': 'text-teal-400',
+      'stream': 'text-cyan-300'
+    };
+    
+    function log(msg, type = 'info', data = null) {
+      const div = document.createElement('div');
+      div.className = `log-entry ${LOG_COLORS[type] || 'text-gray-400'} leading-relaxed`;
+      
+      const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const prefix = type.toUpperCase().padEnd(12);
+      
+      let html = `<span class="text-gray-600">${time}</span> <span class="font-semibold">[${prefix}]</span> ${escapeHtml(msg)}`;
+      
+      if (data) {
+        // Deep parse any escaped JSON strings in the data
+        const parsed = deepParseJson(data);
+        const dataStr = JSON.stringify(parsed, null, 2);
+        html += `<pre class="mt-1 ml-4 text-[10px] text-gray-500 bg-black/30 p-2 rounded whitespace-pre-wrap break-words">${escapeHtml(dataStr)}</pre>`;
+      }
+      
+      div.innerHTML = html;
+      debugLogs.appendChild(div);
+      debugLogs.scrollTop = debugLogs.scrollHeight;
+    }
+    
+    // Recursively parse JSON strings within objects
+    function deepParseJson(obj) {
+      if (typeof obj === 'string') {
+        // Try to parse if it looks like JSON
+        if (obj.trim().startsWith('{') || obj.trim().startsWith('[')) {
+          try {
+            return deepParseJson(JSON.parse(obj));
+          } catch (e) {
+            return obj;
+          }
+        }
+        return obj;
+      }
+      if (Array.isArray(obj)) {
+        return obj.map(deepParseJson);
+      }
+      if (obj && typeof obj === 'object') {
+        const result = {};
+        for (const [key, value] of Object.entries(obj)) {
+          result[key] = deepParseJson(value);
+        }
+        return result;
+      }
+      return obj;
+    }
+    
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+    
+    function clearLogs() {
+      debugLogs.innerHTML = '';
+      log('Logs cleared', 'info');
+    }
+    
+    function toggleDebugPanel() {
+      debugPanelVisible = !debugPanelVisible;
+      debugPanel.style.width = debugPanelVisible ? '450px' : '0px';
+      debugPanel.style.opacity = debugPanelVisible ? '1' : '0';
+      document.getElementById('toggleDebugText').textContent = debugPanelVisible ? 'Hide Debug' : 'Show Debug';
+    }
+    
+    // ── Tab switching ──
+    function switchTab(tab) {
+      activeTab = tab;
+      const tabDebugBtn = document.getElementById('tabDebug');
+      const tabAgentsBtn = document.getElementById('tabAgents');
+      const contentDebug = document.getElementById('tabContentDebug');
+      const contentAgents = document.getElementById('tabContentAgents');
+      
+      if (tab === 'debug') {
+        tabDebugBtn.className = tabDebugBtn.className.replace('tab-inactive', 'tab-active');
+        tabAgentsBtn.className = tabAgentsBtn.className.replace('tab-active', 'tab-inactive');
+        contentDebug.classList.remove('hidden');
+        contentAgents.classList.add('hidden');
+      } else {
+        tabAgentsBtn.className = tabAgentsBtn.className.replace('tab-inactive', 'tab-active');
+        tabDebugBtn.className = tabDebugBtn.className.replace('tab-active', 'tab-inactive');
+        contentAgents.classList.remove('hidden');
+        contentDebug.classList.add('hidden');
+      }
+    }
+    
+    // ── Agent task management ──
+    function formatElapsed(ms) {
+      const s = Math.floor(ms / 1000);
+      if (s < 60) return s + 's';
+      const m = Math.floor(s / 60);
+      return m + 'm ' + (s % 60) + 's';
+    }
+    
+    function getStatusColor(status) {
+      if (status === 'running') return 'bg-dot-cyan';
+      if (status === 'completed') return 'bg-green-500';
+      return 'bg-red-500';
+    }
+    
+    function getStatusLabel(status) {
+      if (status === 'running') return 'Running';
+      if (status === 'completed') return 'Done';
+      return 'Failed';
+    }
+    
+    function updateAgentBadge() {
+      const running = [...agentTasks.values()].filter(t => t.status === 'running').length;
+      if (running > 0) {
+        agentCountBadge.textContent = running;
+        agentCountBadge.classList.remove('hidden');
+        agentCountBadge.classList.add('flex');
+      } else {
+        agentCountBadge.classList.add('hidden');
+        agentCountBadge.classList.remove('flex');
+      }
+    }
+    
+    function renderTimelineEvent(ev) {
+      const ts = new Date(ev.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const icon = ev.eventType === 'tool_call' ? '→' : ev.eventType === 'tool_result' ? (ev.success ? '✓' : '✗') : '●';
+      const successClass = ev.eventType === 'tool_result' ? (ev.success ? 'success' : 'fail') : '';
+      return `<div class="timeline-event ${ev.eventType || 'status'} ${successClass} py-0.5 flex gap-2">
+        <span class="text-gray-600 shrink-0">${ts}</span>
+        <span class="shrink-0">${icon}</span>
+        <span class="truncate">${escapeHtml(ev.message || '')}</span>
+      </div>`;
+    }
+    
+    function copyAgentLog(taskId, event) {
+      event.stopPropagation();
+      const task = agentTasks.get(taskId);
+      if (!task) return;
+      
+      const header = `${task.taskName} [${task.personaId}] — ${getStatusLabel(task.status)}`;
+      const elapsed = task.completedAt
+        ? formatElapsed(task.completedAt - task.startedAt)
+        : formatElapsed(Date.now() - task.startedAt);
+      
+      const lines = [header, `Duration: ${elapsed} | Tool calls: ${task.toolCalls} | Events: ${task.events.length}`, ''];
+      for (const ev of task.events) {
+        const ts = new Date(ev.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const icon = ev.eventType === 'tool_call' ? '→' : ev.eventType === 'tool_result' ? (ev.success ? '✓' : '✗') : '●';
+        lines.push(`${ts} ${icon} ${ev.message || ''}`);
+      }
+      
+      navigator.clipboard.writeText(lines.join('\n')).then(() => {
+        const btn = document.querySelector(`[data-copy="${taskId}"]`);
+        if (btn) { btn.textContent = '✓'; setTimeout(() => { btn.textContent = '⧉'; }, 1500); }
+      });
+    }
+    
+    function renderAgentCard(task) {
+      const elapsed = task.completedAt
+        ? formatElapsed(task.completedAt - task.startedAt)
+        : formatElapsed(Date.now() - task.startedAt);
+      
+      const statusClass = task.status === 'completed' ? 'completed' : task.status === 'failed' ? 'failed' : '';
+      const dotClass = task.status === 'running' ? 'pulse-dot' : '';
+      const chevron = task.expanded ? '▾' : '▸';
+      const eventCount = task.events.length;
+      
+      let timelineHtml = '';
+      if (task.expanded && eventCount > 0) {
+        timelineHtml = `<div class="agent-timeline mt-2 pt-2 border-t border-gray-800 scrollbar-thin">
+          ${task.events.map(renderTimelineEvent).join('')}
+        </div>`;
+      }
+      
+      return `
+        <div class="agent-card ${statusClass} bg-gray-900/60 rounded-r-lg p-3 space-y-1" data-task-id="${task.taskId}" onclick="toggleAgentCard('${task.taskId}')">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full ${getStatusColor(task.status)} ${dotClass}"></span>
+              <span class="text-xs font-semibold text-gray-200 truncate max-w-[220px]">${escapeHtml(task.taskName)}</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-[10px] text-gray-500 font-mono" data-elapsed="${task.taskId}">${elapsed}</span>
+              <span class="text-[11px] text-gray-600 hover:text-gray-300 cursor-pointer" data-copy="${task.taskId}" onclick="copyAgentLog('${task.taskId}', event)" title="Copy log">⧉</span>
+              <span class="text-[10px] text-gray-600">${chevron}</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 text-[11px]">
+            <span class="px-1.5 py-0.5 bg-gray-800 rounded text-gray-400">${escapeHtml(task.personaId)}</span>
+            <span class="text-gray-500">${getStatusLabel(task.status)}</span>
+            ${task.toolCalls > 0 ? `<span class="text-gray-600">&middot; ${task.toolCalls} tool calls</span>` : ''}
+            ${eventCount > 0 ? `<span class="text-gray-600">&middot; ${eventCount} events</span>` : ''}
+          </div>
+          ${task.activity ? `<div class="text-[10px] text-gray-500 truncate">${escapeHtml(task.activity)}</div>` : ''}
+          ${timelineHtml}
+        </div>`;
+    }
+    
+    function toggleAgentCard(taskId) {
+      const task = agentTasks.get(taskId);
+      if (!task) return;
+      task.expanded = !task.expanded;
+      refreshAgentPanel();
+    }
+    
+    function refreshAgentPanel() {
+      if (agentTasks.size === 0) {
+        noAgentsMsg.classList.remove('hidden');
+        agentTasksList.innerHTML = '';
+        agentTasksList.appendChild(noAgentsMsg);
+        return;
+      }
+      noAgentsMsg.classList.add('hidden');
+      
+      // Sort: running first, then by startedAt desc
+      const sorted = [...agentTasks.values()].sort((a, b) => {
+        if (a.status === 'running' && b.status !== 'running') return -1;
+        if (a.status !== 'running' && b.status === 'running') return 1;
+        return b.startedAt - a.startedAt;
+      });
+      
+      agentTasksList.innerHTML = sorted.map(renderAgentCard).join('');
+      updateAgentBadge();
+    }
+    
+    function trackAgentStarted(payload) {
+      agentTasks.set(payload.taskId, {
+        taskId: payload.taskId,
+        taskName: payload.taskName || payload.taskId,
+        personaId: payload.personaId || 'unknown',
+        status: 'running',
+        startedAt: Date.now(),
+        completedAt: null,
+        activity: '',
+        toolCalls: 0,
+        events: [{ timestamp: Date.now(), eventType: 'status', message: 'Agent started' }],
+        expanded: true,
+      });
+      refreshAgentPanel();
+      
+      // Auto-switch to Agents tab on first agent
+      if (agentTasks.size === 1 && activeTab === 'debug') {
+        switchTab('agents');
+      }
+      
+      // Start elapsed timer if not running
+      if (!agentTimerInterval) {
+        agentTimerInterval = setInterval(() => {
+          // Update elapsed time for running tasks
+          if (activeTab === 'agents') {
+            for (const task of agentTasks.values()) {
+              if (task.status !== 'running') continue;
+              const el = document.querySelector(`[data-elapsed="${task.taskId}"]`);
+              if (el) el.textContent = formatElapsed(Date.now() - task.startedAt);
+            }
+          }
+          // Purge completed tasks older than 5 minutes to prevent unbounded growth
+          const cutoff = Date.now() - 5 * 60 * 1000;
+          for (const [id, task] of agentTasks) {
+            if (task.completedAt && task.completedAt < cutoff) {
+              agentTasks.delete(id);
+            }
+          }
+        }, 1000);
+      }
+    }
+    
+    function trackAgentComplete(payload) {
+      const task = agentTasks.get(payload.taskId);
+      if (!task) return;
+      task.status = payload.success ? 'completed' : 'failed';
+      task.completedAt = Date.now();
+      task.activity = payload.success ? 'Completed successfully' : 'Task failed';
+      task.events.push({ timestamp: Date.now(), eventType: 'status', message: task.activity, success: payload.success });
+      refreshAgentPanel();
+      
+      // Auto-remove successful tasks after a brief delay so the user sees the success state
+      if (payload.success) {
+        setTimeout(() => {
+          agentTasks.delete(payload.taskId);
+          refreshAgentPanel();
+        }, 3000);
+      }
+      
+      // Stop timer if no running tasks
+      const hasRunning = [...agentTasks.values()].some(t => t.status === 'running');
+      if (!hasRunning && agentTimerInterval) {
+        clearInterval(agentTimerInterval);
+        agentTimerInterval = null;
+      }
+    }
+    
+    function trackAgentProgress(payload) {
+      let task = null;
+      
+      // Prefer explicit taskId routing for concurrent agent accuracy
+      if (payload.taskId && agentTasks.has(payload.taskId)) {
+        task = agentTasks.get(payload.taskId);
+      } else {
+        // Fallback: last running task
+        const running = [...agentTasks.values()].filter(t => t.status === 'running');
+        if (running.length > 0) task = running[running.length - 1];
+      }
+      
+      if (!task || !payload.message) return;
+      task.activity = payload.message;
+      // Only count tool_call events, not tool_result (avoid double-counting)
+      if (!payload.eventType || payload.eventType === 'tool_call') {
+        task.toolCalls = (task.toolCalls || 0) + 1;
+      }
+      task.events.push({
+        timestamp: Date.now(),
+        eventType: payload.eventType || 'tool_call',
+        message: payload.message,
+        tool: payload.tool,
+        success: payload.success,
+      });
+      // Cap events at 200 to prevent memory issues
+      if (task.events.length > 200) task.events = task.events.slice(-200);
+      refreshAgentPanel();
+    }
+    
+    function connect() {
+      log('Connecting to ' + WS_URL, 'client-send');
+      
+      ws = new WebSocket(WS_URL);
+      
+      ws.onopen = () => {
+        log('WebSocket connected', 'info');
+        const authMsg = {
+          type: 'auth',
+          id: 'auth_' + Date.now(),
+          timestamp: Date.now(),
+          payload: {
+            deviceToken: 'web-client-token',
+            deviceId: DEVICE_ID,
+            deviceName: 'Web Browser',
+            capabilities: ['prompt']
+          }
+        };
+        log('Sending auth request', 'client-send', authMsg);
+        ws.send(JSON.stringify(authMsg));
+      };
+      
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        handleMessage(msg);
+      };
+      
+      ws.onclose = () => {
+        log('WebSocket disconnected', 'error');
+        setConnected(false);
+        setTimeout(connect, 3000);
+      };
+      
+      ws.onerror = (err) => {
+        log('WebSocket error', 'error');
+      };
+    }
+    
+    function setConnected(connected) {
+      isConnected = connected;
+      statusDot.className = `w-2.5 h-2.5 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`;
+      statusText.textContent = connected ? 'Connected' : 'Disconnected';
+      sendBtn.disabled = !connected;
+      
+      const overlay = document.getElementById('disconnectOverlay');
+      overlay.style.display = connected ? 'none' : 'flex';
+    }
+    
+    function handleMessage(msg) {
+      switch (msg.type) {
+        case 'auth':
+          log('Auth response received', 'client-recv', msg.payload);
+          if (msg.payload?.success) {
+            setConnected(true);
+            addMessage('Connected to DotBot server', 'system');
+          }
+          if (msg.payload?.provider) {
+            llmProvider = msg.payload.provider;
+            llmModel = msg.payload.model || 'default';
+            llmInfo.textContent = `${llmProvider} / ${llmModel}`;
+          }
+          break;
+          
+        case 'response':
+          log('Final response received', 'client-recv', {
+            success: msg.payload?.success,
+            classification: msg.payload?.classification,
+            responseLength: msg.payload?.response?.length,
+            ...(msg.payload?.error && { error: msg.payload.error })
+          });
+          if (currentStreamMessage) {
+            renderMarkdown(currentStreamMessage, currentStreamRaw);
+            currentStreamMessage.classList.remove('border-l-2', 'border-dot-cyan');
+            currentStreamMessage = null;
+            currentStreamRaw = '';
+          }
+          if (msg.payload?.response) {
+            // Parse response - may be JSON with content field or plain text
+            let displayText = msg.payload.response;
+            try {
+              // Try to extract JSON content if response is JSON
+              const jsonMatch = displayText.match(/```json\s*([\s\S]*?)\s*```/);
+              if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[1]);
+                displayText = parsed.content || displayText;
+              } else if (displayText.trim().startsWith('{')) {
+                const parsed = JSON.parse(displayText);
+                displayText = parsed.content || displayText;
+              }
+            } catch (e) {
+              // Not JSON, use as-is
+            }
+            addMessage(displayText, 'assistant');
+          }
+          break;
+          
+        case 'stream_chunk':
+          if (!currentStreamMessage) {
+            currentStreamMessage = addMessage('', 'assistant streaming');
+            currentStreamRaw = '';
+            log('Stream started', 'stream');
+          }
+          currentStreamRaw += msg.payload?.content || '';
+          renderMarkdown(currentStreamMessage, currentStreamRaw);
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+          break;
+          
+        case 'task_progress':
+          log('Task progress', 'server', msg.payload);
+          trackAgentProgress(msg.payload);
+          break;
+          
+        case 'gateway_decision':
+        case 'receptionist_decision':
+          log('Receptionist decision', 'receptionist', msg.payload);
+          break;
+          
+        case 'planner_output':
+          log('Planner output', 'planner', msg.payload);
+          break;
+          
+        case 'llm_request':
+          log(`LLM Request [${msg.payload?.persona}] → ${msg.payload?.provider}/${msg.payload?.model}`, 'llm', {
+            promptLength: msg.payload?.promptLength,
+            maxTokens: msg.payload?.maxTokens,
+            messages: msg.payload?.messages?.map(m => ({
+              role: m.role,
+              content: m.content?.substring(0, 500) + (m.content?.length > 500 ? '...' : '')
+            }))
+          });
+          // Update LLM info display
+          if (msg.payload?.provider) {
+            llmProvider = msg.payload.provider;
+            llmModel = msg.payload.model;
+            llmInfo.textContent = `${llmProvider} / ${llmModel}`;
+          }
+          break;
+          
+        case 'llm_response':
+          log(`LLM Response [${msg.payload?.persona}] ← ${msg.payload?.duration}ms`, 'llm', {
+            responseLength: msg.payload?.responseLength,
+            response: msg.payload?.response?.substring(0, 1000) + (msg.payload?.response?.length > 1000 ? '...' : '')
+          });
+          break;
+
+        case 'thread_update':
+          log(`Thread update: ${msg.payload?.threadId}`, 'memory', msg.payload?.updates);
+          break;
+
+        case 'user_notification':
+          log(`Notification: ${msg.payload?.title}`, 'server', {
+            source: msg.payload?.source,
+            message: msg.payload?.message,
+            modelSlug: msg.payload?.modelSlug
+          });
+          if (msg.payload?.message) {
+            const notifDiv = addMessage(`🔔 ${msg.payload.title || 'Notification'}\n${msg.payload.message}`, 'system');
+            if (msg.payload?.suggestedPrompt && notifDiv) {
+              const btn = document.createElement('button');
+              btn.textContent = msg.payload.suggestedLabel || '🤖 Try to fix this';
+              btn.className = 'mt-2 px-3 py-1.5 text-xs rounded bg-dot-cyan/20 text-dot-cyan border border-dot-cyan/30 hover:bg-dot-cyan/30 cursor-pointer transition-colors';
+              btn.addEventListener('click', () => {
+                const prompt = msg.payload.suggestedPrompt;
+                btn.disabled = true;
+                btn.textContent = 'Sending...';
+                btn.className = btn.className.replace('cursor-pointer', 'cursor-default opacity-50');
+                addMessage(prompt, 'user');
+                const promptMsg = {
+                  type: 'prompt',
+                  id: 'prompt_' + Date.now(),
+                  timestamp: Date.now(),
+                  payload: { prompt, context: {} }
+                };
+                ws.send(JSON.stringify(promptMsg));
+              });
+              notifDiv.appendChild(btn);
+            }
+          }
+          break;
+
+        case 'agent_started':
+          log(`Agent task started: ${msg.payload?.taskName || msg.payload?.taskId}`, 'server', {
+            taskId: msg.payload?.taskId,
+            taskName: msg.payload?.taskName,
+            personaId: msg.payload?.personaId,
+          });
+          trackAgentStarted(msg.payload);
+          break;
+
+        case 'agent_complete':
+          log(`Agent task completed: ${msg.payload?.taskId}`, 'server', {
+            taskId: msg.payload?.taskId,
+            success: msg.payload?.success,
+            classification: msg.payload?.classification,
+          });
+          console.log('[MD DEBUG] agent_complete response type:', typeof msg.payload?.response, 'length:', msg.payload?.response?.length, 'has newlines:', /\n/.test(msg.payload?.response || ''), 'first 300:', String(msg.payload?.response).substring(0, 300));
+          // Finalize any lingering stream from the background task
+          if (currentStreamMessage) {
+            renderMarkdown(currentStreamMessage, currentStreamRaw);
+            currentStreamMessage.classList.remove('border-l-2', 'border-dot-cyan');
+            currentStreamMessage = null;
+            currentStreamRaw = '';
+          }
+          trackAgentComplete(msg.payload);
+          if (msg.payload?.response) {
+            addMessage(msg.payload.response, 'assistant');
+          }
+          break;
+
+        case 'run_log':
+          log('Run log received', 'server', {
+            elapsedMs: msg.payload?.elapsedMs,
+            entries: msg.payload?.entries?.length,
+          });
+          break;
+
+        case 'error':
+          log('Error received', 'error', msg.payload);
+          addMessage('Error: ' + (msg.payload?.message || 'Unknown error'), 'system');
+          break;
+          
+        default:
+          log(`Unknown message type: ${msg.type}`, 'client-recv', msg);
+      }
+    }
+    
+    // Configure marked to open all links in new tabs
+    const renderer = new marked.Renderer();
+    renderer.link = function({ href, title, tokens }) {
+      const text = this.parser.parseInline(tokens);
+      const titleAttr = title ? ` title="${title}"` : '';
+      return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+    };
+    marked.setOptions({ renderer });
+
+    function renderMarkdown(el, raw) {
+      try {
+        const html = marked.parse(raw, { breaks: true, gfm: true });
+        el.innerHTML = html;
+        el.classList.add('md-content');
+      } catch (e) {
+        console.error('[MD] renderMarkdown FAILED:', e, 'raw length:', raw?.length, 'raw type:', typeof raw, 'first 200 chars:', String(raw).substring(0, 200));
+        el.style.whiteSpace = 'pre-wrap';
+        el.textContent = raw;
+      }
+    }
+
+    function addMessage(content, className) {
+      const div = document.createElement('div');
+      
+      const baseClasses = 'px-4 py-3 rounded-lg max-w-[85%]';
+      
+      if (className.includes('user')) {
+        div.className = `${baseClasses} bg-dot-user self-end rounded-br-sm ml-auto whitespace-pre-wrap`;
+      } else if (className.includes('assistant')) {
+        div.className = `${baseClasses} bg-dot-assistant self-start rounded-bl-sm`;
+        if (className.includes('streaming')) {
+          div.className += ' border-l-2 border-dot-cyan';
+        }
+      } else if (className.includes('system')) {
+        div.className = `${baseClasses} bg-gray-800/50 text-gray-400 text-sm self-center text-center mx-auto whitespace-pre-wrap`;
+      }
+      
+      if (className.includes('assistant') && content) {
+        renderMarkdown(div, content);
+      } else {
+        div.textContent = content;
+      }
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return div;
+    }
+    
+    function sendMessage() {
+      const text = inputEl.value.trim();
+      if (!text || !isConnected) return;
+      
+      addMessage(text, 'user');
+      inputEl.value = '';
+      inputEl.style.height = 'auto';
+      
+      const promptMsg = {
+        type: 'prompt',
+        id: 'prompt_' + Date.now(),
+        timestamp: Date.now(),
+        payload: {
+          prompt: text,
+          context: {}
+        }
+      };
+      
+      log('Sending prompt', 'client-send', { prompt: text.substring(0, 100) + (text.length > 100 ? '...' : '') });
+      ws.send(JSON.stringify(promptMsg));
+    }
+    
+    function handleKeyDown(event) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+      }
+    }
+    
+    // Auto-resize textarea
+    inputEl.addEventListener('input', () => {
+      inputEl.style.height = 'auto';
+      inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + 'px';
+    });
+    
+    // Start connection
+    log('DotBot Client initialized', 'info');
+    log('Device ID: ' + DEVICE_ID, 'info');
+    connect();
+  </script>
+</body>
+</html>

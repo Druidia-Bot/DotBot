@@ -1,0 +1,22 @@
+{
+  "name": "dotbot",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "local-agent",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "build:shared": "npm run build -w shared",
+    "build:local-agent": "npm run build -w local-agent",
+    "build:server": "npm run build -w server",
+    "dev:local-agent": "npm run dev -w local-agent",
+    "dev:server": "npm run dev -w server",
+    "test": "npm run test:server && npm run test:local-agent",
+    "test:server": "npm run test -w server -- run",
+    "test:local-agent": "npm run test -w local-agent -- run"
+  }
+}
