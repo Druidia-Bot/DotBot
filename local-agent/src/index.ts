@@ -104,7 +104,60 @@ function cleanConsumedInviteToken(): void {
 // CONFIGURATION
 // ============================================
 
-const SERVER_URL = process.env.DOTBOT_SERVER || "ws://localhost:3001";
+function normalizeServerUrl(raw: string): string {
+  let url = raw.trim().replace(/\/+$/, ""); // trim + strip trailing slashes
+
+  // Fix scheme: https:// → wss://, http:// → ws://
+  if (url.startsWith("https://")) url = "wss://" + url.slice(8);
+  else if (url.startsWith("http://")) url = "ws://" + url.slice(7);
+
+  // No scheme at all → add wss:// for domains, ws:// for localhost
+  if (!url.startsWith("ws://") && !url.startsWith("wss://")) {
+    const isLocal = /^(localhost|127\.0\.0\.1)(:|$)/.test(url);
+    url = (isLocal ? "ws://" : "wss://") + url;
+  }
+
+  // Remote servers (not localhost) need /ws path for Caddy routing
+  const isLocalhost = /^wss?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(url);
+  if (!isLocalhost && !url.endsWith("/ws")) {
+    url = url + "/ws";
+  }
+
+  return url;
+}
+
+function autoCorrectServerUrl(): string {
+  const raw = process.env.DOTBOT_SERVER || "ws://localhost:3001";
+  const corrected = normalizeServerUrl(raw);
+
+  if (corrected !== raw && process.env.DOTBOT_SERVER) {
+    console.log(`[Agent] Auto-corrected server URL:`);
+    console.log(`[Agent]   was: ${raw}`);
+    console.log(`[Agent]   now: ${corrected}`);
+
+    // Update ~/.bot/.env so the fix persists
+    const envPath = path.resolve(process.env.USERPROFILE || process.env.HOME || "", ".bot", ".env");
+    try {
+      const content = readFileSync(envPath, "utf-8");
+      const updated = content
+        .split(/\r?\n/)
+        .map(line => line.trim().startsWith("DOTBOT_SERVER=") ? `DOTBOT_SERVER=${corrected}` : line)
+        .join("\n");
+      if (updated !== content) {
+        writeFileSync(envPath, updated, "utf-8");
+        console.log("[Agent] Updated ~/.bot/.env with corrected URL");
+      }
+    } catch {
+      // Can't update .env — not critical, the in-memory value is fixed
+    }
+
+    process.env.DOTBOT_SERVER = corrected;
+  }
+
+  return corrected;
+}
+
+const SERVER_URL = autoCorrectServerUrl();
 const DEVICE_NAME = process.env.DEVICE_NAME || `Windows-${process.env.COMPUTERNAME || "PC"}`;
 
 // Device credentials (loaded from ~/.bot/device.json after registration)
