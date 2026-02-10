@@ -505,7 +505,7 @@ fi
 # Generate an invite token for the first client
 echo ""
 echo "  Generating invite token..."
-INVITE_TOKEN=$(cd "$DEPLOY_DIR" && sudo -u "$BOT_USER" node server/dist/index.js --generate-invite 2>&1 | grep -oP 'dbot-[A-Za-z0-9-]+' | head -1)
+INVITE_TOKEN=$(cd "$DEPLOY_DIR" && sudo -u "$BOT_USER" node server/dist/generate-invite.js 2>&1 | grep -oP 'dbot-[A-Za-z0-9-]+' | head -1)
 
 echo ""
 echo -e "${GREEN}╔═══════════════════════════════════════════════════╗${NC}"
@@ -524,11 +524,11 @@ if [ -n "$INVITE_TOKEN" ]; then
 else
   echo -e "  ${YELLOW}⚠️  Could not generate invite token automatically.${NC}"
   echo "  Generate one manually:"
-  echo "    cd $DEPLOY_DIR && sudo -u $BOT_USER node server/dist/index.js --generate-invite"
+  echo "    cd $DEPLOY_DIR && sudo -u $BOT_USER node server/dist/generate-invite.js"
 fi
 echo ""
 echo "  Need more tokens later?"
-echo "    cd $DEPLOY_DIR && sudo -u $BOT_USER node server/dist/index.js --generate-invite"
+echo "    cd $DEPLOY_DIR && sudo -u $BOT_USER node server/dist/generate-invite.js"
 echo ""
 echo "  Useful commands:"
 echo "    systemctl status dotbot     # Check server status"

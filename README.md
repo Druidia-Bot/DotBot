@@ -140,7 +140,7 @@ The installer will:
 
 **Server** — the installer generates an invite token and displays it at the end. Give this token to the person installing the client. It's single-use and expires in 7 days. To generate more:
 ```bash
-cd /opt/.bot && sudo -u dotbot node server/dist/index.js --generate-invite
+cd /opt/.bot && sudo -u dotbot node server/dist/generate-invite.js
 ```
 See [deploy/DEPLOY-CHECKLIST.md](deploy/DEPLOY-CHECKLIST.md) for the full guide.
 

@@ -35,30 +35,6 @@ import {
 initBotEnvironment();
 
 // ============================================
-// CLI FLAGS
-// ============================================
-
-if (process.argv.includes("--generate-invite")) {
-  const labelIdx = process.argv.indexOf("--label");
-  const label = labelIdx !== -1 && process.argv[labelIdx + 1] ? process.argv[labelIdx + 1] : "CLI-generated token";
-  const expiryIdx = process.argv.indexOf("--expiry-days");
-  const expiryDays = expiryIdx !== -1 ? parseInt(process.argv[expiryIdx + 1]) || 7 : 7;
-  const maxUsesIdx = process.argv.indexOf("--max-uses");
-  const maxUses = maxUsesIdx !== -1 ? parseInt(process.argv[maxUsesIdx + 1]) || 1 : 1;
-
-  const { token, expiresAt } = createInviteToken({ label, expiryDays, maxUses });
-  console.log("\n╔═══════════════════════════════════════════════════════════════╗");
-  console.log("║  🔑 Invite Token Generated                                   ║");
-  console.log("║                                                               ║");
-  console.log(`║     ${token}                                ║`);
-  console.log("║                                                               ║");
-  console.log(`║  Expires: ${expiresAt.substring(0, 10)}    Max uses: ${String(maxUses).padEnd(25)}║`);
-  console.log(`║  Label:   ${label.substring(0, 47).padEnd(47)}║`);
-  console.log("╚═══════════════════════════════════════════════════════════════╝\n");
-  process.exit(0);
-}
-
-// ============================================
 // CONFIGURATION
 // ============================================
 
@@ -118,18 +94,21 @@ console.log(`🤖 Primary provider: ${LLM_PROVIDER.toUpperCase()}`);
 console.log(`📋 Available models: ${availableProviders.join(", ")}`);
 
 // Probe local LLM for offline fallback (non-blocking, non-fatal)
-// Auto-downloads the GGUF model (~350 MB) on first run
-(async () => {
-  const probe = await probeLocalModel();
-  if (probe.modelAvailable) {
-    console.log(`🏠 Local LLM ready — ${probe.modelName}`);
-  } else {
-    console.log(`📥 Downloading ${probe.modelName} for offline fallback (~350 MB)...`);
-    const ok = await downloadLocalModel();
-    if (ok) console.log(`✅ ${probe.modelName} ready for offline use`);
-    else console.log(`⚠️  Local model download failed — offline fallback unavailable`);
-  }
-})();
+// Skip if cloud API keys are available — local model is only useful when offline
+const hasCloudKeys = !!(DEEPSEEK_API_KEY || ANTHROPIC_API_KEY || OPENAI_API_KEY || GEMINI_API_KEY);
+if (!hasCloudKeys) {
+  (async () => {
+    const probe = await probeLocalModel();
+    if (probe.modelAvailable) {
+      console.log(`🏠 Local LLM ready — ${probe.modelName}`);
+    } else {
+      console.log(`📥 Downloading ${probe.modelName} for offline fallback (~350 MB)...`);
+      const ok = await downloadLocalModel();
+      if (ok) console.log(`✅ ${probe.modelName} ready for offline use`);
+      else console.log(`⚠️  Local model download failed — offline fallback unavailable`);
+    }
+  })();
+}
 
 // ============================================
 // HTTP API
