@@ -162,7 +162,7 @@ mkdir -p "/home/$BOT_USER/.bot/server-logs"
 if [ -d "$DEPLOY_DIR/.git" ]; then
   log "Repo already cloned, pulling latest..."
   sudo -u "$BOT_USER" git -C "$DEPLOY_DIR" pull
-elif [ -n "$REPO_URL" ] && [ "$REPO_URL" != "https://github.com/Druidia-Bot/DotBot.git" ]; then
+elif [ -n "$REPO_URL" ]; then
   sudo -u "$BOT_USER" git clone "$REPO_URL" "$DEPLOY_DIR"
   log "Cloned repo to $DEPLOY_DIR"
 else
