@@ -34,6 +34,40 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"  # Speeds up Invoke-WebRequest
+
+# ============================================
+# SELF-ELEVATE TO ADMINISTRATOR
+# ============================================
+
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "  Requesting administrator privileges..." -ForegroundColor Yellow
+
+    # Determine script path — $PSCommandPath is empty when piped (irm | iex)
+    $scriptPath = $PSCommandPath
+    if (-not $scriptPath) {
+        $scriptPath = Join-Path $env:TEMP "dotbot-install.ps1"
+        Invoke-WebRequest -Uri "https://getmy.bot/install.ps1" -OutFile $scriptPath -UseBasicParsing
+    }
+
+    # Build argument list preserving any passed parameters
+    $argList = @("-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`"")
+    if ($Mode)        { $argList += "-Mode",        $Mode }
+    if ($ServerUrl)   { $argList += "-ServerUrl",   $ServerUrl }
+    if ($InviteToken) { $argList += "-InviteToken", $InviteToken }
+    if ($RepoUrl)     { $argList += "-RepoUrl",     $RepoUrl }
+    if ($InstallDir)  { $argList += "-InstallDir",  $InstallDir }
+
+    try {
+        Start-Process powershell -Verb RunAs -ArgumentList $argList -Wait
+    } catch {
+        Write-Host ""
+        Write-Host "  ❌ Administrator privileges required." -ForegroundColor Red
+        Write-Host "     Right-click PowerShell → 'Run as administrator', then try again." -ForegroundColor Gray
+        exit 1
+    }
+    exit 0
+}
+
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
 
 # ============================================

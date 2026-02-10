@@ -366,12 +366,15 @@ async function xaiSentiment(args: Record<string, any>): Promise<{ success: boole
   if (!topic) return { success: false, output: "", error: "topic is required" };
   const context = args.context as string || "";
 
-  const hasKey = await vaultHas(XAI_CREDENTIAL_NAME);
-  if (!hasKey) {
+  // xAI is a core server key — check process.env first (from ~/.bot/.env or system env),
+  // then fall back to credential vault + proxy for users who set it up that way.
+  const envKey = process.env.XAI_API_KEY;
+  const hasVaultKey = await vaultHas(XAI_CREDENTIAL_NAME);
+  if (!envKey && !hasVaultKey) {
     return {
       success: false,
       output: "",
-      error: `xAI API key not configured. To set it up:\n1. Get an API key at https://console.x.ai/\n2. Run: secrets.prompt_user({ key_name: "XAI_API_KEY", prompt: "Enter your xAI API key", allowed_domain: "api.x.ai" })`,
+      error: `xAI API key not configured. To set it up:\n1. Get an API key at https://console.x.ai/\n2. Add XAI_API_KEY=your_key to ~/.bot/.env\n   OR run: secrets.prompt_user({ key_name: "XAI_API_KEY", prompt: "Enter your xAI API key", allowed_domain: "api.x.ai" })`,
     };
   }
 
@@ -401,23 +404,43 @@ Be specific and data-oriented. If you're uncertain about real-time data, say so.
   });
 
   try {
-    const result = await credentialProxyFetch("/chat/completions", XAI_CREDENTIAL_NAME, {
-      baseUrl: XAI_BASE,
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-      placement: { header: "Authorization", prefix: "Bearer " },
-    });
+    let responseBody: string;
+    let responseStatus: number;
 
-    if (result.status >= 400) {
-      return { success: false, output: "", error: `xAI API returned ${result.status}: ${result.body.substring(0, 500)}` };
+    if (envKey) {
+      // Direct fetch — key available in process.env (core server key path)
+      const res = await fetch(`${XAI_BASE}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${envKey}`,
+        },
+        body,
+      });
+      responseStatus = res.status;
+      responseBody = await res.text();
+    } else {
+      // Credential proxy path — key in vault, decrypted server-side
+      const result = await credentialProxyFetch("/chat/completions", XAI_CREDENTIAL_NAME, {
+        baseUrl: XAI_BASE,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        placement: { header: "Authorization", prefix: "Bearer " },
+      });
+      responseStatus = result.status;
+      responseBody = result.body;
+    }
+
+    if (responseStatus >= 400) {
+      return { success: false, output: "", error: `xAI API returned ${responseStatus}: ${responseBody.substring(0, 500)}` };
     }
 
     let data: any;
     try {
-      data = JSON.parse(result.body);
+      data = JSON.parse(responseBody);
     } catch {
-      return { success: false, output: "", error: `xAI returned unparseable response: ${result.body.substring(0, 200)}` };
+      return { success: false, output: "", error: `xAI returned unparseable response: ${responseBody.substring(0, 200)}` };
     }
     const content = data?.choices?.[0]?.message?.content;
     if (!content) {
