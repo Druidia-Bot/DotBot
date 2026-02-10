@@ -23,7 +23,8 @@
 #>
 
 param(
-    [ValidateSet("agent", "server", "both")]
+    [ValidateSet("agent", "server", "both", "")]
+    [AllowEmptyString()]
     [string]$Mode,
     [string]$ServerUrl,
     [string]$InviteToken,
