@@ -376,6 +376,52 @@ function handleRegisterDevice(ws: WebSocket, message: WSRegisterDeviceMessage): 
 function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
   const { deviceId, deviceSecret, deviceName, capabilities, tempDir, hwFingerprint } = message.payload;
 
+  // Allow localhost web clients without device credentials (browser debug UI)
+  const ip = (ws as any)._socket?.remoteAddress || "unknown";
+  const isLocalhost = ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
+  if (isLocalhost && (!deviceSecret || !hwFingerprint)) {
+    const webDeviceId = `web_${nanoid(8)}`;
+    const session: DeviceSession = {
+      id: nanoid(),
+      userId: `user_${webDeviceId}`,
+      deviceId: webDeviceId,
+      deviceName: deviceName || "Web Browser",
+      capabilities: capabilities || ["prompt"],
+      tempDir,
+      connectedAt: new Date(),
+      lastActiveAt: new Date(),
+      status: "connected",
+    };
+
+    devices.set(webDeviceId, {
+      ws,
+      session,
+      pendingCommands: new Map(),
+      pendingMemoryRequests: new Map(),
+      pendingSkillRequests: new Map(),
+      pendingPersonaRequests: new Map(),
+      pendingCouncilRequests: new Map(),
+      pendingThreadRequests: new Map(),
+      pendingKnowledgeRequests: new Map(),
+      pendingToolRequests: new Map(),
+    });
+
+    log.info(`Web client connected from localhost (${webDeviceId})`);
+
+    sendMessage(ws, {
+      type: "auth",
+      id: nanoid(),
+      timestamp: Date.now(),
+      payload: {
+        success: true,
+        sessionId: session.id,
+        provider: serverProvider,
+        model: serverModel,
+      },
+    });
+    return webDeviceId;
+  }
+
   if (!deviceId || !deviceSecret || !hwFingerprint) {
     sendMessage(ws, {
       type: "auth_failed",
@@ -385,8 +431,6 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
     });
     return null;
   }
-
-  const ip = (ws as any)._socket?.remoteAddress || "unknown";
 
   // Rate limiting: 3 failures per IP within 15 minutes
   const recentFailures = getRecentFailures(ip, 15);
