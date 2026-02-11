@@ -379,6 +379,7 @@ function handleRegisterDevice(ws: WebSocket, message: WSRegisterDeviceMessage): 
       sessionId: session.id,
       provider: serverProvider,
       model: serverModel,
+      webAuthToken: getWebAuthToken() || undefined,
     },
   });
 
@@ -577,6 +578,7 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
       sessionId: session.id,
       provider: serverProvider,
       model: serverModel,
+      webAuthToken: getWebAuthToken() || undefined,
     },
   });
 

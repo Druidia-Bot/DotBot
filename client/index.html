@@ -190,19 +190,25 @@
   </div>
 
   <script>
-    // Resolve server URL: ?ws= param → localStorage → ws://localhost:3001
-    function resolveWsUrl() {
+    // Resolve server URL and auth token from query params, localStorage, or defaults
+    function resolveConfig() {
       const params = new URLSearchParams(window.location.search);
       const paramUrl = params.get('ws');
-      if (paramUrl) {
-        localStorage.setItem('dotbot_ws_url', paramUrl);
+      const paramToken = params.get('token');
+      if (paramUrl) localStorage.setItem('dotbot_ws_url', paramUrl);
+      if (paramToken) localStorage.setItem('dotbot_web_auth_token', paramToken);
+      // Clean URL if we consumed any params
+      if (paramUrl || paramToken) {
         try { window.history.replaceState({}, '', window.location.pathname); } catch(e) {}
-        return paramUrl;
       }
-      return localStorage.getItem('dotbot_ws_url') || 'ws://localhost:3001';
+      return {
+        url: localStorage.getItem('dotbot_ws_url') || 'ws://localhost:3001',
+        token: localStorage.getItem('dotbot_web_auth_token') || '',
+      };
     }
-    let WS_URL = resolveWsUrl();
-    let WEB_AUTH_TOKEN = localStorage.getItem('dotbot_web_auth_token') || '';
+    const config = resolveConfig();
+    let WS_URL = config.url;
+    let WEB_AUTH_TOKEN = config.token;
     const DEVICE_ID = 'web-client-' + Math.random().toString(36).substr(2, 9);
     
     let ws = null;

@@ -920,21 +920,37 @@ if ($taskExists) {
     )
 }
 
-# Verify the agent actually started
-Write-Host "  Waiting for agent to start..." -ForegroundColor Gray
-Start-Sleep -Seconds 5
+# Wait for the agent to register and save the web auth token
+# This confirms: agent started, connected to server, and registered successfully
+$webAuthTokenFile = Join-Path $BOT_DIR "web-auth-token"
+$deviceFile = Join-Path $BOT_DIR "device.json"
+Write-Host "  Waiting for agent to connect and register..." -ForegroundColor Gray
+$deadline = (Get-Date).AddSeconds(15)
+$registered = $false
+while ((Get-Date) -lt $deadline) {
+    Start-Sleep -Seconds 1
+    # Check if agent registered (device.json created) or web auth token saved
+    if ((Test-Path $webAuthTokenFile) -or (Test-Path $deviceFile)) {
+        $registered = $true
+        break
+    }
+    # Check if agent process died (no point waiting)
+    $nodeProcs = $null
+    try {
+        $nodeProcs = Get-Process -Name "node" -ErrorAction SilentlyContinue
+    } catch {}
+    if (-not $nodeProcs) {
+        Write-Warn "Agent process exited unexpectedly."
+        break
+    }
+}
 
-$agentRunning = $false
-try {
-    $nodeProcs = Get-Process -Name "node" -ErrorAction SilentlyContinue |
-        Where-Object { $_.Path -and ($_.Path -match '\.bot' -or $_.Path -match 'Program Files') }
-    if ($nodeProcs) { $agentRunning = $true }
-} catch {}
-
-if ($agentRunning) {
-    Write-OK "DotBot agent is running"
+if ($registered) {
+    Write-OK "DotBot agent registered with server"
+    # Give it one more second to save the web auth token
+    if (-not (Test-Path $webAuthTokenFile)) { Start-Sleep -Seconds 2 }
 } else {
-    Write-Warn "Agent may not have started. Check the log:"
+    Write-Warn "Agent may not have started or registered. Check the log:"
     if (Test-Path $agentLogFile) {
         Write-Host ""
         Get-Content $agentLogFile -Tail 10 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
@@ -957,7 +973,7 @@ $clientPath = Join-Path $InstallDir "client\index.html"
 if (Test-Path $clientPath) {
     Write-Host "  Opening DotBot in your browser..." -ForegroundColor Green
 
-    # Read server URL from .env so we can pass it as ?ws= query param
+    # Read server URL from .env
     $agentEnvFile = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".bot\.env"
     $serverWsUrl = ""
     if (Test-Path $agentEnvFile) {
@@ -967,12 +983,28 @@ if (Test-Path $clientPath) {
         }
     }
 
+    # Read web auth token (saved by agent after registration/auth)
+    $webAuthToken = ""
+    $tokenFile = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".bot\web-auth-token"
+    if (Test-Path $tokenFile) {
+        $webAuthToken = (Get-Content $tokenFile -Raw).Trim()
+    }
+
+    # Build query string
+    $queryParts = @()
+    if ($serverWsUrl -and $serverWsUrl -ne "ws://localhost:3001") {
+        $queryParts += "ws=$([Uri]::EscapeDataString($serverWsUrl))"
+    }
+    if ($webAuthToken) {
+        $queryParts += "token=$([Uri]::EscapeDataString($webAuthToken))"
+    }
+
     # Convert to file:/// URI so query params work in the browser
     # Encode spaces (C:\Program Files) for browser compatibility
     $fileUri = "file:///" + (($clientPath -replace '\\', '/') -replace ' ', '%20')
-    if ($serverWsUrl -and $serverWsUrl -ne "ws://localhost:3001") {
-        $encodedUrl = [Uri]::EscapeDataString($serverWsUrl)
-        Start-Process "$fileUri`?ws=$encodedUrl"
+    if ($queryParts.Count -gt 0) {
+        $qs = $queryParts -join "&"
+        Start-Process "$fileUri`?$qs"
     } else {
         Start-Process $fileUri
     }
@@ -983,11 +1015,6 @@ Write-Host "  ----------------------------------------" -ForegroundColor DarkGra
 Write-Host ""
 Write-Host "  DotBot is running as a background service." -ForegroundColor Green
 Write-Host "  It will start automatically on login." -ForegroundColor Gray
-Write-Host ""
-Write-Host "  IMPORTANT: The browser client needs an Auth Token to connect." -ForegroundColor Yellow
-Write-Host "  Get this from your server administrator, or on your server run:" -ForegroundColor Yellow
-Write-Host "    cat ~/.bot/server-data/web-auth-token" -ForegroundColor Cyan
-Write-Host "  Then paste it into the Auth Token field in the browser." -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  Manage DotBot:" -ForegroundColor Gray
 Write-Host "    Search 'DotBot' in Start Menu    -- launch with visible console" -ForegroundColor Gray

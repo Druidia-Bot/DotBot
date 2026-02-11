@@ -81,12 +81,24 @@ if (Test-Path $clientPath) {
             $serverWsUrl = $Matches[1].Trim()
         }
     }
+    $webAuthToken = ""
+    $tokenFile = Join-Path $BotDir "web-auth-token"
+    if (Test-Path $tokenFile) {
+        $webAuthToken = (Get-Content $tokenFile -Raw).Trim()
+    }
+    $queryParts = @()
+    if ($serverWsUrl -and $serverWsUrl -ne "ws://localhost:3001") {
+        $queryParts += "ws=$([Uri]::EscapeDataString($serverWsUrl))"
+    }
+    if ($webAuthToken) {
+        $queryParts += "token=$([Uri]::EscapeDataString($webAuthToken))"
+    }
     # Convert to file:/// URI so query params work in the browser
     # Encode spaces (C:\Program Files) for browser compatibility
     $fileUri = "file:///" + (($clientPath -replace '\\', '/') -replace ' ', '%20')
-    if ($serverWsUrl -and $serverWsUrl -ne "ws://localhost:3001") {
-        $encodedUrl = [Uri]::EscapeDataString($serverWsUrl)
-        Start-Process "$fileUri`?ws=$encodedUrl"
+    if ($queryParts.Count -gt 0) {
+        $qs = $queryParts -join "&"
+        Start-Process "$fileUri`?$qs"
     } else {
         Start-Process $fileUri
     }

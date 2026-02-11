@@ -219,10 +219,22 @@ else {
                 $serverWsUrl = $Matches[1].Trim()
             }
         }
-        $fileUri = "file:///" + (($clientPath -replace '\\', '/') -replace ' ', '%20')
+        $webAuthToken = ""
+        $tokenFile = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".bot\web-auth-token"
+        if (Test-Path $tokenFile) {
+            $webAuthToken = (Get-Content $tokenFile -Raw).Trim()
+        }
+        $queryParts = @()
         if ($serverWsUrl -and $serverWsUrl -ne "ws://localhost:3001") {
-            $encodedUrl = [Uri]::EscapeDataString($serverWsUrl)
-            Start-Process "$fileUri`?ws=$encodedUrl"
+            $queryParts += "ws=$([Uri]::EscapeDataString($serverWsUrl))"
+        }
+        if ($webAuthToken) {
+            $queryParts += "token=$([Uri]::EscapeDataString($webAuthToken))"
+        }
+        $fileUri = "file:///" + (($clientPath -replace '\\', '/') -replace ' ', '%20')
+        if ($queryParts.Count -gt 0) {
+            $qs = $queryParts -join "&"
+            Start-Process "$fileUri`?$qs"
         } else {
             Start-Process $fileUri
         }

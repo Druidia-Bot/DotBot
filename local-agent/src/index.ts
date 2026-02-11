@@ -414,6 +414,17 @@ async function handleMessage(message: WSMessage): Promise<void> {
       if (message.type === "device_registered" || message.payload.success) {
         console.log("[Agent] Authenticated successfully!");
         console.log("[Agent] Ready for commands.");
+
+        // Save web auth token so the browser client can auto-connect
+        if (message.payload.webAuthToken) {
+          const tokenPath = path.resolve(process.env.USERPROFILE || process.env.HOME || "", ".bot", "web-auth-token");
+          try {
+            writeFileSync(tokenPath, message.payload.webAuthToken, "utf-8");
+            console.log("[Agent] Web auth token saved to ~/.bot/web-auth-token");
+          } catch {
+            // Not critical — browser user can enter it manually
+          }
+        }
         // Initialize subsystems with server sender
         initCredentialProxy(send);
         initServerLLM(send);
