@@ -52,7 +52,7 @@ export async function runReceptionist(
   const receptionist = getReceptionist();
   if (!receptionist) throw new Error("Receptionist not loaded");
 
-  const modelConfig = selectModel({ personaModelTier: receptionist.modelTier });
+  const modelConfig = selectModel({ explicitRole: "intake" });
 
   // Build context sections for system prompt
   const threadSummary =

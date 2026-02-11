@@ -208,6 +208,12 @@ function getFallback(role: ModelRole): { provider: LLMProvider; model: string; t
       { provider: "xai", model: "grok-4-1-fast-non-reasoning", temperature: 0.0, maxTokens: 4096 },
       { provider: "local", model: "qwen2.5-0.5b-instruct-q4_k_m", temperature: 0.3, maxTokens: 1024 },
     ],
+    intake: [
+      { provider: "gemini", model: "gemini-2.5-flash", temperature: 0.0, maxTokens: 4096 },
+      { provider: "deepseek", model: "deepseek-chat", temperature: 0.0, maxTokens: 4096 },
+      { provider: "openai", model: "gpt-4o-mini", temperature: 0.0, maxTokens: 4096 },
+      { provider: "local", model: "qwen2.5-0.5b-instruct-q4_k_m", temperature: 0.3, maxTokens: 1024 },
+    ],
   };
 
   const chain = fallbackChains[role] || [];

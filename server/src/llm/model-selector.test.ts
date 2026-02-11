@@ -23,6 +23,7 @@ beforeEach(() => {
     anthropic: "sk-test-anthropic",
     gemini: "test-gemini-key",
     openai: "sk-test-openai",
+    xai: "sk-test-xai",
   });
 });
 
@@ -107,6 +108,13 @@ describe("selectModel — core routing", () => {
     const result = selectModel({ personaModelTier: "fast" });
     expect(result.role).toBe("workhorse");
   });
+
+  it("routes to intake role with xAI Grok", () => {
+    const result = selectModel({ explicitRole: "intake" });
+    expect(result.role).toBe("intake");
+    expect(result.provider).toBe("xai");
+    expect(result.model).toBe("grok-4-1-fast-non-reasoning");
+  });
 });
 
 // ============================================
@@ -180,6 +188,35 @@ describe("selectModel — fallbacks when providers are unavailable", () => {
     // so this tests that local stays on local
     const result = selectModel({ isOffline: true });
     expect(result.provider).toBe("local");
+  });
+
+  it("falls back from xAI to Gemini Flash for intake", () => {
+    registerApiKeys({
+      deepseek: "sk-test",
+      anthropic: "sk-test",
+      gemini: "test-key",
+      openai: "sk-test",
+      xai: "",
+    });
+    const result = selectModel({ explicitRole: "intake" });
+    expect(result.role).toBe("intake");
+    expect(result.provider).toBe("gemini");
+    expect(result.model).toBe("gemini-2.5-flash");
+    expect(result.reason).toContain("FALLBACK");
+  });
+
+  it("falls back from xAI to DeepSeek for intake when Gemini also unavailable", () => {
+    registerApiKeys({
+      deepseek: "sk-test",
+      anthropic: "sk-test",
+      gemini: "",
+      openai: "",
+      xai: "",
+    });
+    const result = selectModel({ explicitRole: "intake" });
+    expect(result.role).toBe("intake");
+    expect(result.provider).toBe("deepseek");
+    expect(result.model).toBe("deepseek-chat");
   });
 });
 

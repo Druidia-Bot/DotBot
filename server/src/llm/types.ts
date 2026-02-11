@@ -226,7 +226,7 @@ export const PROVIDER_CONFIGS: Record<LLMProvider, Omit<LLMProviderConfig, "apiK
  * - architect:    Claude Opus 4.6 — Complex system design, second opinions, planning.
  * - local:        Qwen 2.5 0.5B via node-llama-cpp — Offline fallback for basic tasks.
  */
-export type ModelRole = "workhorse" | "deep_context" | "architect" | "local" | "gui_fast";
+export type ModelRole = "workhorse" | "deep_context" | "architect" | "local" | "gui_fast" | "intake";
 
 export interface ModelRoleConfig {
   role: ModelRole;
@@ -283,6 +283,15 @@ export const MODEL_ROLE_CONFIGS: Record<ModelRole, ModelRoleConfig> = {
     maxTokens: 4096,
     contextWindow: 1000000,
     description: "Gemini 2.5 Flash — low-latency GUI tool loop (fast decisions, cheap)",
+  },
+  intake: {
+    role: "intake",
+    provider: "xai",
+    model: "grok-4-1-fast-non-reasoning",
+    temperature: 0.0,
+    maxTokens: 4096,
+    contextWindow: 131072,
+    description: "Grok 4.1 Fast — low-latency intake classification and routing",
   },
 };
 

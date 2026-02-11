@@ -199,6 +199,9 @@ DEEPSEEK_API_KEY=your_key_here
 PORT=3000
 WS_PORT=3001
 
+# Public URL (used for credential entry page URLs sent to clients)
+PUBLIC_URL=https://$DOMAIN
+
 # Premium tools (optional)
 # SCRAPING_DOG_API_KEY=
 
@@ -291,6 +294,11 @@ $DOMAIN {
 
     # Health check at root
     handle / {
+        reverse_proxy localhost:3000
+    }
+
+    # Credential entry pages (secure API key input)
+    handle /credentials/* {
         reverse_proxy localhost:3000
     }
 
