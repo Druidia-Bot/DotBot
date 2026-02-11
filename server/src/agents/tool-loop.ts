@@ -625,6 +625,11 @@ export async function runToolLoop(
       break;
     }
 
+    // ── Escalation: persona requested re-routing, stop loop immediately ──
+    if (escalated) {
+      break;
+    }
+
     // ── Append stuck warning AFTER tool results (must come after role:"tool" messages) ──
     if (stuckWarningText) {
       messages.push({ role: "user", content: stuckWarningText });
@@ -726,6 +731,7 @@ function buildExecutionCommand(
       codegen: 660_000,  // 11 min (codegen's internal timeout is 10 min)
       secrets: 960_000,  // 16 min (credential entry blocks up to 15 min)
       shell: 300_000,    // 5 min
+      market: 180_000,   // 3 min (xai_sentiment uses serverLLMCall which has 2min timeout)
       browser: 60_000,   // 1 min
       gui: 60_000,       // 1 min (page loads, waits, screenshots)
     };

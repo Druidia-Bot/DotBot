@@ -541,7 +541,7 @@ describe("handleMarket — xai_sentiment", () => {
     mockServerLLMCall.mockResolvedValueOnce({
       success: true,
       content: "**Overall Sentiment**: Bullish (7/10)\n\nNVDA showing strong momentum...",
-      model: "grok-4-1-fast-reasoning",
+      model: "grok-4-1-fast-non-reasoning",
       provider: "xai",
     });
 
@@ -561,7 +561,7 @@ describe("handleMarket — xai_sentiment", () => {
     expect(mockServerLLMCall).toHaveBeenCalledOnce();
     const callArgs = mockServerLLMCall.mock.calls[0][0];
     expect(callArgs.provider).toBe("xai");
-    expect(callArgs.model).toBe("grok-4-1-fast-reasoning");
+    expect(callArgs.model).toBe("grok-4-1-fast-non-reasoning");
     expect(callArgs.messages[1].content).toContain("AAPL");
     expect(callArgs.messages[1].content).toContain("focus on earnings");
   });

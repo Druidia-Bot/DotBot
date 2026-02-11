@@ -357,6 +357,8 @@ These override general description matching. Use them:
 | Create reusable tools / API integrations | **tool-maker** | senior-dev | Tool-maker specializes in researching APIs, writing scripts, and saving well-tested reusable tools. |
 | Modify DotBot's own code | **core-dev** | senior-dev | Core-dev is the self-improvement specialist. |
 | Flush/clear memory or threads | **general** (direct) | core-dev | Memory operations are conversational — don't route to code personas. |
+| Set a reminder / "remind me about X" | **general** | personal-assistant | General has `reminder.set` and handles conversational requests where reminders come up naturally. |
+| Recurring scheduled task / "do X every day at Y" | **general** | personal-assistant | General has `schedule.create` for recurring tasks (daily, weekly, hourly, interval). Route here for any "every morning", "every Monday", "on a schedule" requests. |
 | Stock research / market sentiment / financial analysis | **oracle** | researcher | Oracle has dedicated `market.*` tools (Polymarket, Finnhub, Reddit buzz, insider trades, Fear & Greed, xAI sentiment). Researcher lacks these tools and will try to scrape manually. |
 | Prediction market odds / Polymarket | **oracle** | researcher | Oracle has `market.polymarket_search` and `market.polymarket_event`. |
 

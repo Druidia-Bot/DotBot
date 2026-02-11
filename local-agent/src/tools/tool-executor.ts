@@ -17,9 +17,11 @@ import { handleKnowledge, handlePersonas } from "./tool-handlers-knowledge.js";
 import { handleGui } from "./gui/index.js";
 import { handleDiscord } from "./tool-handlers-discord.js";
 import { handleReminder } from "./tool-handlers-reminder.js";
+import { handleSchedule } from "./tool-handlers-schedule.js";
 import { handleAdmin } from "./tool-handlers-admin.js";
 import { handleEmail } from "./tool-handlers-email.js";
 import { handleMarket } from "./tool-handlers-market.js";
+import { handleOnboarding } from "../onboarding/tool-handlers.js";
 import { getTool } from "./registry.js";
 import { vaultHas } from "../credential-vault.js";
 import { credentialProxyFetch } from "../credential-proxy.js";
@@ -581,9 +583,11 @@ export async function executeTool(toolId: string, args: Record<string, any>): Pr
       case "gui":        return await handleGui(toolId, args);
       case "discord":    return await handleDiscord(toolId, args);
       case "reminder":   return await handleReminder(toolId, args);
+      case "schedule":   return await handleSchedule(toolId, args);
       case "admin":      return await handleAdmin(toolId, args);
       case "email":      return await handleEmail(toolId, args);
       case "market":     return await handleMarket(toolId, args);
+      case "onboarding": return await handleOnboarding(toolId, args);
       default:
         // Catch-all: check if this is a registered non-core tool (API or custom script)
         return await executeRegisteredTool(toolId, args);
@@ -1389,6 +1393,74 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
         process.exit(42);
       }, 500);
       return { success: true, output: `Restart initiated: ${reason}. The agent will restart momentarily.` };
+    }
+    case "system.health_check": {
+      const checks: { name: string; status: string; detail: string }[] = [];
+      const check = async (name: string, cmd: string) => {
+        try {
+          const r = await runPowershell(cmd, 10_000);
+          checks.push({ name, status: r.success ? "pass" : "fail", detail: r.output.trim() || r.error || "" });
+        } catch {
+          checks.push({ name, status: "fail", detail: "check timed out" });
+        }
+      };
+      await check("Node.js", "node --version");
+      await check("Git", "git --version");
+      await check("Python", "python --version 2>&1");
+      await check("Tesseract", "tesseract --version 2>&1 | Select-Object -First 1");
+      await check("~/.bot/ directory", `if (Test-Path (Join-Path $env:USERPROFILE '.bot')) { 'exists' } else { throw 'missing' }`);
+      await check("Memory system", `if (Test-Path (Join-Path $env:USERPROFILE '.bot/memory/index.json')) { 'initialized' } else { 'not initialized' }`);
+      await check("Skills directory", `(Get-ChildItem (Join-Path $env:USERPROFILE '.bot/skills') -Directory).Count.ToString() + ' skills installed'`);
+      await check("Discord config", `if ($env:DISCORD_BOT_TOKEN -or (Select-String -Path (Join-Path $env:USERPROFILE '.bot/.env') -Pattern 'DISCORD_BOT_TOKEN' -Quiet -ErrorAction SilentlyContinue)) { 'configured' } else { 'not configured' }`);
+      await check("Server connection", `'Connected to ' + $env:DOTBOT_SERVER`);
+
+      const passed = checks.filter(c => c.status === "pass").length;
+      const failed = checks.filter(c => c.status === "fail").length;
+      const summary = checks.map(c => `${c.status === "pass" ? "✓" : "✗"} ${c.name}: ${c.detail}`).join("\n");
+      return { success: true, output: `Health Check: ${passed} passed, ${failed} failed\n\n${summary}` };
+    }
+    case "system.update": {
+      const installDir = join(process.env.DOTBOT_INSTALL_DIR || "C:\\Program Files\\.bot");
+      const safeDir = installDir.replace(/'/g, "''");
+      try {
+        // Check if git repo exists
+        const gitCheck = await runPowershell(`Test-Path (Join-Path '${safeDir}' '.git')`, 5_000);
+        if (!gitCheck.output.trim().toLowerCase().includes("true")) {
+          return { success: false, output: "", error: `No git repository found at ${installDir}. Update only works for git-installed DotBot.` };
+        }
+        // Get current commit before pull
+        const beforeHash = await runPowershell(`cd '${safeDir}'; git rev-parse --short HEAD`, 5_000);
+        // Pull latest
+        const pullResult = await runPowershell(`cd '${safeDir}'; git pull 2>&1`, 30_000);
+        if (!pullResult.success) {
+          return { success: false, output: pullResult.output, error: `git pull failed: ${pullResult.error}` };
+        }
+        // Install deps + build
+        await runPowershell(`cd '${safeDir}'; npm install 2>&1; npm run build -w shared -w local-agent 2>&1`, 120_000);
+        // Get new commit
+        const afterHash = await runPowershell(`cd '${safeDir}'; git rev-parse --short HEAD`, 5_000);
+        // Get diff summary
+        const diffSummary = await runPowershell(`cd '${safeDir}'; git log --oneline ${beforeHash.output.trim()}..HEAD 2>&1`, 5_000);
+
+        const output = [
+          `Update complete: ${beforeHash.output.trim()} → ${afterHash.output.trim()}`,
+          pullResult.output.trim(),
+          diffSummary.output.trim() ? `\nChanges:\n${diffSummary.output.trim()}` : "",
+          "\nRestarting to apply update...",
+        ].filter(Boolean).join("\n");
+
+        // Trigger restart after returning result
+        setTimeout(async () => {
+          try {
+            if (_preRestartHook) await _preRestartHook();
+          } catch { /* proceed */ }
+          process.exit(42);
+        }, 1000);
+
+        return { success: true, output };
+      } catch (err) {
+        return { success: false, output: "", error: `Update failed: ${err instanceof Error ? err.message : String(err)}` };
+      }
     }
     default:
       return { success: false, output: "", error: `Unknown system tool: ${toolId}` };

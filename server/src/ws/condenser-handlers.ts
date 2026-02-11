@@ -8,7 +8,7 @@
 import { nanoid } from "nanoid";
 import type { WSMessage } from "../types.js";
 import { createComponentLogger } from "../logging.js";
-import { devices, sendMessage } from "./devices.js";
+import { devices, sendMessage, broadcastToUser } from "./devices.js";
 import { sendExecutionCommand, requestTools } from "./device-bridge.js";
 import { createLLMClient, getApiKeyForProvider } from "../llm/providers.js";
 import type { LLMProvider } from "../llm/types.js";
@@ -102,26 +102,20 @@ export async function handleResolveLoopRequest(
       },
     });
 
-    // If the loop was resolved and we should notify the user, send notification
-    // to all connected browser clients for this user
+    // If the loop was resolved and we should notify the user, broadcast to all their devices
     if (result.notifyUser && result.notification) {
-      const userId = device.session.userId;
-      for (const [, dev] of devices.entries()) {
-        if (dev.session.userId === userId && dev.ws.readyState === 1) {
-          sendMessage(dev.ws, {
-            type: "user_notification",
-            id: nanoid(),
-            timestamp: Date.now(),
-            payload: {
-              source: "sleep_cycle",
-              title: `Loop Update: ${message.payload.modelName}`,
-              message: result.notification,
-              modelSlug: message.payload.modelSlug,
-              loopId: message.payload.loop?.id,
-            },
-          });
-        }
-      }
+      broadcastToUser(device.session.userId, {
+        type: "user_notification",
+        id: nanoid(),
+        timestamp: Date.now(),
+        payload: {
+          source: "sleep_cycle",
+          title: `Loop Update: ${message.payload.modelName}`,
+          message: result.notification,
+          modelSlug: message.payload.modelSlug,
+          loopId: message.payload.loop?.id,
+        },
+      });
     }
   } catch (error) {
     log.error("Resolve loop request failed", { error });

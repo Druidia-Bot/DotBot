@@ -464,8 +464,21 @@ function splitMessage(content: string): string[] {
 }
 
 // ============================================
-// CHANNEL ROUTING — #updates and #logs
+// CHANNEL ROUTING — #conversation, #updates, and #logs
 // ============================================
+
+/**
+ * Send a proactive message to the #conversation channel.
+ * Used for: reminder notifications, proactive alerts that the user should see
+ * in their main chat flow (not buried in a side channel).
+ * Silently no-ops if Discord is not configured or #conversation channel not set.
+ */
+export async function sendToConversationChannel(content: string): Promise<void> {
+  if (!gateway) return;
+  const channelId = process.env.DISCORD_CHANNEL_CONVERSATION;
+  if (!channelId) return;
+  await sendToDiscord(channelId, content);
+}
 
 /**
  * Send a notification/update to the #updates channel.

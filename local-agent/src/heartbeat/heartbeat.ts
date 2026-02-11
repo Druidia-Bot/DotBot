@@ -235,13 +235,29 @@ async function runHeartbeat(idleDurationMs: number = 0): Promise<boolean> {
     return true; // Not a server failure — don't count toward backoff
   }
 
+  // Append onboarding status if incomplete
+  let onboardingSection = "";
+  try {
+    const onboardingPath = path.join(homedir(), ".bot", "onboarding.json");
+    const raw = await fs.readFile(onboardingPath, "utf-8");
+    const state = JSON.parse(raw);
+    if (!state.completedAt) {
+      const incomplete = Object.entries(state.steps)
+        .filter(([, s]: [string, any]) => s.status === "pending" || s.status === "skipped")
+        .map(([id, s]: [string, any]) => `  - ${id} (${s.status})`);
+      if (incomplete.length > 0) {
+        onboardingSection = `\n\n## Onboarding Status\nThe following onboarding steps are incomplete:\n${incomplete.join("\n")}\nIf the user seems idle, gently suggest completing one of these.`;
+      }
+    }
+  } catch { /* no onboarding.json or parse error — skip */ }
+
   // Send heartbeat request to server with context (#6: context injection)
   const serverCall = sendToServer({
     type: "heartbeat_request",
     id: nanoid(),
     timestamp: Date.now(),
     payload: {
-      checklist,
+      checklist: checklist + onboardingSection,
       currentTime: new Date().toISOString(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       idleDurationMs,

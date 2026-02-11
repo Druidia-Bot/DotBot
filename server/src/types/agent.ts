@@ -335,10 +335,12 @@ export interface EnhancedPromptRequest {
   activeTasks?: TaskSnapshot[];
   /** Agent identity skeleton — compact self-model for context injection */
   agentIdentity?: string;
-  /** Pre-classification hints from local LLM (runs on-device before sending) */
+  /** Pre-classification hints from local agent (runs on-device before sending) */
   hints?: {
     /** Local LLM detected multiple unrelated requests in the message */
     multiItem?: boolean;
+    /** Suggested persona for routing (e.g., from scheduled tasks) — overrides receptionist pick if valid */
+    personaHint?: string;
   };
 }
 

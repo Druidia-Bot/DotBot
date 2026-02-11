@@ -19,20 +19,21 @@ import {
   sendMessage,
   sendError,
   getDeviceForUser,
+  broadcastToUser,
 } from "./devices.js";
 import {
   sendMemoryRequest,
 } from "./device-bridge.js";
 import {
-  hasActiveTask,
+  hasActiveTaskForUser,
   routeInjection,
   injectMessageToTask,
   spawnTask,
-  activeTaskCount,
-  getActiveTasksForDevice,
-  getBlockedTasksForDevice,
+  activeTaskCountForUser,
+  getActiveTasksForUser,
+  getBlockedTasksForUser,
   getTaskById,
-  cancelAllTasksForDevice,
+  cancelAllTasksForUser,
   resumeBlockedTask,
 } from "../agents/agent-tasks.js";
 import { buildRequestContext } from "./context-builder.js";
@@ -71,13 +72,16 @@ export async function handlePrompt(
   }
 
   // ── Check for active or blocked agent loops — route injection if any exist ──
-  if (hasActiveTask(deviceId) || getBlockedTasksForDevice(deviceId).length > 0) {
-    const route = await routeInjection(deviceId, prompt);
+  // Use userId-based lookup so tasks survive browser reconnects (new web_<random> deviceId)
+  // Scheduled task prompts are always independent — never inject into running loops
+  const isScheduledTask = message.payload.source === "scheduled_task";
+  if (!isScheduledTask && (hasActiveTaskForUser(userId) || getBlockedTasksForUser(userId).length > 0)) {
+    const route = await routeInjection(deviceId, prompt, userId);
 
     // Status query — respond with task status from the server, don't inject
     if (route.method === "status_query") {
-      const allTasks = getActiveTasksForDevice(deviceId);
-      const blockedTasks = getBlockedTasksForDevice(deviceId);
+      const allTasks = getActiveTasksForUser(userId);
+      const blockedTasks = getBlockedTasksForUser(userId);
       const fmtElapsed = (t: { startedAt: number }) => {
         const s = Math.round((Date.now() - t.startedAt) / 1000);
         return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
@@ -143,7 +147,7 @@ export async function handlePrompt(
     if (route.task && route.method !== "none" && route.method !== "blocked_resume") {
       const injected = injectMessageToTask(route.task.id, prompt);
       if (injected) {
-        const taskCount = activeTaskCount(deviceId);
+        const taskCount = activeTaskCountForUser(userId);
         const routeNote = route.method === "name_match" ? " (matched by name)" : "";
 
         log.info(`Injected user correction into agent loop`, {
@@ -204,7 +208,7 @@ export async function handlePrompt(
   }
 
   // ── Create the runner ──
-  const runner = createRunner(apiKey, userId, device, toolManifest, runtimeInfo, serverProvider);
+  const runner = createRunner(apiKey, userId, toolManifest, runtimeInfo, serverProvider);
 
   try {
     // ── Phase 1: Quick classification via receptionist (~1-2s) ──
@@ -221,7 +225,7 @@ export async function handlePrompt(
 
     // CANCELLATION — actually cancel running tasks, don't just talk about it
     if (decision.classification === "CANCELLATION") {
-      const cancelled = cancelAllTasksForDevice(deviceId);
+      const cancelled = cancelAllTasksForUser(userId);
       log.info(`CANCELLATION: aborted ${cancelled} task(s)`, { deviceId });
       const response = cancelled > 0
         ? `Stopping all tasks now. Cancelled ${cancelled} running task${cancelled > 1 ? "s" : ""}.`
@@ -260,7 +264,7 @@ export async function handlePrompt(
         }
       });
 
-      sendRunLog(device, message.id, enhancedRequest, result);
+      sendRunLog(userId, message.id, enhancedRequest, result);
       return;
     }
 
@@ -277,7 +281,7 @@ export async function handlePrompt(
       taskName, taskDescription,
       async (injectionQueue: string[], agentTaskId: string, abortSignal: AbortSignal) => {
         // Create a scoped runner that tags all progress with this agent's task ID
-        const agentRunner = createRunner(apiKey, userId, device, toolManifest, runtimeInfo, serverProvider, agentTaskId);
+        const agentRunner = createRunner(apiKey, userId, toolManifest, runtimeInfo, serverProvider, agentTaskId);
 
         // Persist work thread start to local agent for crash recovery
         sendAgentWork(userId, agentTaskId, "started", {
@@ -306,8 +310,9 @@ export async function handlePrompt(
       }
     );
 
-    // Notify client that an agent loop was started
-    sendMessage(device.ws, {
+    // Notify ALL of the user's devices that an agent loop was started
+    // (broadcastToUser ensures reconnected browsers see it too)
+    broadcastToUser(userId, {
       type: "agent_started",
       id: nanoid(),
       timestamp: Date.now(),
@@ -320,8 +325,8 @@ export async function handlePrompt(
     });
 
     // Send immediate acknowledgment so the user knows we're on it
-    const taskCountMsg = activeTaskCount(deviceId) > 1
-      ? ` You now have ${activeTaskCount(deviceId)} tasks running.`
+    const taskCountMsg = activeTaskCountForUser(userId) > 1
+      ? ` You now have ${activeTaskCountForUser(userId)} tasks running.`
       : "";
     const estimateMs = getTimeEstimate(decision.classification);
     const estimateStr = estimateMs >= 60_000
@@ -341,8 +346,8 @@ export async function handlePrompt(
       }
     });
 
-    // When the background task completes, send the result
-    // (but NOT if it was cancelled — user already received the cancellation ack)
+    // When the background task completes, broadcast to ALL user devices.
+    // This ensures reconnected browsers (new web_<random> deviceId) still get the result.
     task.promise.then((result) => {
       const taskState = getTaskById(task.id);
       if (taskState?.status === "cancelled") {
@@ -352,7 +357,7 @@ export async function handlePrompt(
 
       log.info(`Background agent task completed`, { taskId: task.id, personaId });
 
-      sendMessage(device.ws, {
+      broadcastToUser(userId, {
         type: "agent_complete",
         id: nanoid(),
         timestamp: Date.now(),
@@ -366,7 +371,7 @@ export async function handlePrompt(
         }
       });
 
-      sendRunLog(device, message.id, enhancedRequest, result);
+      sendRunLog(userId, message.id, enhancedRequest, result);
     }).catch((error) => {
       const taskState = getTaskById(task.id);
       if (taskState?.status === "cancelled") {
@@ -376,7 +381,7 @@ export async function handlePrompt(
 
       log.error(`Background agent task failed`, { taskId: task.id, error });
 
-      sendMessage(device.ws, {
+      broadcastToUser(userId, {
         type: "agent_complete",
         id: nanoid(),
         timestamp: Date.now(),

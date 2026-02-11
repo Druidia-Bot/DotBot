@@ -108,7 +108,15 @@ export async function executeFullPipeline(
   }
 
   // Resolve target persona early — this determines our execution path
-  const targetPersonaId = decision.personaId || decision.councilId;
+  // Allow personaHint (e.g., from scheduled tasks) to override the receptionist's pick
+  let targetPersonaId = decision.personaId || decision.councilId;
+  if (request.hints?.personaHint) {
+    const hintedPersona = getPersona(request.hints.personaHint);
+    if (hintedPersona) {
+      journal.log("pipeline", `personaHint override: ${request.hints.personaHint} (was ${targetPersonaId || "none"})`);
+      targetPersonaId = request.hints.personaHint;
+    }
+  }
   const targetPersona = targetPersonaId ? getPersona(targetPersonaId) : null;
   
   if (targetPersonaId && !targetPersona) {

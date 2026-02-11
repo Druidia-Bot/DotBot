@@ -38,6 +38,7 @@ const SLEEP_STATE_PATH = path.join(homedir(), ".bot", "memory", "sleep-state.jso
 
 let sendToServer: ((message: any) => Promise<any>) | null = null;
 let running = false;
+let onLoopNotification: ((modelName: string, loopDescription: string, notification: string, newStatus: string) => void) | null = null;
 
 // ============================================
 // LIFECYCLE
@@ -57,6 +58,14 @@ export function initSleepCycle(sender: (message: any) => Promise<any>): void {
  */
 export function startSleepCycle(sender: (message: any) => Promise<any>): void {
   initSleepCycle(sender);
+}
+
+/**
+ * Set callback for loop resolution notifications → #conversation.
+ * Fired when the sleep cycle resolves a loop or finds actionable new information.
+ */
+export function setSleepCycleLoopCallback(cb: (modelName: string, loopDescription: string, notification: string, newStatus: string) => void): void {
+  onLoopNotification = cb;
 }
 
 export function stopSleepCycle(): void {
@@ -324,6 +333,11 @@ async function resolveLoop(
   if (response.sideEffects?.length) {
     const sideResult = await applyInstructions(response.sideEffects);
     applied += sideResult.applied;
+  }
+
+  // Notify the user if the resolver found something worth sharing
+  if (response.notifyUser && response.notification && onLoopNotification) {
+    onLoopNotification(model.name, loop.description, response.notification, response.newStatus);
   }
 
   return { applied, newStatus: response.newStatus };

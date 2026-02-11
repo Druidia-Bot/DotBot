@@ -9,7 +9,6 @@
  * Extracted from server.ts to keep concerns separated.
  */
 
-import { WebSocket } from "ws";
 import { nanoid } from "nanoid";
 import { AgentRunner } from "../agents/runner.js";
 import type { AgentRunResult } from "../agents/runner.js";
@@ -23,6 +22,7 @@ import type {
 import {
   devices,
   sendMessage,
+  broadcastToUser,
   getDeviceForUser,
   getTempDirForUser,
   type MemoryRequest,
@@ -49,7 +49,6 @@ let watchdogLLMInitialized = false;
 export function createRunner(
   apiKey: string,
   userId: string,
-  device: { ws: WebSocket },
   toolManifest: any[],
   runtimeInfo: any[],
   serverProvider: string,
@@ -82,7 +81,8 @@ export function createRunner(
         content = `**[${personaId}]** ${chunk}`;
         agentStreamStarted = true;
       }
-      sendMessage(device.ws, {
+      // Broadcast to all user devices so reconnected browsers still receive chunks
+      broadcastToUser(userId, {
         type: "stream_chunk",
         id: nanoid(),
         timestamp: Date.now(),
@@ -90,7 +90,7 @@ export function createRunner(
       });
     },
     onTaskProgress: (update: TaskProgressUpdate) => {
-      sendMessage(device.ws, {
+      broadcastToUser(userId, {
         type: "task_progress",
         id: nanoid(),
         timestamp: Date.now(),
@@ -144,7 +144,9 @@ export function createRunner(
     onSaveToThread: async (threadId: string, entry: any) => {
       const agentDeviceId = getDeviceForUser(userId);
       if (!agentDeviceId) { log.warn("No local-agent connected for thread persistence"); return; }
-      sendMessage(devices.get(agentDeviceId)!.ws, {
+      const agentDevice = devices.get(agentDeviceId);
+      if (!agentDevice) return;
+      sendMessage(agentDevice.ws, {
         type: "save_to_thread",
         id: nanoid(),
         timestamp: Date.now(),
@@ -157,7 +159,7 @@ export function createRunner(
       });
     },
     onThreadUpdate: (threadId: string, updates: UpdaterRecommendations) => {
-      sendMessage(device.ws, {
+      broadcastToUser(userId, {
         type: "thread_update",
         id: nanoid(),
         timestamp: Date.now(),
@@ -165,17 +167,17 @@ export function createRunner(
       });
     },
     onLLMRequest: (info) => {
-      sendMessage(device.ws, {
+      broadcastToUser(userId, {
         type: "llm_request", id: nanoid(), timestamp: Date.now(), payload: info
       });
     },
     onLLMResponse: (info) => {
-      sendMessage(device.ws, {
+      broadcastToUser(userId, {
         type: "llm_response", id: nanoid(), timestamp: Date.now(), payload: info
       });
     },
     onPlannerOutput: (plan) => {
-      sendMessage(device.ws, {
+      broadcastToUser(userId, {
         type: "planner_output", id: nanoid(), timestamp: Date.now(), payload: plan
       });
     },
@@ -321,13 +323,13 @@ export function sendAgentWork(
 // ============================================
 
 export function sendRunLog(
-  device: { ws: WebSocket },
+  userId: string,
   messageId: string,
   request: EnhancedPromptRequest,
   result: AgentRunResult
 ): void {
   if (!result.runLog) return;
-  sendMessage(device.ws, {
+  broadcastToUser(userId, {
     type: "run_log",
     id: nanoid(),
     timestamp: Date.now(),

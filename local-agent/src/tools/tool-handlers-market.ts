@@ -383,7 +383,7 @@ Be specific and data-oriented. If you're uncertain about real-time data, say so.
     // xAI is a core server LLM — just request a chat completion like any other provider.
     const result = await serverLLMCall({
       provider: "xai",
-      model: "grok-4-1-fast-reasoning",
+      model: "grok-4-1-fast-non-reasoning",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },

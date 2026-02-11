@@ -361,10 +361,12 @@ Answer:`;
  */
 export async function routeInjection(
   deviceId: string,
-  message: string
+  message: string,
+  userId?: string
 ): Promise<InjectionRouteResult> {
-  const activeTasks = getActiveTasksForDevice(deviceId);
-  const blockedTasks = getBlockedTasksForDevice(deviceId);
+  // Prefer userId-based lookup (survives browser reconnects) when available
+  const activeTasks = userId ? getActiveTasksForUser(userId) : getActiveTasksForDevice(deviceId);
+  const blockedTasks = userId ? getBlockedTasksForUser(userId) : getBlockedTasksForDevice(deviceId);
 
   // Blocked tasks — evaluate whether the user's message resolves one.
   // We do NOT blindly resume; "Did you know I like tacos" shouldn't unblock
@@ -430,6 +432,51 @@ export function getActiveTasksForDevice(deviceId: string): AgentTask[] {
 }
 
 /**
+ * Get all active (running) tasks for a user (across all devices).
+ * Unlike device-based lookup, this survives browser reconnects since userId is stable.
+ */
+export function getActiveTasksForUser(userId: string): AgentTask[] {
+  const result: AgentTask[] = [];
+  for (const task of tasks.values()) {
+    if (task.userId === userId && task.status === "running") {
+      result.push(task);
+    }
+  }
+  return result;
+}
+
+/** Get blocked tasks for a user (across all devices). */
+export function getBlockedTasksForUser(userId: string): AgentTask[] {
+  const result: AgentTask[] = [];
+  for (const task of tasks.values()) {
+    if (task.userId === userId && task.status === "blocked") {
+      result.push(task);
+    }
+  }
+  return result;
+}
+
+/** Check if a user has any active agent loops running. */
+export function hasActiveTaskForUser(userId: string): boolean {
+  return getActiveTasksForUser(userId).length > 0;
+}
+
+/** Get count of active tasks for a user. */
+export function activeTaskCountForUser(userId: string): number {
+  return getActiveTasksForUser(userId).length;
+}
+
+/** Cancel ALL running and blocked tasks for a user. Returns count cancelled. */
+export function cancelAllTasksForUser(userId: string): number {
+  const running = getActiveTasksForUser(userId);
+  const blocked = getBlockedTasksForUser(userId);
+  for (const task of [...running, ...blocked]) {
+    cancelTask(task.id);
+  }
+  return running.length + blocked.length;
+}
+
+/**
  * Get a single active task for a device — returns most recent if multiple.
  * Backward-compatible convenience for single-task patterns.
  */
@@ -474,6 +521,21 @@ export function cancelAllTasksForDevice(deviceId: string): number {
 export function cancelAllTasksForRestart(deviceId: string): { cancelled: number; prompts: string[] } {
   const running = getActiveTasksForDevice(deviceId);
   const blocked = getBlockedTasksForDevice(deviceId);
+  const allTasks = [...running, ...blocked];
+  const prompts = allTasks
+    .map(t => t.prompt)
+    .filter(p => !!p);
+  for (const task of allTasks) {
+    cancelTask(task.id);
+  }
+  return { cancelled: allTasks.length, prompts };
+}
+
+/** Cancel all tasks for a user and return their original prompts for re-submission after restart.
+ *  Unlike the deviceId version, this finds tasks across ALL devices (browser + agent). */
+export function cancelAllTasksForRestartByUser(userId: string): { cancelled: number; prompts: string[] } {
+  const running = getActiveTasksForUser(userId);
+  const blocked = getBlockedTasksForUser(userId);
   const allTasks = [...running, ...blocked];
   const prompts = allTasks
     .map(t => t.prompt)

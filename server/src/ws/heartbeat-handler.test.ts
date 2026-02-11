@@ -34,9 +34,9 @@ describe("Personal Assistant Persona", () => {
     expect(persona!.tools).toContain("filesystem");
   });
 
-  it("has exactly 4 tool categories", () => {
+  it("has exactly 5 tool categories", () => {
     const persona = getPersona("personal-assistant");
-    expect(persona!.tools).toHaveLength(4);
+    expect(persona!.tools).toHaveLength(5);
   });
 
   it("has a non-empty system prompt", () => {

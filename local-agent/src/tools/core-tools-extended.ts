@@ -187,6 +187,36 @@ export const systemTools: DotBotTool[] = [
     },
     annotations: { destructiveHint: true, requiresConfirmation: true },
   },
+  {
+    id: "system.health_check",
+    name: "health_check",
+    description: "Run a comprehensive health check of the DotBot installation. Checks Node.js, Git, Python, Tesseract, server connection, LLM API, Discord, Brave Search, memory system, and directory structure. Returns structured results with pass/fail for each component.",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    id: "system.update",
+    name: "update_self",
+    description: "Update DotBot to the latest version. Runs git pull in the install directory, rebuilds all packages, and restarts. Returns the git diff summary showing what changed. Only works when installed from git (not dev mode).",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        reason: { type: "string", description: "Why the update is being performed" },
+      },
+    },
+    annotations: { destructiveHint: true, requiresConfirmation: true },
+  },
 ];
 
 // ============================================
@@ -1256,6 +1286,104 @@ export const reminderTools: DotBotTool[] = [
 ];
 
 // ============================================
+// SCHEDULED TASK TOOLS (recurring tasks)
+// ============================================
+
+export const scheduleTools: DotBotTool[] = [
+  {
+    id: "schedule.create",
+    name: "create_scheduled_task",
+    description: "Create a recurring scheduled task. The task's prompt will be submitted to the server pipeline on each occurrence. Use this when the user wants something done repeatedly on a schedule (e.g., 'check news every morning at 6am', 'run a report every Monday').",
+    source: "core",
+    category: "schedule",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Short descriptive name for the task (e.g., 'Fort Myers Morning News')" },
+        prompt: { type: "string", description: "The full prompt to execute each time (e.g., 'Search for the latest news in Fort Myers, FL and give me the top 3 headlines with brief summaries')" },
+        type: { type: "string", enum: ["daily", "weekly", "hourly", "interval"], description: "Schedule type" },
+        time: { type: "string", description: "Time of day in HH:MM format (required for daily and weekly, e.g., '06:00')" },
+        day_of_week: { type: "number", description: "Day of week for weekly schedules: 0=Sunday, 1=Monday, ..., 6=Saturday" },
+        interval_minutes: { type: "number", description: "Interval in minutes for interval schedules (minimum 5)" },
+        persona_hint: { type: "string", description: "Optional persona to route the task to (e.g., 'researcher', 'oracle')" },
+        priority: { type: "string", description: "Priority: P0 (urgent), P1 (important), P2 (normal, default), P3 (low)" },
+      },
+      required: ["name", "prompt", "type"],
+    },
+    annotations: { destructiveHint: true },
+  },
+  {
+    id: "schedule.list",
+    name: "list_scheduled_tasks",
+    description: "List all recurring scheduled tasks. Can filter by status (active, paused, cancelled, or all).",
+    source: "core",
+    category: "schedule",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { type: "string", description: "Filter by status: 'active' (default), 'paused', 'cancelled', or 'all'" },
+      },
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    id: "schedule.cancel",
+    name: "cancel_scheduled_task",
+    description: "Permanently cancel a recurring scheduled task. It will no longer run.",
+    source: "core",
+    category: "schedule",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "The scheduled task ID to cancel (from schedule.list)" },
+      },
+      required: ["task_id"],
+    },
+    annotations: { destructiveHint: true },
+  },
+  {
+    id: "schedule.pause",
+    name: "pause_scheduled_task",
+    description: "Temporarily pause a recurring scheduled task. Use schedule.resume to reactivate it.",
+    source: "core",
+    category: "schedule",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "The scheduled task ID to pause (from schedule.list)" },
+      },
+      required: ["task_id"],
+    },
+    annotations: { destructiveHint: true },
+  },
+  {
+    id: "schedule.resume",
+    name: "resume_scheduled_task",
+    description: "Resume a paused scheduled task. Recalculates the next run time from now.",
+    source: "core",
+    category: "schedule",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "The scheduled task ID to resume (from schedule.list)" },
+      },
+      required: ["task_id"],
+    },
+    annotations: { destructiveHint: true },
+  },
+];
+
+// ============================================
 // ADMIN TOOLS (server-side, WS-only)
 // ============================================
 
@@ -1566,5 +1694,77 @@ export const emailTools: DotBotTool[] = [
       properties: {},
     },
     annotations: { readOnlyHint: true },
+  },
+];
+
+// ============================================
+// ONBOARDING TOOLS
+// ============================================
+
+export const onboardingTools: DotBotTool[] = [
+  {
+    id: "onboarding.status",
+    name: "onboarding_status",
+    description: "Check the current onboarding progress. Returns which steps are completed, skipped, pending, or not applicable. Use this before starting or resuming onboarding to know where to pick up.",
+    source: "core",
+    category: "onboarding",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    id: "onboarding.complete_step",
+    name: "complete_onboarding_step",
+    description: "Mark an onboarding step as completed. Call this after successfully finishing each onboarding phase.",
+    source: "core",
+    category: "onboarding",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        step: { type: "string", description: "Step ID: name_preference, phone_type, personality_transfer, discord_setup, brave_search, codegen_tools, systems_check, git_backup" },
+      },
+      required: ["step"],
+    },
+    annotations: { destructiveHint: true },
+  },
+  {
+    id: "onboarding.skip_step",
+    name: "skip_onboarding_step",
+    description: "Mark an onboarding step as skipped. The user will be gently reminded about it later.",
+    source: "core",
+    category: "onboarding",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        step: { type: "string", description: "Step ID to skip" },
+      },
+      required: ["step"],
+    },
+    annotations: { destructiveHint: true },
+  },
+  {
+    id: "onboarding.mark_not_applicable",
+    name: "mark_onboarding_not_applicable",
+    description: "Mark an onboarding step as not applicable (e.g., user doesn't have a Claude subscription for codegen_tools). Will never be nagged about.",
+    source: "core",
+    category: "onboarding",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        step: { type: "string", description: "Step ID to mark as N/A" },
+      },
+      required: ["step"],
+    },
+    annotations: { destructiveHint: true },
   },
 ];

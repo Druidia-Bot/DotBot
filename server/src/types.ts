@@ -467,10 +467,14 @@ export interface WSPromptMessage extends WSMessage {
   payload: {
     prompt: string;
     context?: Record<string, any>;
-    /** Pre-classification hints from the local LLM (runs on-device before sending) */
+    /** Prompt origin — "scheduled_task" for recurring scheduled tasks, undefined for user prompts */
+    source?: string;
+    /** Pre-classification hints from the local agent (runs on-device before sending) */
     hints?: {
       /** Local LLM detected multiple unrelated requests in the message */
       multiItem?: boolean;
+      /** Suggested persona for routing (e.g., from scheduled tasks) */
+      personaHint?: string;
     };
   };
 }

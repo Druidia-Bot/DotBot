@@ -54,11 +54,11 @@ import { handleHeartbeatRequest } from "./heartbeat-handler.js";
 import { handleAdminRequest } from "./admin-handler.js";
 import { handleCredentialSessionRequest, handleCredentialProxyRequest, handleCredentialResolveRequest, cleanupResolveTracking } from "../credentials/handlers.js";
 import { handlePrompt } from "./prompt-handler.js";
-import { cancelAllTasksForDevice, cancelAllTasksForRestart } from "../agents/agent-tasks.js";
+import { cancelAllTasksForRestart, cancelAllTasksForRestartByUser, cancelAllTasksForUser } from "../agents/agent-tasks.js";
 import { setExecuteCallback, onSchedulerEvent } from "../scheduler/index.js";
 import type { DeferredTask } from "../scheduler/index.js";
 import { validateAndConsumeToken } from "../auth/invite-tokens.js";
-import { registerDevice, authenticateDevice, getRecentFailures, logAuthEvent } from "../auth/device-store.js";
+import { registerDevice, authenticateDevice, getRecentFailures, logAuthEvent, listDevices } from "../auth/device-store.js";
 
 // Re-export for backwards compatibility
 export {
@@ -246,7 +246,11 @@ export function createWSServer(options: {
             break;
           case "cancel_before_restart":
             if (deviceId) {
-              const restartResult = cancelAllTasksForRestart(deviceId);
+              // Use userId-based lookup so we cancel ALL tasks (including browser-spawned ones)
+              const dev = devices.get(deviceId);
+              const restartResult = dev
+                ? cancelAllTasksForRestartByUser(dev.session.userId)
+                : cancelAllTasksForRestart(deviceId);
               log.info(`Cancel before restart: cancelled ${restartResult.cancelled} task(s), ${restartResult.prompts.length} prompt(s) to re-queue`, { deviceId });
               sendMessage(ws, {
                 type: "cancel_before_restart_ack",
@@ -272,18 +276,25 @@ export function createWSServer(options: {
     ws.on("close", () => {
       if (deviceId) {
         const device = devices.get(deviceId);
-        if (device) {
+        // Only act if THIS WebSocket is still the current one for this deviceId.
+        // If the agent reconnected, devices.get(deviceId) returns the NEW connection
+        // and we must NOT mark it disconnected or cancel its tasks.
+        if (device && device.ws === ws) {
           device.session.status = "disconnected";
           log.info(`Device disconnected: ${device.session.deviceName}`);
+          // Only cancel running tasks when a LOCAL AGENT disconnects (tools become unavailable).
+          // Browser clients are just display — closing a tab should NOT cancel agent work.
+          const isLocalAgent = device.session.capabilities?.includes("memory");
+          if (isLocalAgent) {
+            const cancelled = cancelAllTasksForUser(device.session.userId);
+            if (cancelled > 0) {
+              log.info(`Cancelled ${cancelled} task(s) on local-agent disconnect`, { deviceId });
+            }
+          }
+          cleanupResolveTracking(deviceId);
+        } else if (device) {
+          log.debug(`Stale WS closed for ${deviceId} — device already reconnected, ignoring`);
         }
-        // Cancel all running/blocked tasks — the agent is gone, so any tool calls
-        // will fail with "no local-agent". Cancel immediately instead of burning
-        // iterations hitting the circuit breaker.
-        const cancelled = cancelAllTasksForDevice(deviceId);
-        if (cancelled > 0) {
-          log.info(`Cancelled ${cancelled} task(s) on device disconnect`, { deviceId });
-        }
-        cleanupResolveTracking(deviceId);
       }
     });
 
@@ -385,11 +396,29 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
   // Allow web clients without device credentials (browser UI)
   // These get capabilities: ['prompt'] only — no tool execution.
   // Connection is secured by TLS (wss://) and the server URL is not public.
+  // CRITICAL: Web clients must share the same userId as the local agent
+  // so that getDeviceForUser() can find the local agent for tool execution.
   if (!deviceSecret || !hwFingerprint) {
     const webDeviceId = `web_${nanoid(8)}`;
+
+    // Look up the primary registered device so browser shares its userId.
+    // Without this, browser gets userId "user_web_<random>" which never
+    // matches the local agent's "user_<deviceId>", making tools/memory
+    // permanently unavailable from the browser.
+    let userId = `user_${webDeviceId}`;
+    try {
+      const registeredDevices = listDevices().filter(d => d.status === "active");
+      if (registeredDevices.length > 0) {
+        userId = `user_${registeredDevices[0].deviceId}`;
+        log.info(`Web client linked to registered device`, { webDeviceId, linkedTo: registeredDevices[0].deviceId });
+      }
+    } catch {
+      log.warn("Could not look up registered devices for web client userId linkage");
+    }
+
     const session: DeviceSession = {
       id: nanoid(),
-      userId: `user_${webDeviceId}`,
+      userId,
       deviceId: webDeviceId,
       deviceName: deviceName || "Web Browser",
       capabilities: capabilities || ["prompt"],
@@ -478,6 +507,13 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
       payload: { reason: authResult.reason, message: `Authentication failed: ${authResult.reason}` },
     });
     return null;
+  }
+
+  // If this device was already connected (reconnect), close the old WS gracefully
+  const existingDevice = devices.get(deviceId);
+  if (existingDevice && existingDevice.ws !== ws) {
+    log.info(`Device ${deviceId} reconnecting — closing stale WebSocket`);
+    try { existingDevice.ws.close(); } catch { /* already closed */ }
   }
 
   const session: DeviceSession = {

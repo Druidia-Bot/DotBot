@@ -53,6 +53,18 @@ function Write-Log {
 # --- Ensure directories ---
 New-Item -ItemType Directory -Path $WorkspaceDir -Force | Out-Null
 
+# --- Log rotation (10MB limit, keep one backup) ---
+$MaxLogSizeMB = 10
+if (Test-Path $LauncherLog) {
+    $logSize = (Get-Item $LauncherLog).Length / 1MB
+    if ($logSize -gt $MaxLogSizeMB) {
+        $backupLog = "$LauncherLog.1"
+        if (Test-Path $backupLog) { Remove-Item -Force $backupLog }
+        Move-Item -Force $LauncherLog $backupLog
+        Write-Log "Log rotated (was $([math]::Round($logSize, 1))MB)"
+    }
+}
+
 # --- Startup check ---
 if (-not (Test-Path $AgentEntry)) {
     Write-Log "Agent entry point not found at $AgentEntry" "ERROR"

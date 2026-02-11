@@ -18,7 +18,7 @@ import type { WSMessage } from "./types.js";
 import * as memory from "./memory/index.js";
 import { DOTBOT_DIR, TEMP_DIR } from "./memory/store-core.js";
 import { appendAgentWork } from "./memory/store-agent-work.js";
-import { initSleepCycle, stopSleepCycle, executeSleepCycle, CYCLE_INTERVAL_MS } from "./memory/sleep-cycle.js";
+import { initSleepCycle, stopSleepCycle, executeSleepCycle, setSleepCycleLoopCallback, CYCLE_INTERVAL_MS } from "./memory/sleep-cycle.js";
 import {
   initHeartbeat, stopHeartbeat, executeHeartbeat, canRunHeartbeat,
   getHeartbeatIntervalMs, isHeartbeatEnabled,
@@ -36,8 +36,16 @@ import {
   handleCredentialStored,
   handleResolveResponse,
 } from "./credential-proxy.js";
-import { initDiscordAdapter, stopDiscordAdapter, handleDiscordResponse, sendToUpdatesChannel, sendToLogsChannel } from "./discord/adapter.js";
+import { initDiscordAdapter, stopDiscordAdapter, handleDiscordResponse, sendToConversationChannel, sendToUpdatesChannel, sendToLogsChannel } from "./discord/adapter.js";
 import { checkReminders, canCheckReminders, setReminderNotifyCallback } from "./reminders/checker.js";
+import {
+  initScheduledTaskChecker, checkScheduledTasks, canCheckScheduledTasks,
+  handleScheduledTaskResponse,
+  setScheduledTaskResultCallback, setScheduledTaskErrorCallback, setScheduledTaskMissedCallback,
+} from "./scheduled-tasks/checker.js";
+import { checkOnboarding, canCheckOnboarding, setOnboardingNotifyCallback, setOnboardingDiscordCallback } from "./onboarding/checker.js";
+import { onboardingExists, initOnboarding } from "./onboarding/store.js";
+import { checkForUpdates, canCheckForUpdates, setUpdateNotifyCallback } from "./onboarding/update-checker.js";
 import { vaultSetServerBlob } from "./credential-vault.js";
 import { loadDeviceCredentials, saveDeviceCredentials } from "./auth/device-credentials.js";
 import { collectHardwareFingerprint } from "./auth/hw-fingerprint.js";
@@ -182,8 +190,9 @@ try {
 let ws: WebSocket | null = null;
 let reconnectAttempts = 0;
 let pendingFormatFixes: MalformedFile[] = [];
-const MAX_RECONNECT_ATTEMPTS = 10;
-const RECONNECT_DELAY = 3000;
+const MAX_RECONNECT_ATTEMPTS = 50;
+const BASE_RECONNECT_DELAY_MS = 2_000;
+const MAX_RECONNECT_DELAY_MS = 60_000;
 
 // Pending server responses for async request/response (sleep cycle condense, resolve loop)
 const pendingServerResponses = new Map<string, { resolve: (value: any) => void; reject: (err: any) => void }>();
@@ -222,11 +231,14 @@ function connect(): void {
 function scheduleReconnect(): void {
   if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
     reconnectAttempts++;
-    console.log(`[Agent] Reconnecting in ${RECONNECT_DELAY/1000}s (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
-    setTimeout(connect, RECONNECT_DELAY);
+    // Exponential backoff: 2s, 4s, 8s, 16s, 32s, capped at 60s
+    const delay = Math.min(BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY_MS);
+    console.log(`[Agent] Reconnecting in ${(delay/1000).toFixed(0)}s (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+    setTimeout(connect, delay);
   } else {
-    console.error("[Agent] Max reconnect attempts reached. Exiting.");
-    process.exit(1);
+    // Exit with restart signal so the launcher restarts us with a clean slate
+    console.error(`[Agent] Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Exiting with restart signal.`);
+    process.exit(42);
   }
 }
 
@@ -463,6 +475,17 @@ async function handleMessage(message: WSMessage): Promise<void> {
         resubmitRestartQueue(send);
 
         initSleepCycle(sendAndWaitForResponse);
+
+        // Wire sleep cycle loop notifications → Discord #conversation
+        setSleepCycleLoopCallback((modelName, loopDescription, notification, newStatus) => {
+          const emoji = newStatus === "resolved" ? "✅" : "💡";
+          const statusLabel = newStatus === "resolved" ? "Loop closed" : "New info";
+          sendToConversationChannel(
+            `${emoji} **${statusLabel}: ${modelName}**\n_${loopDescription}_\n\n${notification}`
+          );
+          sendToUpdatesChannel(`🔄 Sleep cycle — ${statusLabel.toLowerCase()} on "${modelName}": ${loopDescription}`);
+        });
+
         initHeartbeat(sendAndWaitForResponse, undefined, {
           enabled: process.env.HEARTBEAT_ENABLED !== "false",
           intervalMs: process.env.HEARTBEAT_INTERVAL_MIN
@@ -473,10 +496,49 @@ async function handleMessage(message: WSMessage): Promise<void> {
             : undefined,
         });
 
-        // Wire reminder notifications → Discord #updates
+        // Wire scheduled task checker
+        initScheduledTaskChecker(send);
+
+        // Wire scheduled task results → Discord #conversation + #updates
+        setScheduledTaskResultCallback((task, result) => {
+          sendToConversationChannel(`📋 **${task.name}**\n${result}`);
+          sendToUpdatesChannel(`⏰ Scheduled task "${task.name}" completed`);
+        });
+
+        setScheduledTaskErrorCallback((task, error, paused) => {
+          const msg = paused
+            ? `⚠️ Scheduled task "${task.name}" paused after repeated failures: ${error}`
+            : `❌ Scheduled task "${task.name}" failed: ${error}`;
+          sendToUpdatesChannel(msg);
+        });
+
+        setScheduledTaskMissedCallback((task) => {
+          sendToConversationChannel(
+            `⏰ It looks like you missed your scheduled task **"${task.name}"** (was due ${new Date(task.nextRunAt).toLocaleString()}). Would you like me to run it now?`
+          );
+        });
+
+        // Wire reminder notifications → Discord #conversation + #updates
         setReminderNotifyCallback((reminder) => {
           const emoji = reminder.priority === "P0" ? "🚨" : "🔔";
-          sendToUpdatesChannel(`${emoji} **Reminder:** ${reminder.message}\n_Scheduled for: ${reminder.scheduledFor}_`);
+          const msg = `${emoji} **Reminder:** ${reminder.message}`;
+          sendToConversationChannel(msg);
+          sendToUpdatesChannel(`${msg}\n_Scheduled for: ${reminder.scheduledFor}_`);
+        });
+
+        // Wire onboarding nag notifications → Discord #updates
+        setOnboardingNotifyCallback((message) => {
+          sendToUpdatesChannel(`💡 ${message}`);
+        });
+
+        // Wire onboarding 7-day escalation → Discord #conversation
+        setOnboardingDiscordCallback((message) => {
+          sendToUpdatesChannel(message);
+        });
+
+        // Wire update notifications → Discord #updates
+        setUpdateNotifyCallback((message) => {
+          sendToUpdatesChannel(`🔄 ${message}`);
         });
 
         // Start the unified periodic manager (#8)
@@ -500,12 +562,39 @@ async function handleMessage(message: WSMessage): Promise<void> {
             canRun: canCheckReminders,
           },
           {
+            id: "scheduled-task-check",
+            name: "Scheduled Task Runner",
+            intervalMs: 60_000, // Check every 60s
+            initialDelayMs: 30_000, // 30 seconds after startup
+            enabled: true,
+            run: () => checkScheduledTasks(),
+            canRun: canCheckScheduledTasks,
+          },
+          {
             id: "sleep-cycle",
             name: "Memory Consolidation",
             intervalMs: CYCLE_INTERVAL_MS,
             initialDelayMs: 2 * 60 * 1000, // 2 minutes after startup
             enabled: true,
             run: () => executeSleepCycle(),
+          },
+          {
+            id: "onboarding-check",
+            name: "Onboarding Check",
+            intervalMs: 60 * 60 * 1000, // Check once per hour (nag logic limits to once/day)
+            initialDelayMs: 5 * 60 * 1000, // 5 minutes after startup
+            enabled: true,
+            run: () => checkOnboarding(),
+            canRun: canCheckOnboarding,
+          },
+          {
+            id: "update-check",
+            name: "Update Check",
+            intervalMs: 6 * 60 * 60 * 1000, // Check every 6 hours
+            initialDelayMs: 10 * 60 * 1000, // 10 minutes after startup
+            enabled: true,
+            run: () => checkForUpdates(),
+            canRun: canCheckForUpdates,
           },
         ];
         startPeriodicManager(periodicTasks);
@@ -521,6 +610,27 @@ async function handleMessage(message: WSMessage): Promise<void> {
         // Start Discord adapter (non-blocking — skips if not configured)
         initDiscordAdapter(send).catch(err => {
           console.error("[Agent] Discord adapter init failed:", err);
+        });
+
+        // First-launch detection: if no onboarding.json exists, this is a fresh install
+        // Initialize onboarding tracker and send a prompt to trigger the onboarding skill
+        onboardingExists().then(async (exists) => {
+          if (!exists) {
+            console.log("[Agent] First launch detected — initializing onboarding");
+            await initOnboarding();
+            // Send a synthetic prompt to trigger the onboarding conversation
+            send({
+              type: "prompt",
+              id: nanoid(),
+              timestamp: Date.now(),
+              payload: {
+                prompt: "This is my first time using DotBot. Please start the onboarding process to help me get set up.",
+                source: "system",
+              },
+            });
+          }
+        }).catch(err => {
+          console.error("[Agent] Onboarding check failed:", err);
         });
       } else {
         console.error("[Agent] Authentication failed");
@@ -633,6 +743,8 @@ async function handleMessage(message: WSMessage): Promise<void> {
       break;
 
     case "response":
+      // Check if this is a scheduled task response first
+      if (handleScheduledTaskResponse(message)) break;
       // Route to Discord if this was a Discord-originated prompt
       if (!handleDiscordResponse(message)) {
         console.log("\n[Response]", message.payload.response);
@@ -640,6 +752,8 @@ async function handleMessage(message: WSMessage): Promise<void> {
       break;
 
     case "error":
+      // Check if this error is for a scheduled task prompt
+      handleScheduledTaskResponse(message);
       console.error("[Error]", message.payload.error);
       break;
 
@@ -682,10 +796,11 @@ async function handleMessage(message: WSMessage): Promise<void> {
       break;
 
     case "user_notification":
-      // Display notification from sleep cycle
       console.log(`\n[Notification] ${message.payload.title || "Update"}: ${message.payload.message}`);
-      // Forward to Discord #updates channel
-      if (message.payload?.message) {
+      // Sleep cycle loop notifications are handled by the setSleepCycleLoopCallback — skip to avoid duplicates.
+      // Other notification sources go to both #conversation and #updates.
+      if (message.payload?.message && message.payload?.source !== "sleep_cycle") {
+        sendToConversationChannel(`🔔 **${message.payload.title || "Notification"}**\n${message.payload.message}`);
         sendToUpdatesChannel(`🔔 **${message.payload.title || "Notification"}**\n${message.payload.message}`);
       }
       break;
@@ -698,8 +813,11 @@ async function handleMessage(message: WSMessage): Promise<void> {
       break;
 
     case "agent_complete":
-      // Route to Discord #conversation if this was a Discord-originated prompt
-      handleDiscordResponse(message);
+      // Check if this is a scheduled task completion first
+      if (!handleScheduledTaskResponse(message)) {
+        // Route to Discord #conversation if this was a Discord-originated prompt
+        handleDiscordResponse(message);
+      }
       // Always log locally too
       console.log(`[Agent] Task completed: ${message.payload.taskId} (${message.payload.success ? "success" : "failed"})`);
       // Forward completion summary to Discord #logs channel

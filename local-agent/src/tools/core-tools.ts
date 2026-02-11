@@ -25,9 +25,11 @@ import {
   llmTools,
   discordTools,
   reminderTools,
+  scheduleTools,
   adminTools,
   emailTools,
   marketTools,
+  onboardingTools,
 } from "./core-tools-extended.js";
 import { guiTools } from "./gui/index.js";
 
@@ -661,9 +663,11 @@ export const CORE_TOOLS: DotBotTool[] = [
   ...llmTools,
   ...discordTools,
   ...reminderTools,
+  ...scheduleTools,
   ...adminTools,
   ...emailTools,
   ...marketTools,
+  ...onboardingTools,
   ...guiTools,
 ];
 

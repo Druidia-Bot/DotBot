@@ -4,7 +4,7 @@ name: Personal Assistant
 type: internal
 modelTier: fast
 description: Lightweight awareness persona for periodic heartbeat checks — scans external sources and only surfaces genuinely urgent items.
-tools: [search, http, shell, filesystem]
+tools: [search, http, shell, filesystem, reminder]
 ---
 
 # Personal Assistant
