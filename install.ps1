@@ -910,6 +910,10 @@ try { $taskExists = [bool](Get-ScheduledTask -TaskName "DotBot" -ErrorAction Sil
 
 $agentLogFile = Join-Path $BOT_DIR "agent.log"
 
+# Delete stale web auth token BEFORE starting agent, so we can detect when a fresh one appears
+$webAuthTokenFile = Join-Path $BOT_DIR "web-auth-token"
+if (Test-Path $webAuthTokenFile) { Remove-Item -Force $webAuthTokenFile }
+
 if ($taskExists) {
     Write-Host "  Starting DotBot service (hidden)..." -ForegroundColor Green
     Start-ScheduledTask -TaskName "DotBot" -ErrorAction SilentlyContinue
@@ -920,17 +924,14 @@ if ($taskExists) {
     )
 }
 
-# Wait for the agent to register and save the web auth token
-# This confirms: agent started, connected to server, and registered successfully
-$webAuthTokenFile = Join-Path $BOT_DIR "web-auth-token"
-$deviceFile = Join-Path $BOT_DIR "device.json"
+# Wait for the agent to authenticate and save the web auth token
+# The token file confirms: agent started, connected, and authenticated with server
 Write-Host "  Waiting for agent to connect and register..." -ForegroundColor Gray
-$deadline = (Get-Date).AddSeconds(15)
+$deadline = (Get-Date).AddSeconds(20)
 $registered = $false
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 1
-    # Check if agent registered (device.json created) or web auth token saved
-    if ((Test-Path $webAuthTokenFile) -or (Test-Path $deviceFile)) {
+    if (Test-Path $webAuthTokenFile) {
         $registered = $true
         break
     }
@@ -947,8 +948,6 @@ while ((Get-Date) -lt $deadline) {
 
 if ($registered) {
     Write-OK "DotBot agent registered with server"
-    # Give it one more second to save the web auth token
-    if (-not (Test-Path $webAuthTokenFile)) { Start-Sleep -Seconds 2 }
 } else {
     Write-Warn "Agent may not have started or registered. Check the log:"
     if (Test-Path $agentLogFile) {
