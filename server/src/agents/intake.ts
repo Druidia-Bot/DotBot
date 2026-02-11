@@ -22,7 +22,7 @@ import {
   getInternalPersonas,
 } from "../personas/loader.js";
 import type { ILLMClient } from "../llm/providers.js";
-import { selectModel } from "../llm/providers.js";
+import { resolveModelAndClient } from "./execution.js";
 import type { MemoryDelta } from "../types.js";
 import * as memory from "../memory/manager.js";
 import { createComponentLogger } from "../logging.js";
@@ -52,7 +52,7 @@ export async function runReceptionist(
   const receptionist = getReceptionist();
   if (!receptionist) throw new Error("Receptionist not loaded");
 
-  const modelConfig = selectModel({ explicitRole: "intake" });
+  const { selectedModel: modelConfig, client } = await resolveModelAndClient(llm, { explicitRole: "intake" });
 
   // Build context sections for system prompt
   const threadSummary =
@@ -164,7 +164,7 @@ Analyze the conversation and provide your routing decision as JSON.`;
   // Debug callback - LLM request
   options.onLLMRequest?.({
     persona: "receptionist",
-    provider: options.provider || "deepseek",
+    provider: modelConfig.provider,
     model: modelConfig.model,
     promptLength: messages.reduce((acc, m) => acc + m.content.length, 0),
     maxTokens: modelConfig.maxTokens,
@@ -172,7 +172,7 @@ Analyze the conversation and provide your routing decision as JSON.`;
   });
 
   const startTime = Date.now();
-  const response = await llm.chat(messages, {
+  const response = await client.chat(messages, {
     model: modelConfig.model,
     maxTokens: modelConfig.maxTokens,
     temperature: modelConfig.temperature,
@@ -241,7 +241,7 @@ export async function runPlanner(
   const planner = getPlanner();
   if (!planner) throw new Error("Planner agent not loaded");
 
-  const modelConfig = selectModel({ personaModelTier: planner.modelTier });
+  const { selectedModel: modelConfig, client } = await resolveModelAndClient(llm, { personaModelTier: planner.modelTier });
 
   const personaSummary = personas
     .map((p) => `- ${p.id} (${p.type}): ${p.description}${p.tools?.length ? ` [tools: ${p.tools.join(", ")}]` : ""}`)
@@ -322,7 +322,7 @@ ${threadContext}`;
   // Debug callback - LLM request
   options.onLLMRequest?.({
     persona: "planner",
-    provider: options.provider || "deepseek",
+    provider: modelConfig.provider,
     model: modelConfig.model,
     promptLength: messages.reduce((acc, m) => acc + m.content.length, 0),
     maxTokens: modelConfig.maxTokens,
@@ -330,7 +330,7 @@ ${threadContext}`;
   });
 
   const startTime = Date.now();
-  const response = await llm.chat(messages, {
+  const response = await client.chat(messages, {
     model: modelConfig.model,
     maxTokens: modelConfig.maxTokens,
     temperature: modelConfig.temperature,
@@ -397,7 +397,7 @@ export async function runChairman(
   const chairman = getChairman();
   if (!chairman) throw new Error("Chairman agent not loaded");
 
-  const modelConfig = selectModel({ personaModelTier: chairman.modelTier });
+  const { selectedModel: modelConfig, client } = await resolveModelAndClient(llm, { personaModelTier: chairman.modelTier });
 
   const resultsSummary = Array.from(taskResults.entries())
     .map(([id, result]) => `${result.personaId}: ${result.response}`)
@@ -421,7 +421,7 @@ Synthesize a final response to the user's request as JSON.`;
     { role: "user" as const, content: originalPrompt },
   ];
 
-  const response = await llm.chat(messages, {
+  const response = await client.chat(messages, {
     model: modelConfig.model,
     maxTokens: modelConfig.maxTokens,
     temperature: modelConfig.temperature,
@@ -486,7 +486,7 @@ export async function runJudge(
     };
   }
 
-  const modelConfig = selectModel({ personaModelTier: judge.modelTier });
+  const { selectedModel: modelConfig, client } = await resolveModelAndClient(llm, { personaModelTier: judge.modelTier });
 
   const userMessage = `USER'S ORIGINAL PROMPT:
 ${originalPrompt}
@@ -505,7 +505,7 @@ Return your verdict as JSON.`;
 
   options.onLLMRequest?.({
     persona: "judge",
-    provider: options.provider || "deepseek",
+    provider: modelConfig.provider,
     model: modelConfig.model,
     promptLength: messages.reduce((acc, m) => acc + m.content.length, 0),
     maxTokens: modelConfig.maxTokens,
@@ -515,7 +515,7 @@ Return your verdict as JSON.`;
   const startTime = Date.now();
 
   try {
-    const response = await llm.chat(messages, {
+    const response = await client.chat(messages, {
       model: modelConfig.model,
       maxTokens: modelConfig.maxTokens,
       temperature: modelConfig.temperature,
@@ -608,7 +608,7 @@ Conversations: ${(model.conversations || []).slice(-3).map((c: any) => c.summary
         }
       }
 
-      const modelConfig = selectModel({ personaModelTier: updater.modelTier });
+      const { selectedModel: modelConfig, client } = await resolveModelAndClient(llm, { personaModelTier: updater.modelTier });
 
       const userMessage = `MEMORY ACTION: ${memoryAction}
 
@@ -622,7 +622,7 @@ ${decision.memoryTargets?.length ? `\nMEMORY TARGETS:\n${JSON.stringify(decision
 ${existingModelContext ? `\n${existingModelContext}` : ""}
 Respond with valid JSON containing "deltas" array and "sessionAction" string.`;
 
-      const response = await llm.chat(
+      const response = await client.chat(
         [
           { role: "system", content: updater.systemPrompt },
           { role: "user", content: userMessage },

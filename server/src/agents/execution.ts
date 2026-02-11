@@ -46,7 +46,7 @@ import { isCloudReachable } from "../llm/local-llm.js";
  * Automatically checks cloud connectivity so isOffline is set correctly.
  * The connectivity check is cached (60s TTL) so this is cheap to call.
  */
-async function resolveModelAndClient(
+export async function resolveModelAndClient(
   currentLlm: ILLMClient,
   criteria: ModelSelectionCriteria
 ): Promise<{ selectedModel: ModelSelection; client: ILLMClient }> {
