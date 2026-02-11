@@ -22,11 +22,14 @@ import type { ToolExecResult } from "../tool-executor.js";
 // SCREENSHOT UPLOAD (HTTP POST instead of base64 over WebSocket)
 // ============================================
 
-/** Server HTTP URL derived from WS URL (ws://localhost:3001 → http://localhost:3000) */
+/** Server HTTP URL derived from WS URL (ws://localhost:3001 → http://localhost:3000, wss://server.example.com/ws → https://server.example.com) */
 const SERVER_HTTP_URL = (() => {
   const wsUrl = process.env.DOTBOT_SERVER || "ws://localhost:3001";
+  const parsed = new URL(wsUrl);
+  const isSecure = parsed.protocol === "wss:";
+  const host = parsed.hostname;
+  if (isSecure) return `https://${host}`;
   const httpPort = parseInt(process.env.PORT || "3000");
-  const host = new URL(wsUrl).hostname;
   return `http://${host}:${httpPort}`;
 })();
 

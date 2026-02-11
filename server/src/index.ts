@@ -40,6 +40,7 @@ initBotEnvironment();
 
 const PORT = parseInt(process.env.PORT || "3000");
 const WS_PORT = parseInt(process.env.WS_PORT || "3001");
+const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
 
 // LLM Provider Configuration (DeepSeek is default)
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "";
@@ -341,7 +342,7 @@ serve({ fetch: app.fetch, port: PORT }, () => {
 });
 
 // Start WebSocket server
-createWSServer({ port: WS_PORT, apiKey: LLM_API_KEY, provider: LLM_PROVIDER, httpBaseUrl: `http://localhost:${PORT}` });
+createWSServer({ port: WS_PORT, apiKey: LLM_API_KEY, provider: LLM_PROVIDER, httpBaseUrl: PUBLIC_URL });
 console.log(`🔌 WebSocket server running on ws://localhost:${WS_PORT}`);
 
 // Initialize knowledge service (must be after WebSocket server)

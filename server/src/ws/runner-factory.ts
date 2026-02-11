@@ -212,8 +212,8 @@ export function createRunner(
           return { success: false, output: "", error: "No local agent connected to read local files" };
         }
 
-        const httpPort = process.env.PORT || "3000";
-        const uploadUrl = `http://localhost:${httpPort}/api/ingest-upload`;
+        const publicUrl = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || "3000"}`;
+        const uploadUrl = `${publicUrl}/api/ingest-upload`;
 
         try {
           const uploadCommand = {
