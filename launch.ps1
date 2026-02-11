@@ -18,7 +18,7 @@ $hasServer = Test-Path (Join-Path $Root "server\dist\index.js")
 
 if (-not $hasAgent -and -not $hasServer) {
     if (-not $Service) {
-        Write-Host "  ❌ No DotBot components found. Run the installer first." -ForegroundColor Red
+        Write-Host "  [X] No DotBot components found. Run the installer first." -ForegroundColor Red
         Read-Host "  Press Enter to exit"
     }
     exit 1
@@ -65,9 +65,9 @@ if ($Service) {
 $Host.UI.RawUI.WindowTitle = "DotBot"
 
 Write-Host ""
-Write-Host "  ╔═══════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "  ║             DotBot                     ║" -ForegroundColor Cyan
-Write-Host "  ╚═══════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "  =========================================" -ForegroundColor Cyan
+Write-Host "               DotBot                      " -ForegroundColor Cyan
+Write-Host "  =========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Open browser client

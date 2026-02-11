@@ -61,7 +61,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
         Start-Process powershell -Verb RunAs -ArgumentList $argList -Wait
     } catch {
         Write-Host ""
-        Write-Host "  ❌ Administrator privileges required." -ForegroundColor Red
+        Write-Host "  [X] Administrator privileges required." -ForegroundColor Red
         Write-Host "     Right-click PowerShell → 'Run as administrator', then try again." -ForegroundColor Gray
         exit 1
     }
@@ -88,13 +88,13 @@ $DEFAULT_REPO_URL = "https://github.com/Druidia-Bot/DotBot.git"
 
 function Write-Banner {
     Write-Host ""
-    Write-Host "  ╔═══════════════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "  ║                                                   ║" -ForegroundColor Cyan
-    Write-Host "  ║   🤖  DotBot Installer v${INSTALLER_VERSION}                    ║" -ForegroundColor Cyan
-    Write-Host "  ║                                                   ║" -ForegroundColor Cyan
-    Write-Host "  ║   Your AI assistant, installed in minutes.        ║" -ForegroundColor Cyan
-    Write-Host "  ║                                                   ║" -ForegroundColor Cyan
-    Write-Host "  ╚═══════════════════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host "  =====================================================" -ForegroundColor Cyan
+    Write-Host "                                                        " -ForegroundColor Cyan
+    Write-Host "      DotBot Installer v${INSTALLER_VERSION}                       " -ForegroundColor Cyan
+    Write-Host "                                                        " -ForegroundColor Cyan
+    Write-Host "      Your AI assistant, installed in minutes.           " -ForegroundColor Cyan
+    Write-Host "                                                        " -ForegroundColor Cyan
+    Write-Host "  =====================================================" -ForegroundColor Cyan
     Write-Host ""
 }
 
@@ -106,17 +106,17 @@ function Write-Step {
 
 function Write-OK {
     param([string]$Message)
-    Write-Host "  ✅ $Message" -ForegroundColor Green
+    Write-Host "  [OK] $Message" -ForegroundColor Green
 }
 
 function Write-Warn {
     param([string]$Message)
-    Write-Host "  ⚠️  $Message" -ForegroundColor Yellow
+    Write-Host "  [!] $Message" -ForegroundColor Yellow
 }
 
 function Write-Fail {
     param([string]$Message)
-    Write-Host "  ❌ $Message" -ForegroundColor Red
+    Write-Host "  [X] $Message" -ForegroundColor Red
 }
 
 # Status tracking
@@ -182,7 +182,7 @@ function Get-InstallMode {
     switch ($choice) {
         "1" {
             Write-Host ""
-            Write-Host "  ⭐ The DotBot managed service is coming soon!" -ForegroundColor Cyan
+            Write-Host "  * The DotBot managed service is coming soon!" -ForegroundColor Cyan
             Write-Host "  We're building a hosted server so you don't have to run your own." -ForegroundColor White
             Write-Host "  For now, please choose option [2] to connect to a self-hosted server," -ForegroundColor White
             Write-Host "  or option [3] to set up your own server." -ForegroundColor White
@@ -894,9 +894,9 @@ $installStatus.completedSuccessfully = $true
 Save-InstallStatus
 
 Write-Host ""
-Write-Host "  ════════════════════════════════════════" -ForegroundColor Green
-Write-Host "  ✅ DotBot installation complete!" -ForegroundColor Green
-Write-Host "  ════════════════════════════════════════" -ForegroundColor Green
+Write-Host "  ========================================" -ForegroundColor Green
+Write-Host "  [OK] DotBot installation complete!" -ForegroundColor Green
+Write-Host "  ========================================" -ForegroundColor Green
 Write-Host ""
 
 # Start DotBot as a hidden background service
@@ -932,7 +932,7 @@ if (Test-Path $clientPath) {
     }
     if ($serverWsUrl -and $serverWsUrl -ne "ws://localhost:3001") {
         Write-Host ""
-        Write-Host "  ℹ️  In the browser, click ⚙️ and set your server URL to:" -ForegroundColor Yellow
+        Write-Host "  [i] In the browser, click the gear icon and set your server URL to:" -ForegroundColor Yellow
         Write-Host "     $serverWsUrl" -ForegroundColor Cyan
     }
 }
@@ -950,7 +950,7 @@ Write-Host ""
 
 $failedSteps = $installStatus.steps.GetEnumerator() | Where-Object { $_.Value.status -eq "failed" }
 if ($failedSteps) {
-    Write-Host "  ⚠️  Some optional components failed to install:" -ForegroundColor Yellow
+    Write-Host "  [!] Some optional components failed to install:" -ForegroundColor Yellow
     foreach ($step in $failedSteps) {
         Write-Host "    - $($step.Key): $($step.Value.error)" -ForegroundColor Yellow
     }

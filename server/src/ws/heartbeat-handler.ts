@@ -2,8 +2,9 @@
  * Heartbeat Request Handler
  * 
  * Handles heartbeat_request messages from the local agent.
- * Routes the user's HEARTBEAT.md checklist through the personal-assistant
- * persona with tool access, returns the evaluation result.
+ * The user's ~/.bot/HEARTBEAT.md is a prompt — its contents are injected
+ * verbatim into the LLM call. The personal-assistant persona executes
+ * those instructions with tool access (search, http, shell, filesystem).
  * 
  * If the persona determines nothing is urgent, it replies HEARTBEAT_OK.
  * Otherwise it returns a concise notification for the user.

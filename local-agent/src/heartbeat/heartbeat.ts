@@ -2,9 +2,11 @@
  * Heartbeat — Periodic Awareness Loop
  * 
  * Runs every 5 minutes when the system is idle. Reads the user's
- * HEARTBEAT.md checklist from ~/.bot/, sends it to the server for
- * evaluation by the personal-assistant persona, and notifies the
- * user only when something is genuinely urgent.
+ * ~/.bot/HEARTBEAT.md prompt and sends it verbatim to the server for
+ * execution by the personal-assistant persona (with tool access).
+ * The user writes natural-language instructions in that file — whatever
+ * they write IS the prompt. Notifies the user only when something is
+ * genuinely urgent.
  * 
  * Complements the sleep cycle (30 min deep consolidation) — the
  * heartbeat is a quick awareness scan, not deep research.
