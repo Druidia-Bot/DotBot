@@ -119,6 +119,15 @@ function cleanConsumedInviteToken(): void {
 function normalizeServerUrl(raw: string): string {
   let url = raw.trim().replace(/\/+$/, ""); // trim + strip trailing slashes
 
+  // Detect corrupted .env (missing newlines between keys)
+  if (url.includes("DOTBOT_") || url.includes("=")) {
+    console.error("[Agent] FATAL: DOTBOT_SERVER value is corrupted (contains other .env keys).");
+    console.error(`[Agent]   Raw value: ${url.slice(0, 120)}`);
+    console.error("[Agent]   Fix: delete ~/.bot/.env and re-run the installer, or manually edit the file");
+    console.error("[Agent]   Each key=value pair must be on its own line.");
+    process.exit(1);
+  }
+
   // Fix scheme: https:// → wss://, http:// → ws://
   if (url.startsWith("https://")) url = "wss://" + url.slice(8);
   else if (url.startsWith("http://")) url = "ws://" + url.slice(7);
