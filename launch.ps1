@@ -2,8 +2,8 @@
 # Auto-detects installed components and starts them.
 #
 # Usage:
-#   launch.ps1            — Interactive mode (Start Menu shortcut, visible window)
-#   launch.ps1 -Service   — Background service mode (Task Scheduler, hidden, logs to file)
+#   launch.ps1            -- Interactive mode (Start Menu shortcut, visible window)
+#   launch.ps1 -Service   -- Background service mode (Task Scheduler, hidden, logs to file)
 
 param([switch]$Service)
 
@@ -24,7 +24,7 @@ if (-not $hasAgent -and -not $hasServer) {
     exit 1
 }
 
-# ── Service mode: hidden, log to file, no browser ──
+# -- Service mode: hidden, log to file, no browser --
 
 if ($Service) {
     if (-not (Test-Path $BotDir)) { New-Item -ItemType Directory -Path $BotDir -Force | Out-Null }
@@ -57,10 +57,10 @@ if ($Service) {
             -RedirectStandardOutput $logFile -RedirectStandardError (Join-Path $BotDir "server-error.log")
         $proc.WaitForExit()
     }
-    exit $LASTEXITCODE
+    exit $proc.ExitCode
 }
 
-# ── Interactive mode: visible window, opens browser ──
+# -- Interactive mode: visible window, opens browser --
 
 $Host.UI.RawUI.WindowTitle = "DotBot"
 
@@ -70,10 +70,26 @@ Write-Host "               DotBot                      " -ForegroundColor Cyan
 Write-Host "  =========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Open browser client
+# Open browser client with server URL pre-configured
 $clientPath = Join-Path $Root "client\index.html"
 if (Test-Path $clientPath) {
-    Start-Process $clientPath
+    $serverWsUrl = ""
+    $envFile = Join-Path $BotDir ".env"
+    if (Test-Path $envFile) {
+        $envRaw = Get-Content $envFile -Raw
+        if ($envRaw -match 'DOTBOT_SERVER=(.+)') {
+            $serverWsUrl = $Matches[1].Trim()
+        }
+    }
+    # Convert to file:/// URI so query params work in the browser
+    # Encode spaces (C:\Program Files) for browser compatibility
+    $fileUri = "file:///" + (($clientPath -replace '\\', '/') -replace ' ', '%20')
+    if ($serverWsUrl -and $serverWsUrl -ne "ws://localhost:3001") {
+        $encodedUrl = [Uri]::EscapeDataString($serverWsUrl)
+        Start-Process "$fileUri`?ws=$encodedUrl"
+    } else {
+        Start-Process $fileUri
+    }
 }
 
 # Start server in a new window if both are installed

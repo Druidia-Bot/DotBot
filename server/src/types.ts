@@ -448,6 +448,7 @@ export interface WSAuthMessage extends WSMessage {
     capabilities: string[];
     tempDir?: string;
     hwFingerprint: string;
+    webAuthToken?: string;
   };
 }
 

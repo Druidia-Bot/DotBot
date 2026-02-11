@@ -165,7 +165,7 @@
     <p id="disconnectReason" class="text-gray-500 mb-2">Server connection lost</p>
     <p id="disconnectUrl" class="text-gray-600 text-xs mb-6 font-mono"></p>
     <div id="reconnectStatus" class="text-dot-cyan text-sm mb-4">Attempting to reconnect...</div>
-    <button onclick="showServerSettings()" class="px-4 py-2 bg-dot-panel border border-dot-border rounded hover:bg-gray-800 text-sm transition">⚙️ Change Server</button>
+    <button onclick="showServerSettings()" class="px-4 py-2 bg-dot-panel border border-dot-border rounded hover:bg-gray-800 text-sm transition">⚙️ Connection Settings</button>
   </div>
 
   <!-- Server Settings Modal -->
@@ -177,6 +177,11 @@
         onkeydown="if(event.key==='Enter')saveServerSettings()"
         class="w-full px-3 py-2 bg-dot-bg border border-dot-border rounded text-gray-200 text-sm font-mono focus:outline-none focus:border-dot-cyan mb-4" />
       <p class="text-xs text-gray-500 mb-4">Enter the WebSocket URL of your DotBot server.<br/>Use <span class="text-gray-400">ws://</span> for local or <span class="text-gray-400">wss://</span> for remote.</p>
+      <label class="block text-sm text-gray-400 mb-1">Auth Token</label>
+      <input id="webAuthTokenInput" type="password" placeholder="Paste your web auth token"
+        onkeydown="if(event.key==='Enter')saveServerSettings()"
+        class="w-full px-3 py-2 bg-dot-bg border border-dot-border rounded text-gray-200 text-sm font-mono focus:outline-none focus:border-dot-cyan mb-4" />
+      <p class="text-xs text-gray-500 mb-4">Required. Get this from your server admin or <span class="text-gray-400">~/.bot/server-data/web-auth-token</span></p>
       <div class="flex gap-2 justify-end">
         <button onclick="closeServerSettings()" class="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition">Cancel</button>
         <button onclick="saveServerSettings()" class="px-4 py-2 bg-dot-cyan text-black text-sm font-semibold rounded hover:bg-cyan-400 transition">Connect</button>
@@ -197,6 +202,7 @@
       return localStorage.getItem('dotbot_ws_url') || 'ws://localhost:3001';
     }
     let WS_URL = resolveWsUrl();
+    let WEB_AUTH_TOKEN = localStorage.getItem('dotbot_web_auth_token') || '';
     const DEVICE_ID = 'web-client-' + Math.random().toString(36).substr(2, 9);
     
     let ws = null;
@@ -571,7 +577,8 @@
             deviceToken: 'web-client-token',
             deviceId: DEVICE_ID,
             deviceName: 'Web Browser',
-            capabilities: ['prompt']
+            capabilities: ['prompt'],
+            webAuthToken: WEB_AUTH_TOKEN
           }
         };
         log('Sending auth request', 'client-send', authMsg);
@@ -887,8 +894,13 @@
     // Server settings
     function showServerSettings() {
       document.getElementById('serverUrlInput').value = WS_URL;
+      document.getElementById('webAuthTokenInput').value = WEB_AUTH_TOKEN;
       document.getElementById('serverSettingsModal').classList.remove('hidden');
-      document.getElementById('serverUrlInput').focus();
+      if (!WEB_AUTH_TOKEN) {
+        document.getElementById('webAuthTokenInput').focus();
+      } else {
+        document.getElementById('serverUrlInput').focus();
+      }
     }
     
     function closeServerSettings() {
@@ -897,9 +909,12 @@
     
     function saveServerSettings() {
       const newUrl = document.getElementById('serverUrlInput').value.trim();
+      const newToken = document.getElementById('webAuthTokenInput').value.trim();
       if (!newUrl) return;
       localStorage.setItem('dotbot_ws_url', newUrl);
+      if (newToken) localStorage.setItem('dotbot_web_auth_token', newToken);
       WS_URL = newUrl;
+      WEB_AUTH_TOKEN = newToken;
       closeServerSettings();
       authErrorReason = '';
       if (ws) { ws.onclose = null; ws.close(); }
@@ -910,7 +925,12 @@
     log('DotBot Client initialized', 'info');
     log('Server: ' + WS_URL, 'info');
     log('Device ID: ' + DEVICE_ID, 'info');
-    connect();
+    if (!WEB_AUTH_TOKEN) {
+      log('No web auth token set — opening settings', 'info');
+      showServerSettings();
+    } else {
+      connect();
+    }
   </script>
 </body>
 </html>

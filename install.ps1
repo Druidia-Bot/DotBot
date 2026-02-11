@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    DotBot Bootstrap Installer — Windows
+    DotBot Bootstrap Installer -- Windows
 .DESCRIPTION
     Single-command installer for DotBot. Handles prerequisites, clone, build,
     configuration, and first launch. Supports agent-only, server-only, or both.
@@ -17,7 +17,7 @@
 .PARAMETER InviteToken
     Invite token for device registration (agent mode only)
 .PARAMETER RepoUrl
-    Git clone URL (required — no default, will prompt if not provided)
+    Git clone URL (required -- no default, will prompt if not provided)
 .PARAMETER InstallDir
     Where to clone DotBot (default: C:\Program Files\.bot)
 #>
@@ -42,7 +42,7 @@ $ProgressPreference = "SilentlyContinue"  # Speeds up Invoke-WebRequest
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "  Requesting administrator privileges..." -ForegroundColor Yellow
 
-    # Determine script path — $PSCommandPath is empty when piped (irm | iex)
+    # Determine script path -- $PSCommandPath is empty when piped (irm | iex)
     $scriptPath = $PSCommandPath
     if (-not $scriptPath) {
         $scriptPath = Join-Path $env:TEMP "dotbot-install.ps1"
@@ -62,7 +62,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     } catch {
         Write-Host ""
         Write-Host "  [X] Administrator privileges required." -ForegroundColor Red
-        Write-Host "     Right-click PowerShell → 'Run as administrator', then try again." -ForegroundColor Gray
+        Write-Host "     Right-click PowerShell -> 'Run as administrator', then try again." -ForegroundColor Gray
         exit 1
     }
     exit 0
@@ -169,10 +169,10 @@ function Get-InstallMode {
     Write-Host ""
     Write-Host "  What would you like to install?" -ForegroundColor White
     Write-Host ""
-    Write-Host "    [1] DotBot Service  — connect to our hosted server (coming soon)" -ForegroundColor Cyan
-    Write-Host "    [2] Local Agent     — connects to a self-hosted DotBot server" -ForegroundColor White
-    Write-Host "    [3] Server          — host your own DotBot server" -ForegroundColor White
-    Write-Host "    [4] Both            — development / single-machine setup" -ForegroundColor White
+    Write-Host "    [1] DotBot Service  -- connect to our hosted server (coming soon)" -ForegroundColor Cyan
+    Write-Host "    [2] Local Agent     -- connects to a self-hosted DotBot server" -ForegroundColor White
+    Write-Host "    [3] Server          -- host your own DotBot server" -ForegroundColor White
+    Write-Host "    [4] Both            -- development / single-machine setup" -ForegroundColor White
     Write-Host ""
 
     do {
@@ -208,18 +208,18 @@ function Get-AgentConfig {
         $ServerUrl = Read-Host "  Enter DotBot server WebSocket URL (e.g. wss://dotbot.example.com/ws)"
         if (-not $ServerUrl) {
             $ServerUrl = "ws://localhost:3001"
-            Write-Warn "No URL entered — defaulting to $ServerUrl"
+            Write-Warn "No URL entered -- defaulting to $ServerUrl"
         }
     }
 
     # Normalize: trim trailing slash
     $ServerUrl = $ServerUrl.TrimEnd('/')
 
-    # Auto-append /ws for remote servers (Caddy proxies /ws → :3001)
+    # Auto-append /ws for remote servers (Caddy proxies /ws -> :3001)
     # Skip for localhost URLs which connect directly to port 3001
     if ($ServerUrl -match '^wss?://' -and $ServerUrl -notmatch 'localhost|127\.0\.0\.1' -and $ServerUrl -notmatch '/ws$') {
         $ServerUrl = "$ServerUrl/ws"
-        Write-Warn "Appended /ws — using: $ServerUrl"
+        Write-Warn "Appended /ws -- using: $ServerUrl"
         Write-Host "    (Remote servers use Caddy which routes /ws to the WebSocket port)" -ForegroundColor DarkGray
     }
 
@@ -348,7 +348,7 @@ function Install-Python {
         }
     } catch {}
 
-    Write-Warn "Python installation failed — GUI automation will be unavailable."
+    Write-Warn "Python installation failed -- GUI automation will be unavailable."
     Write-Host "    DotBot will try to fix this after startup." -ForegroundColor Gray
     Set-StepStatus -StepName "python" -Status "failed" -Tier 2 -ErrorMsg "winget install failed"
     return $false
@@ -363,7 +363,7 @@ function Install-PipPackages {
     Write-Step "4/11" "Checking pip packages..."
 
     if (-not $PythonOK) {
-        Write-Warn "Skipping pip packages — Python not installed"
+        Write-Warn "Skipping pip packages -- Python not installed"
         Set-StepStatus -StepName "pip_packages" -Status "skipped" -Tier 2 -Reason "python not installed"
         return
     }
@@ -374,7 +374,7 @@ function Install-PipPackages {
         Write-OK "pip packages installed"
         Set-StepStatus -StepName "pip_packages" -Status "success" -Tier 2
     } catch {
-        Write-Warn "pip packages failed — GUI automation may not work"
+        Write-Warn "pip packages failed -- GUI automation may not work"
         Set-StepStatus -StepName "pip_packages" -Status "failed" -Tier 2 -ErrorMsg $_.Exception.Message
     }
 }
@@ -403,7 +403,7 @@ function Install-Tesseract {
         return
     }
 
-    Write-Warn "Tesseract not found — screenshot OCR will be unavailable."
+    Write-Warn "Tesseract not found -- screenshot OCR will be unavailable."
     Write-Host "    DotBot will try to install it after startup." -ForegroundColor Gray
     Set-StepStatus -StepName "tesseract" -Status "skipped" -Tier 2 -Reason "not found, Dot will install"
 }
@@ -608,12 +608,16 @@ DOTBOT_INVITE_TOKEN=$Token
 "@
 
     # Append to existing .env or create new
+    # IMPORTANT: Use WriteAllText, NOT Set-Content -Encoding UTF8.
+    # PowerShell 5.1's Set-Content -Encoding UTF8 adds a BOM (byte order mark)
+    # which corrupts the first key when Node.js reads the file.
     if (Test-Path $ENV_FILE) {
         # Remove existing DOTBOT_ lines and append new ones
         $existing = Get-Content $ENV_FILE | Where-Object { $_ -notmatch '^DOTBOT_(SERVER|INVITE_TOKEN)=' }
-        ($existing + "" + $envContent) | Set-Content -Path $ENV_FILE -Encoding UTF8
+        $final = (($existing + "" + $envContent) -join "`n")
+        [System.IO.File]::WriteAllText($ENV_FILE, $final, [System.Text.UTF8Encoding]::new($false))
     } else {
-        $envContent | Set-Content -Path $ENV_FILE -Encoding UTF8
+        [System.IO.File]::WriteAllText($ENV_FILE, $envContent, [System.Text.UTF8Encoding]::new($false))
     }
 
     Write-OK "Agent configured: server=$Url"
@@ -637,7 +641,7 @@ function Install-Playwright {
         Set-StepStatus -StepName "playwright" -Status "success" -Tier 2
     } catch {
         Pop-Location
-        Write-Warn "Playwright install failed — headless browser unavailable"
+        Write-Warn "Playwright install failed -- headless browser unavailable"
         Set-StepStatus -StepName "playwright" -Status "failed" -Tier 2 -ErrorMsg $_.Exception.Message
     }
 }
@@ -655,7 +659,7 @@ function Install-Shortcuts {
         $launcherPath = Join-Path $Dir "launch.ps1"
 
         if (-not (Test-Path $launcherPath)) {
-            Write-Warn "launch.ps1 not found — skipping shortcut creation"
+            Write-Warn "launch.ps1 not found -- skipping shortcut creation"
             return
         }
 
@@ -667,7 +671,7 @@ function Install-Shortcuts {
         $shortcut.WorkingDirectory = $Dir
         $shortcut.Description = "Start DotBot"
         $shortcut.Save()
-        Write-OK "Start Menu shortcut created — search 'DotBot' to launch"
+        Write-OK "Start Menu shortcut created -- search 'DotBot' to launch"
 
         # Register as background service via Task Scheduler (hidden, no window)
         Write-Host ""
@@ -692,18 +696,18 @@ function Install-Shortcuts {
                     -Action $Action `
                     -Trigger $Trigger `
                     -Settings $Settings `
-                    -Description "DotBot AI Assistant — background agent" `
+                    -Description "DotBot AI Assistant -- background agent" `
                     -Force | Out-Null
 
-                Write-OK "Background service registered — DotBot starts automatically on login (hidden)"
+                Write-OK "Background service registered -- DotBot starts automatically on login (hidden)"
                 Set-StepStatus -StepName "task_scheduler" -Status "success"
             } catch {
                 Write-Warn "Task Scheduler registration failed: $($_.Exception.Message)"
-                Write-Host "    DotBot will still work — just won't auto-start on login." -ForegroundColor Gray
+                Write-Host "    DotBot will still work -- just won't auto-start on login." -ForegroundColor Gray
                 Set-StepStatus -StepName "task_scheduler" -Status "failed" -Tier 2 -ErrorMsg $_.Exception.Message
             }
         } else {
-            Write-Host "    Skipped — you can register later with:" -ForegroundColor DarkGray
+            Write-Host "    Skipped -- you can register later with:" -ForegroundColor DarkGray
             Write-Host "    schtasks /create /tn DotBot /tr `"powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File '$launcherPath'`" /sc onlogon" -ForegroundColor DarkGray
         }
     } catch {
@@ -722,7 +726,7 @@ $selectedMode = Get-InstallMode
 $installStatus.mode = $selectedMode
 Write-Host ""
 Write-Host "  Installing: $selectedMode" -ForegroundColor White
-Write-Host "  ────────────────────────────────────────" -ForegroundColor DarkGray
+Write-Host "  ----------------------------------------" -ForegroundColor DarkGray
 
 # Step 0b: Collect agent config if needed
 $agentConfig = $null
@@ -746,7 +750,7 @@ if (-not (Test-Path $BOT_DIR)) {
 
 Write-Host ""
 
-# ── TIER 1: Hard requirements ──
+# -- TIER 1: Hard requirements --
 
 $gitOK = Install-Git
 if (-not $gitOK) {
@@ -764,7 +768,7 @@ if (-not $nodeOK) {
     exit 1
 }
 
-# ── TIER 2: Soft requirements ──
+# -- TIER 2: Soft requirements --
 
 $pythonOK = Install-Python
 Install-PipPackages -PythonOK $pythonOK
@@ -786,7 +790,7 @@ if (-not $RepoUrl) {
     }
 }
 
-# ── TIER 1: Clone + Build ──
+# -- TIER 1: Clone + Build --
 
 $cloneOK = Install-CloneRepo -Dir $InstallDir
 if (-not $cloneOK) {
@@ -799,7 +803,7 @@ if (-not $cloneOK) {
 $npmOK = Install-NpmDeps -Dir $InstallDir
 if (-not $npmOK) {
     Save-InstallStatus
-    Write-Fail "Cannot continue — npm install failed."
+    Write-Fail "Cannot continue -- npm install failed."
     Read-Host "  Press Enter to exit"
     exit 1
 }
@@ -812,7 +816,7 @@ if (-not $buildOK) {
     exit 1
 }
 
-# ── Post-build: Cleanup + Configure ──
+# -- Post-build: Cleanup + Configure --
 
 Remove-UnneededPackages -Dir $InstallDir -SelectedMode $selectedMode
 
@@ -820,17 +824,17 @@ if ($agentConfig) {
     Set-AgentEnv -Url $agentConfig.ServerUrl -Token $agentConfig.InviteToken
 }
 
-# ── Server .env API key prompts ──
+# -- Server .env API key prompts --
 
 if ($selectedMode -eq "server" -or $selectedMode -eq "both") {
     $serverEnvPath = Join-Path $InstallDir ".env"
     if (-not (Test-Path $serverEnvPath) -or (Get-Content $serverEnvPath -Raw) -match "your_key_here") {
         Write-Host ""
-        Write-Host "  ┌────────────────────────────────────────────────┐" -ForegroundColor Yellow
-        Write-Host "  │  API Key Setup                                │" -ForegroundColor Yellow
-        Write-Host "  │  Press Enter to skip any key you don't have.  │" -ForegroundColor Yellow
-        Write-Host "  │  You need at least ONE LLM key to start.      │" -ForegroundColor Yellow
-        Write-Host "  └────────────────────────────────────────────────┘" -ForegroundColor Yellow
+        Write-Host "  ------------------------------------------------" -ForegroundColor Yellow
+        Write-Host "    API Key Setup                                  " -ForegroundColor Yellow
+        Write-Host "    Press Enter to skip any key you don't have.    " -ForegroundColor Yellow
+        Write-Host "    You need at least ONE LLM key to start.        " -ForegroundColor Yellow
+        Write-Host "  ------------------------------------------------" -ForegroundColor Yellow
         Write-Host ""
 
         $envLines = @(
@@ -842,12 +846,12 @@ if ($selectedMode -eq "server" -or $selectedMode -eq "both") {
         )
 
         $keys = @(
-            @{ Name = "DEEPSEEK_API_KEY";  Prompt = "DeepSeek API Key (workhorse — recommended)"; Url = "https://platform.deepseek.com/api_keys" },
-            @{ Name = "GEMINI_API_KEY";    Prompt = "Google Gemini API Key (deep context — 1M tokens)"; Url = "https://aistudio.google.com/apikey" },
-            @{ Name = "ANTHROPIC_API_KEY"; Prompt = "Anthropic API Key (architect — complex reasoning)"; Url = "https://console.anthropic.com/settings/keys" },
+            @{ Name = "DEEPSEEK_API_KEY";  Prompt = "DeepSeek API Key (workhorse -- recommended)"; Url = "https://platform.deepseek.com/api_keys" },
+            @{ Name = "GEMINI_API_KEY";    Prompt = "Google Gemini API Key (deep context -- 1M tokens)"; Url = "https://aistudio.google.com/apikey" },
+            @{ Name = "ANTHROPIC_API_KEY"; Prompt = "Anthropic API Key (architect -- complex reasoning)"; Url = "https://console.anthropic.com/settings/keys" },
             @{ Name = "OPENAI_API_KEY";    Prompt = "OpenAI API Key (optional fallback)"; Url = "https://platform.openai.com/api-keys" },
-            @{ Name = "XAI_API_KEY";       Prompt = "xAI API Key (optional — oracle persona, market sentiment)"; Url = "https://console.x.ai/" },
-            @{ Name = "SCRAPING_DOG_API_KEY"; Prompt = "ScrapingDog API Key (optional — premium web tools)"; Url = "https://www.scrapingdog.com/" }
+            @{ Name = "XAI_API_KEY";       Prompt = "xAI API Key (optional -- oracle persona, market sentiment)"; Url = "https://console.x.ai/" },
+            @{ Name = "SCRAPING_DOG_API_KEY"; Prompt = "ScrapingDog API Key (optional -- premium web tools)"; Url = "https://www.scrapingdog.com/" }
         )
 
         $keyCount = 0
@@ -866,7 +870,7 @@ if ($selectedMode -eq "server" -or $selectedMode -eq "both") {
             Write-Host ""
         }
 
-        $envLines -join "`n" | Set-Content -Path $serverEnvPath -Encoding UTF8 -NoNewline
+        [System.IO.File]::WriteAllText($serverEnvPath, ($envLines -join "`n"), [System.Text.UTF8Encoding]::new($false))
 
         if ($keyCount -eq 0) {
             Write-Warn "No API keys entered. You'll need to edit $serverEnvPath before starting."
@@ -878,17 +882,17 @@ if ($selectedMode -eq "server" -or $selectedMode -eq "both") {
     }
 }
 
-# ── TIER 2: Playwright ──
+# -- TIER 2: Playwright --
 
 if ($selectedMode -eq "agent" -or $selectedMode -eq "both") {
     Install-Playwright -Dir $InstallDir
 }
 
-# ── Shortcuts ──
+# -- Shortcuts --
 
 Install-Shortcuts -Dir $InstallDir
 
-# ── Save final status ──
+# -- Save final status --
 
 $installStatus.completedSuccessfully = $true
 Save-InstallStatus
@@ -904,6 +908,8 @@ $launcherPath = Join-Path $InstallDir "launch.ps1"
 $taskExists = $false
 try { $taskExists = [bool](Get-ScheduledTask -TaskName "DotBot" -ErrorAction SilentlyContinue) } catch {}
 
+$agentLogFile = Join-Path $BOT_DIR "agent.log"
+
 if ($taskExists) {
     Write-Host "  Starting DotBot service (hidden)..." -ForegroundColor Green
     Start-ScheduledTask -TaskName "DotBot" -ErrorAction SilentlyContinue
@@ -913,15 +919,45 @@ if ($taskExists) {
         "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $launcherPath, "-Service"
     )
 }
-Start-Sleep -Seconds 3
 
-# Open browser client
+# Verify the agent actually started
+Write-Host "  Waiting for agent to start..." -ForegroundColor Gray
+Start-Sleep -Seconds 5
+
+$agentRunning = $false
+try {
+    $nodeProcs = Get-Process -Name "node" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and ($_.Path -match '\.bot' -or $_.Path -match 'Program Files') }
+    if ($nodeProcs) { $agentRunning = $true }
+} catch {}
+
+if ($agentRunning) {
+    Write-OK "DotBot agent is running"
+} else {
+    Write-Warn "Agent may not have started. Check the log:"
+    if (Test-Path $agentLogFile) {
+        Write-Host ""
+        Get-Content $agentLogFile -Tail 10 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+        Write-Host ""
+    }
+    $agentErrFile = Join-Path $BOT_DIR "agent-error.log"
+    if ((Test-Path $agentErrFile) -and (Get-Item $agentErrFile).Length -gt 0) {
+        Write-Host "  Error log:" -ForegroundColor Red
+        Get-Content $agentErrFile -Tail 5 | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+        Write-Host ""
+    }
+    Write-Host "  To start manually with visible output:" -ForegroundColor Gray
+    Write-Host "    cd `"$InstallDir`"" -ForegroundColor White
+    Write-Host "    node local-agent/dist/index.js" -ForegroundColor White
+    Write-Host ""
+}
+
+# Open browser client with server URL pre-configured
 $clientPath = Join-Path $InstallDir "client\index.html"
 if (Test-Path $clientPath) {
     Write-Host "  Opening DotBot in your browser..." -ForegroundColor Green
-    Start-Process $clientPath
 
-    # Hint: if the server is remote, the browser needs the URL configured
+    # Read server URL from .env so we can pass it as ?ws= query param
     $agentEnvFile = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".bot\.env"
     $serverWsUrl = ""
     if (Test-Path $agentEnvFile) {
@@ -930,22 +966,34 @@ if (Test-Path $clientPath) {
             $serverWsUrl = $Matches[1].Trim()
         }
     }
+
+    # Convert to file:/// URI so query params work in the browser
+    # Encode spaces (C:\Program Files) for browser compatibility
+    $fileUri = "file:///" + (($clientPath -replace '\\', '/') -replace ' ', '%20')
     if ($serverWsUrl -and $serverWsUrl -ne "ws://localhost:3001") {
-        Write-Host ""
-        Write-Host "  [i] In the browser, click the gear icon and set your server URL to:" -ForegroundColor Yellow
-        Write-Host "     $serverWsUrl" -ForegroundColor Cyan
+        $encodedUrl = [Uri]::EscapeDataString($serverWsUrl)
+        Start-Process "$fileUri`?ws=$encodedUrl"
+    } else {
+        Start-Process $fileUri
     }
 }
 
 Write-Host ""
-Write-Host "  DotBot is running as a background service (no visible window)." -ForegroundColor Green
+Write-Host "  ----------------------------------------" -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "  DotBot is running as a background service." -ForegroundColor Green
 Write-Host "  It will start automatically on login." -ForegroundColor Gray
 Write-Host ""
+Write-Host "  IMPORTANT: The browser client needs an Auth Token to connect." -ForegroundColor Yellow
+Write-Host "  Get this from your server administrator, or on your server run:" -ForegroundColor Yellow
+Write-Host "    cat ~/.bot/server-data/web-auth-token" -ForegroundColor Cyan
+Write-Host "  Then paste it into the Auth Token field in the browser." -ForegroundColor Yellow
+Write-Host ""
 Write-Host "  Manage DotBot:" -ForegroundColor Gray
-Write-Host "    Search 'DotBot' in Start Menu    — launch with visible console" -ForegroundColor Gray
-Write-Host "    schtasks /run /tn DotBot          — start the background service" -ForegroundColor Gray
-Write-Host "    schtasks /end /tn DotBot          — stop the background service" -ForegroundColor Gray
-Write-Host "    Get-Content ~\.bot\agent.log -Tail 50  — view logs" -ForegroundColor Gray
+Write-Host "    Search 'DotBot' in Start Menu    -- launch with visible console" -ForegroundColor Gray
+Write-Host "    schtasks /run /tn DotBot          -- start the background service" -ForegroundColor Gray
+Write-Host "    schtasks /end /tn DotBot          -- stop the background service" -ForegroundColor Gray
+Write-Host "    Get-Content ~\.bot\agent.log -Tail 50  -- view logs" -ForegroundColor Gray
 Write-Host ""
 
 $failedSteps = $installStatus.steps.GetEnumerator() | Where-Object { $_.Value.status -eq "failed" }

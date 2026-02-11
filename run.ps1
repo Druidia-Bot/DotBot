@@ -22,7 +22,7 @@ param(
 
 $Root = $PSScriptRoot
 
-# ── Stop mode ──────────────────────────────────────────
+# -- Stop mode ------------------------------------------
 
 if ($Stop) {
     Write-Host ""
@@ -54,7 +54,7 @@ if ($Stop) {
     exit 0
 }
 
-# ── Banner ─────────────────────────────────────────────
+# -- Banner ---------------------------------------------
 
 Write-Host ""
 Write-Host "========================================================" -ForegroundColor Cyan
@@ -62,7 +62,7 @@ Write-Host "               DotBot                                   " -Foregroun
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host ""
 
-# ── Update mode ────────────────────────────────────────
+# -- Update mode ----------------------------------------
 
 if ($Update) {
     Write-Host "  Updating DotBot..." -ForegroundColor Yellow
@@ -108,7 +108,7 @@ if ($Update) {
     Pop-Location
 }
 
-# ── Check for API key ─────────────────────────────────
+# -- Check for API key ---------------------------------
 
 if (-not $env:ANTHROPIC_API_KEY -and -not $env:DEEPSEEK_API_KEY) {
     $envFile = Join-Path $Root ".env"
@@ -119,7 +119,7 @@ if (-not $env:ANTHROPIC_API_KEY -and -not $env:DEEPSEEK_API_KEY) {
     }
 }
 
-# ── Clean up existing instances ────────────────────────
+# -- Clean up existing instances ------------------------
 
 foreach ($port in @(3000, 3001)) {
     $lines = netstat -aon 2>$null | Select-String ":$port\s.*LISTENING"
@@ -131,9 +131,9 @@ foreach ($port in @(3000, 3001)) {
 }
 Start-Sleep -Milliseconds 500
 
-# ── Detect dev vs production ──────────────────────────
-# Dev mode: tsx available → npm run dev (hot-reload from source)
-# Production: no tsx → node dist/index.js (built output)
+# -- Detect dev vs production --------------------------
+# Dev mode: tsx available -> npm run dev (hot-reload from source)
+# Production: no tsx -> node dist/index.js (built output)
 
 $hasTsx = Test-Path (Join-Path $Root "node_modules\.bin\tsx.cmd")
 $hasAgentDist = Test-Path (Join-Path $Root "local-agent\dist\index.js")
@@ -176,7 +176,7 @@ if (-not $hasTsx) {
     Write-Host ""
 }
 
-# ── Run ────────────────────────────────────────────────
+# -- Run ------------------------------------------------
 
 if ($Agent) {
     Write-Host "  Starting Local Agent..." -ForegroundColor Green
@@ -200,18 +200,32 @@ elseif ($Server) {
     }
 }
 else {
-    # Run both — server in new window, agent in current, open client
+    # Run both -- server in new window, agent in current, open client
     if ($hasServerDist -or ($hasTsx -and (Test-Path "$Root\server"))) {
         Write-Host "  Starting Server in new window..." -ForegroundColor Green
         Start-ServerInWindow
         Start-Sleep -Seconds 2
     }
 
-    # Open browser client
+    # Open browser client with server URL pre-configured
     $clientPath = Join-Path $Root "client\index.html"
     if (Test-Path $clientPath) {
         Write-Host "  Opening client in browser..." -ForegroundColor Green
-        Start-Process $clientPath
+        $serverWsUrl = ""
+        $envFile = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".bot\.env"
+        if (Test-Path $envFile) {
+            $envRaw = Get-Content $envFile -Raw
+            if ($envRaw -match 'DOTBOT_SERVER=(.+)') {
+                $serverWsUrl = $Matches[1].Trim()
+            }
+        }
+        $fileUri = "file:///" + (($clientPath -replace '\\', '/') -replace ' ', '%20')
+        if ($serverWsUrl -and $serverWsUrl -ne "ws://localhost:3001") {
+            $encodedUrl = [Uri]::EscapeDataString($serverWsUrl)
+            Start-Process "$fileUri`?ws=$encodedUrl"
+        } else {
+            Start-Process $fileUri
+        }
     }
 
     Write-Host "  Starting Local Agent in this window..." -ForegroundColor Green

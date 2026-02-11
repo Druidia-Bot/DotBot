@@ -71,7 +71,9 @@ import {
 function loadBotEnv(): void {
   const envPath = path.resolve(process.env.USERPROFILE || process.env.HOME || "", ".bot", ".env");
   try {
-    const content = readFileSync(envPath, "utf-8");
+    let content = readFileSync(envPath, "utf-8");
+    // Strip UTF-8 BOM — PowerShell 5.1 Set-Content -Encoding UTF8 always adds one
+    if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
     for (const line of content.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) continue;
@@ -95,7 +97,8 @@ loadBotEnv();
 function cleanConsumedInviteToken(): void {
   const envPath = path.resolve(process.env.USERPROFILE || process.env.HOME || "", ".bot", ".env");
   try {
-    const content = readFileSync(envPath, "utf-8");
+    let content = readFileSync(envPath, "utf-8");
+    if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
     const filtered = content
       .split(/\r?\n/)
       .filter(line => !line.trim().startsWith("DOTBOT_INVITE_TOKEN="))
@@ -147,7 +150,8 @@ function autoCorrectServerUrl(): string {
     // Update ~/.bot/.env so the fix persists
     const envPath = path.resolve(process.env.USERPROFILE || process.env.HOME || "", ".bot", ".env");
     try {
-      const content = readFileSync(envPath, "utf-8");
+      let content = readFileSync(envPath, "utf-8");
+      if (content.charCodeAt(0) === 0xFEFF) content = content.slice(1);
       const updated = content
         .split(/\r?\n/)
         .map(line => line.trim().startsWith("DOTBOT_SERVER=") ? `DOTBOT_SERVER=${corrected}` : line)

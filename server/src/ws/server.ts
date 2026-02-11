@@ -59,6 +59,7 @@ import { setExecuteCallback, onSchedulerEvent } from "../scheduler/index.js";
 import type { DeferredTask } from "../scheduler/index.js";
 import { validateAndConsumeToken } from "../auth/invite-tokens.js";
 import { registerDevice, authenticateDevice, getRecentFailures, logAuthEvent, listDevices } from "../auth/device-store.js";
+import { getWebAuthToken } from "../init.js";
 
 // Re-export for backwards compatibility
 export {
@@ -393,12 +394,36 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
 
   const ip = (ws as any)._socket?.remoteAddress || "unknown";
 
-  // Allow web clients without device credentials (browser UI)
+  // Web clients authenticate with a web auth token (no device credentials).
   // These get capabilities: ['prompt'] only — no tool execution.
-  // Connection is secured by TLS (wss://) and the server URL is not public.
   // CRITICAL: Web clients must share the same userId as the local agent
   // so that getDeviceForUser() can find the local agent for tool execution.
   if (!deviceSecret || !hwFingerprint) {
+    const expectedToken = getWebAuthToken();
+    const providedToken = message.payload.webAuthToken;
+
+    if (!expectedToken) {
+      log.error("Web auth token not initialized — rejecting web client");
+      sendMessage(ws, {
+        type: "auth_failed",
+        id: nanoid(),
+        timestamp: Date.now(),
+        payload: { reason: "server_misconfigured", message: "Server web auth token not configured" },
+      });
+      return null;
+    }
+
+    if (!providedToken || providedToken !== expectedToken) {
+      log.warn("Web client auth failed: invalid web auth token", { ip });
+      sendMessage(ws, {
+        type: "auth_failed",
+        id: nanoid(),
+        timestamp: Date.now(),
+        payload: { reason: "invalid_web_token", message: "Invalid web auth token. Check your server admin for the correct token." },
+      });
+      return null;
+    }
+
     const webDeviceId = `web_${nanoid(8)}`;
 
     // Look up the primary registered device so browser shares its userId.

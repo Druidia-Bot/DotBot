@@ -8,6 +8,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { randomBytes } from "crypto";
 import { createInviteToken, hasAnyTokens } from "./auth/invite-tokens.js";
 import { hasAnyDevices } from "./auth/device-store.js";
 
@@ -111,7 +112,61 @@ The default council for handling general user requests.
     console.log("╚═══════════════════════════════════════════════════════════════╝\n");
   }
 
-  console.log("[Init] Environment ready ✓");
+  // Initialize web auth token for browser clients
+  initWebAuthToken();
+
+  console.log("[Init] Environment ready");
+}
+
+// ============================================
+// WEB AUTH TOKEN
+// ============================================
+
+let webAuthToken: string | null = null;
+
+function initWebAuthToken(): void {
+  // Explicit env var takes priority
+  if (process.env.WEB_AUTH_TOKEN) {
+    webAuthToken = process.env.WEB_AUTH_TOKEN;
+    console.log("[Init] Web auth token loaded from environment");
+    return;
+  }
+
+  // Check for persisted token
+  const tokenPath = path.join(BOT_DIR, "server-data", "web-auth-token");
+  try {
+    const existing = fs.readFileSync(tokenPath, "utf-8").trim();
+    if (existing) {
+      webAuthToken = existing;
+      console.log("[Init] Web auth token loaded from file");
+      return;
+    }
+  } catch {
+    // File doesn't exist yet
+  }
+
+  // Generate new token
+  webAuthToken = randomBytes(24).toString("base64url");
+  try {
+    fs.writeFileSync(tokenPath, webAuthToken, "utf-8");
+  } catch (err) {
+    console.error("[Init] Could not save web auth token:", err);
+  }
+
+  console.log("");
+  console.log("  ========================================");
+  console.log("  Web Auth Token (for browser clients):");
+  console.log("");
+  console.log(`    ${webAuthToken}`);
+  console.log("");
+  console.log("  Save this token! Browser clients need it to connect.");
+  console.log(`  Stored in: ${tokenPath}`);
+  console.log("  ========================================");
+  console.log("");
+}
+
+export function getWebAuthToken(): string | null {
+  return webAuthToken;
 }
 
 /**
