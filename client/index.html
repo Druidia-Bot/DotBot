@@ -190,11 +190,16 @@
   </div>
 
   <script>
-    // Resolve server URL and auth token from query params, localStorage, or defaults
+    // Resolve server URL and auth token from hash fragment, query params, localStorage, or defaults.
+    // Hash fragments (#ws=...&token=...) are preferred for file:// protocol because
+    // Windows Start-Process/ShellExecute strips query params (?) from file:// URLs.
     function resolveConfig() {
-      const params = new URLSearchParams(window.location.search);
-      const paramUrl = params.get('ws');
-      const paramToken = params.get('token');
+      // Check hash fragment first (works with file:// protocol)
+      const hashParams = new URLSearchParams(window.location.hash.slice(1));
+      // Fall back to query params (works with http:// protocol)
+      const queryParams = new URLSearchParams(window.location.search);
+      const paramUrl = hashParams.get('ws') || queryParams.get('ws');
+      const paramToken = hashParams.get('token') || queryParams.get('token');
       if (paramUrl) localStorage.setItem('dotbot_ws_url', paramUrl);
       if (paramToken) localStorage.setItem('dotbot_web_auth_token', paramToken);
       // Clean URL if we consumed any params

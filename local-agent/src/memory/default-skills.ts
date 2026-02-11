@@ -46,7 +46,7 @@ export const DEFAULT_SKILLS: DefaultSkill[] = [
   { slug: "codex-setup", version: 1, promptFile: "codex-setup-skill.md" },
   { slug: "temp-email", version: 1, promptFile: "temp-email-skill.md" },
   { slug: "market-research", version: 4, promptFile: "market-research-skill.md" },
-  { slug: "onboarding", version: 1, promptFile: "onboarding-skill.md" },
+  { slug: "onboarding", version: 2, promptFile: "onboarding-skill.md" },
   { slug: "install-doctor", version: 1, promptFile: "install-doctor-skill.md" },
 ];
 

@@ -93,12 +93,12 @@ if (Test-Path $clientPath) {
     if ($webAuthToken) {
         $queryParts += "token=$([Uri]::EscapeDataString($webAuthToken))"
     }
-    # Convert to file:/// URI so query params work in the browser
-    # Encode spaces (C:\Program Files) for browser compatibility
+    # Convert to file:/// URI with hash fragment for config
+    # (query params get stripped by Windows ShellExecute on file:// URLs)
     $fileUri = "file:///" + (($clientPath -replace '\\', '/') -replace ' ', '%20')
     if ($queryParts.Count -gt 0) {
         $qs = $queryParts -join "&"
-        Start-Process "$fileUri`?$qs"
+        Start-Process "$fileUri#$qs"
     } else {
         Start-Process $fileUri
     }

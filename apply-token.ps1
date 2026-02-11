@@ -60,6 +60,7 @@ Start-Process powershell -ArgumentList @(
 # Wait for registration
 $tokenFile = Join-Path $BotDir "web-auth-token"
 Write-Host "  Waiting for agent to register..." -ForegroundColor Gray
+Start-Sleep -Seconds 3  # Grace period for node to start via launch.ps1
 $deadline = (Get-Date).AddSeconds(20)
 $registered = $false
 while ((Get-Date) -lt $deadline) {
@@ -98,7 +99,7 @@ if ($registered) {
         $fileUri = "file:///" + (($clientPath -replace '\\', '/') -replace ' ', '%20')
         if ($queryParts.Count -gt 0) {
             $qs = $queryParts -join "&"
-            Start-Process "$fileUri`?$qs"
+            Start-Process "$fileUri#$qs"
         } else {
             Start-Process $fileUri
         }

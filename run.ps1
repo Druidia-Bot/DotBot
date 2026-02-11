@@ -234,7 +234,7 @@ else {
         $fileUri = "file:///" + (($clientPath -replace '\\', '/') -replace ' ', '%20')
         if ($queryParts.Count -gt 0) {
             $qs = $queryParts -join "&"
-            Start-Process "$fileUri`?$qs"
+            Start-Process "$fileUri#$qs"
         } else {
             Start-Process $fileUri
         }
