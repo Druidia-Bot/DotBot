@@ -38,7 +38,8 @@ Most AI tools force you to pick a model. DotBot picks it for you — automatical
 
 | Role | Model | When It's Used |
 |------|-------|----------------|
-| **Workhorse** | DeepSeek V3.2 | 98% of tasks — fast, cheap, very capable |
+| **Intake** | xAI Grok 4.1 Fast | Request classification & routing — lowest latency first response |
+| **Workhorse** | DeepSeek V3.2 | 98% of execution — fast, cheap, very capable |
 | **Deep Context** | Gemini 3 Pro (1M tokens) | Massive files, video, PDFs, entire codebases |
 | **Architect** | Claude Opus 4.6 | Complex system design, planning, second opinions |
 | **Local** | Qwen 2.5 0.5B | Offline fallback — works without internet |
@@ -80,7 +81,7 @@ Different tasks need different thinking. A code review requires different expert
 
 DotBot uses **specialized personas** — each with a focused system prompt, curated tool access, and the right model tier. A receptionist classifies and routes. Workers execute. Councils optionally review. The result: better output from smaller, sharper prompts.
 
-Built-in personas include developers (junior + senior), a researcher, writer, comedian, sysadmin, data analyst, code reviewer, GUI operator, tool maker, and more. You can create your own by dropping a `.md` file — no code changes needed.
+15 built-in personas include developers (junior, senior, core), researcher, writer, scribe, comedian, sysadmin, data analyst, code reviewer, GUI operator, tool maker, personal assistant, oracle, and a general-purpose fallback. You can create your own by dropping a `.md` file — no code changes needed.
 
 ### 42+ Tools That Actually Work
 
@@ -147,12 +148,18 @@ Your server is now running with HTTPS, a firewall, and auto-restarts.
 
 #### Step 2 — Install the agent on your Windows PC
 
-Open PowerShell and run:
+The server installer prints an **invite URL** like `https://your-server.com/invite/dbot-XXXX-...`. Share this with the new user — they'll see a branded page with a one-liner install command:
+
+```powershell
+irm 'https://your-server.com/invite/dbot-XXXX-.../install' | iex
+```
+
+This downloads the installer and runs it with the server URL and invite token pre-filled. No manual configuration needed. The token is consumed on first connect and the invite link stops working.
+
+**Alternative (manual):** Run the installer directly and enter the server URL and token when prompted:
 ```powershell
 irm https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.ps1 | iex
 ```
-
-When prompted, paste your server URL and the invite token from Step 1. The agent registers with the server automatically — the token is consumed and you won't need it again.
 
 #### Step 3 — Use it
 
@@ -210,13 +217,21 @@ Someone else is running the server — you just need to connect your agent.
 
 **What you'll need:**
 - A Windows PC
-- The server URL and invite token (get these from whoever runs the server)
+- An invite link from whoever runs the server (looks like `https://server.com/invite/dbot-XXXX-...`)
 
+Open the invite link in your browser. You'll see a page with a one-liner command — copy it, paste it into PowerShell as Administrator, and press Enter:
+
+```powershell
+irm 'https://server.com/invite/dbot-XXXX-.../install' | iex
+```
+
+The installer handles Git, Node.js, and all dependencies automatically. Takes 2–5 minutes. The invite token is consumed on first connect — the link stops working after that.
+
+**Alternative (manual):** If you have the server URL and token separately:
 ```powershell
 irm https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.ps1 | iex
 ```
-
-Enter the server URL and invite token when prompted. Done.
+Enter the server URL and invite token when prompted.
 
 ---
 
@@ -226,6 +241,14 @@ Invite tokens are single-use and expire in 7 days. Generate more on the server:
 ```bash
 cd /opt/.bot && sudo -u dotbot node server/dist/generate-invite.js
 ```
+
+This prints both the raw token and a **shareable invite URL** that you can send directly to the new user. Options:
+```bash
+# Custom label, 14-day expiry, 3 uses
+node server/dist/generate-invite.js --label "For Alice" --expiry-days 14 --max-uses 3
+```
+
+You can also generate tokens from the admin panel via WebSocket (`create_token` action).
 
 ### How Authentication Works
 
@@ -271,11 +294,13 @@ DotBot uses **hardware-bound device credentials** — no passwords or API keys t
 │  │  Updater → writes back to memory       │  │
 │  └────────────────────────────────────────┘  │
 │                                              │
-│  ┌─── Workers ────────────────────────────┐  │
-│  │  junior-dev  • writer  • researcher    │  │
-│  │  senior-dev  • code-reviewer • scribe  │  │
-│  │  comedian  • sysadmin  • data-analyst  │  │
-│  │  general  • core-dev                   │  │
+│  ┌─── Workers (15 personas) ─────────────┐  │
+│  │  junior-dev • senior-dev • core-dev   │  │
+│  │  researcher • writer • scribe         │  │
+│  │  sysadmin • data-analyst • comedian   │  │
+│  │  gui-operator • tool-maker            │  │
+│  │  personal-assistant • oracle          │  │
+│  │  code-reviewer • general              │  │
 │  └────────────────────────────────────────┘  │
 │                                              │
 │  ┌─── Councils (optional) ────────────────┐  │
@@ -284,10 +309,11 @@ DotBot uses **hardware-bound device credentials** — no passwords or API keys t
 │  └────────────────────────────────────────┘  │
 │                                              │
 │  ┌─── Model Selection ────────────────────┐  │
-│  │  Workhorse:    DeepSeek V3.2 (98%)     │  │
-│  │  Deep Context: Gemini 3 Pro (1M ctx)   │  │
-│  │  Architect:    Claude Opus 4.6         │  │
-│  │  Local:        Qwen 2.5 0.5B (offline) │  │
+│  │  Intake:       xAI Grok 4.1 Fast      │  │
+│  │  Workhorse:    DeepSeek V3.2 (98%)    │  │
+│  │  Deep Context: Gemini 3 Pro (1M ctx)  │  │
+│  │  Architect:    Claude Opus 4.6        │  │
+│  │  Local:        Qwen 2.5 0.5B         │  │
 │  └────────────────────────────────────────┘  │
 │                                              │
 │  State: ZERO. Processes requests & forgets. │
@@ -312,11 +338,12 @@ DotBot uses **hardware-bound device credentials** — no passwords or API keys t
 
 ### Server API Key Checklist
 
-DotBot uses **4 model roles** that auto-select per task. You need API keys for the providers you want to use.
+DotBot uses **5 model roles** that auto-select per task. You need API keys for the providers you want to use.
 
 | | Provider | Model Role | What It Does | Required? |
 |---|----------|-----------|--------------|-----------|
-| ☐ | **DeepSeek** | Workhorse | 98% of tasks — chat, tool calls, writing | **Yes** (recommended default) |
+| ☐ | **DeepSeek** | Workhorse | 98% of execution — chat, tool calls, writing | **Yes** (recommended default) |
+| ☐ | **xAI** | Intake | Request classification & routing (fast first response) | Recommended |
 | ☐ | **Google Gemini** | Deep Context | 1M token context — large files, video, PDFs | Recommended |
 | ☐ | **Anthropic** | Architect | Complex reasoning, planning, design decisions | Recommended |
 | ☐ | **OpenAI** | Fallback | Optional fallback if other providers are down | Optional |
@@ -326,6 +353,7 @@ DotBot uses **4 model roles** that auto-select per task. You need API keys for t
 
 **Get your keys**:
 - DeepSeek: https://platform.deepseek.com/api_keys
+- xAI: https://console.x.ai/ (Grok API keys)
 - Gemini: https://aistudio.google.com/apikey
 - Anthropic: https://console.anthropic.com/settings/keys
 - OpenAI: https://platform.openai.com/api-keys
@@ -344,7 +372,8 @@ WS_PORT=3001                     # WebSocket port
 # (If using Caddy, these stay internal — don't expose directly)
 
 # --- LLM Providers (at least ONE required) ---
-DEEPSEEK_API_KEY=                # Workhorse — 98% of tasks (recommended default)
+DEEPSEEK_API_KEY=                # Workhorse — 98% of execution (recommended default)
+XAI_API_KEY=                     # Intake — fast request classification & routing
 ANTHROPIC_API_KEY=               # Architect — complex reasoning, planning
 GEMINI_API_KEY=                  # Deep Context — 1M tokens (video, PDFs, huge files)
 # OPENAI_API_KEY=                # Optional fallback

@@ -3,19 +3,25 @@
 # DotBot Bootstrap Installer — Linux (Server)
 # ============================================================
 #
-# One-liner install:
-#   curl -fsSL https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.sh -o /tmp/install.sh && sed -i 's/\r$//' /tmp/install.sh && bash /tmp/install.sh
+# One-liner install (curl):
+#   curl -fsSL https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.sh | sudo bash
 #
-# Or clone first and run locally:
-#   chmod +x install.sh && ./install.sh
+# Or with wget:
+#   wget -qO- https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.sh | sudo bash
+#
+# Or download first and run locally:
+#   curl -fsSL https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.sh -o install.sh
+#   chmod +x install.sh && sudo ./install.sh
 #
 # What this does:
-#   1. Clones the DotBot repo
+#   1. Runs pre-flight checks (disk space, internet, DNS)
 #   2. Installs Node.js 20, Caddy, build tools
-#   3. Prompts for your domain and API keys (all skippable)
-#   4. Builds the server
-#   5. Configures systemd + Caddy + firewall + log rotation
-#   6. Starts the server
+#   3. Clones the DotBot repo with retry logic
+#   4. Prompts for your domain and API keys (all skippable)
+#   5. Builds the server with automatic retries
+#   6. Configures systemd + Caddy + firewall + log rotation
+#   7. Verifies HTTPS certificate provisioning
+#   8. Starts the server and generates invite token
 #
 # ============================================================
 
@@ -26,7 +32,7 @@ set -euo pipefail
 # ============================================================
 
 REPO_URL="https://github.com/Druidia-Bot/DotBot.git"
-DEPLOY_DIR="/opt/.bot"
+DEPLOY_DIR="${DOTBOT_DEPLOY_DIR:-/opt/.bot}"
 BOT_USER="dotbot"
 NODE_VERSION="20"
 INSTALLER_VERSION="1.0.0"
@@ -83,6 +89,62 @@ if [[ "$ID" != "ubuntu" && "$ID" != "debian" && "$ID_LIKE" != *"debian"* ]]; the
 fi
 
 # ============================================================
+# PREFLIGHT CHECKS
+# ============================================================
+
+step "Preflight Checks"
+
+# Check disk space (need 2GB free)
+AVAILABLE_GB=$(df -BG / | awk 'NR==2 {print $4}' | sed 's/G//')
+if [ "$AVAILABLE_GB" -lt 2 ]; then
+  err "Insufficient disk space: ${AVAILABLE_GB}GB free (need 2GB+)"
+fi
+log "Disk space: ${AVAILABLE_GB}GB available"
+
+# Check internet connectivity
+if ! ping -c 1 -W 5 8.8.8.8 &>/dev/null && ! ping -c 1 -W 5 1.1.1.1 &>/dev/null; then
+  err "No internet connection detected. Check network settings."
+fi
+log "Internet connectivity verified"
+
+# Check required commands
+for cmd in curl git systemctl; do
+  if ! command -v $cmd &>/dev/null; then
+    err "Required command not found: $cmd"
+  fi
+done
+log "Required commands available"
+
+# ============================================================
+# RETRY WRAPPER FOR NETWORK OPERATIONS
+# ============================================================
+
+retry_command() {
+  local max_attempts="${1}"
+  local delay="${2}"
+  local description="${3}"
+  shift 3
+  local cmd=("$@")
+  local attempt=1
+
+  while [ $attempt -le $max_attempts ]; do
+    if "${cmd[@]}"; then
+      return 0
+    else
+      if [ $attempt -lt $max_attempts ]; then
+        warn "$description failed (attempt $attempt/$max_attempts)"
+        echo "  Retrying in ${delay}s..."
+        sleep "$delay"
+        attempt=$((attempt + 1))
+      else
+        err "$description failed after $max_attempts attempts"
+      fi
+    fi
+  done
+  return 1
+}
+
+# ============================================================
 # 1. Collect configuration
 # ============================================================
 
@@ -93,14 +155,67 @@ echo -e "  ${BOLD}Domain Setup${NC}"
 echo "  Your server needs a domain with a DNS A record pointing to this IP."
 echo "  Caddy will automatically provision HTTPS certificates."
 echo ""
+
+# Get server's public IP
+SERVER_IP=$(curl -s -m 5 ifconfig.me || curl -s -m 5 icanhazip.com || echo "unknown")
+if [ "$SERVER_IP" != "unknown" ]; then
+  echo "  This server's public IP: ${SERVER_IP}"
+  echo ""
+fi
+
 ask "  Enter your domain (e.g. dotbot.example.com): "
 read -r DOMAIN
 if [ -z "$DOMAIN" ]; then
-  DOMAIN="dotbot.yourdomain.com"
-  warn "No domain entered — using placeholder '$DOMAIN'"
-  warn "You'll need to edit the Caddy config later."
+  warn "Example: dotbot.example.com"
+  err "No domain entered. A valid domain is required for HTTPS."
 fi
+if echo "$DOMAIN" | grep -qi "yourdomain"; then
+  warn "Enter your actual domain (e.g. dotbot.example.com)"
+  err "Domain '$DOMAIN' looks like a placeholder."
+fi
+
+# Validate domain format
+if ! echo "$DOMAIN" | grep -qE '^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'; then
+  err "Invalid domain format: $DOMAIN"
+fi
+
 log "Domain: $DOMAIN"
+
+# Check DNS propagation
+echo ""
+echo "  Checking DNS records for $DOMAIN..."
+RESOLVED_IP=$(dig +short "$DOMAIN" A | tail -n1)
+
+if [ -z "$RESOLVED_IP" ]; then
+  warn "DNS record not found for $DOMAIN"
+  echo ""
+  echo -e "  ${YELLOW}IMPORTANT: DNS Setup Required${NC}"
+  echo "  Create an A record for $DOMAIN pointing to: ${SERVER_IP}"
+  echo ""
+  echo "  DNS changes can take 5-60 minutes to propagate."
+  echo "  Caddy HTTPS certificate provisioning will FAIL until DNS is correct."
+  echo ""
+  read -p "  Continue anyway? (y/N) " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    exit 1
+  fi
+  warn "Proceeding without DNS — HTTPS will fail until you configure DNS"
+elif [ "$RESOLVED_IP" != "$SERVER_IP" ] && [ "$SERVER_IP" != "unknown" ]; then
+  warn "DNS mismatch: $DOMAIN resolves to $RESOLVED_IP (expected: $SERVER_IP)"
+  echo ""
+  echo "  Your DNS A record points to the wrong IP."
+  echo "  Update it to: $SERVER_IP"
+  echo ""
+  read -p "  Continue anyway? (y/N) " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    exit 1
+  fi
+  warn "Proceeding with DNS mismatch — HTTPS may fail"
+else
+  log "DNS verified: $DOMAIN → $RESOLVED_IP"
+fi
 
 # ============================================================
 # 2. System updates & dependencies
@@ -161,9 +276,12 @@ mkdir -p "/home/$BOT_USER/.bot/server-logs"
 
 if [ -d "$DEPLOY_DIR/.git" ]; then
   log "Repo already cloned, pulling latest..."
-  sudo -u "$BOT_USER" git -C "$DEPLOY_DIR" pull
+  retry_command 3 10 "git pull" sudo -u "$BOT_USER" git -C "$DEPLOY_DIR" pull
 elif [ -n "$REPO_URL" ]; then
-  sudo -u "$BOT_USER" git clone "$REPO_URL" "$DEPLOY_DIR"
+  retry_command 3 10 "git clone" sudo -u "$BOT_USER" git clone "$REPO_URL" "$DEPLOY_DIR"
+  if [ $? -ne 0 ]; then
+    err "Failed to clone repository after 3 attempts. Check network and URL."
+  fi
   log "Cloned repo to $DEPLOY_DIR"
 else
   warn "No REPO_URL configured and no existing repo found."
@@ -172,7 +290,10 @@ else
   if [ -z "$REPO_URL" ]; then
     err "Repository URL is required."
   fi
-  git clone "$REPO_URL" "$DEPLOY_DIR"
+  retry_command 3 10 "git clone" git clone "$REPO_URL" "$DEPLOY_DIR"
+  if [ $? -ne 0 ]; then
+    err "Failed to clone repository after 3 attempts. Check network and URL."
+  fi
   log "Cloned repo to $DEPLOY_DIR"
 fi
 
@@ -317,13 +438,45 @@ step "5/7 — Building application"
 
 cd "$DEPLOY_DIR"
 
-sudo -u "$BOT_USER" npm install --production=false 2>&1 | tail -1
+BUILD_LOG="$DEPLOY_DIR/build.log"
+
+# npm install with retry logic
+retry_command 3 10 "npm install" sudo -u "$BOT_USER" npm install --production=false >> "$BUILD_LOG" 2>&1
+if [ $? -ne 0 ]; then
+    err "npm install failed after 3 attempts. Last 20 lines:"
+    tail -20 "$BUILD_LOG"
+    echo ""
+    echo -e "${YELLOW}Possible causes:${NC}"
+    echo "  • Network/proxy blocking npm registry"
+    echo "  • Insufficient disk space"
+    echo "  • Node.js version incompatible"
+    echo ""
+    echo -e "${YELLOW}Manual recovery:${NC}"
+    echo "  cd $DEPLOY_DIR && sudo -u $BOT_USER npm install"
+    exit 1
+fi
 log "Dependencies installed"
 
-sudo -u "$BOT_USER" npm run build -w shared 2>&1 | tail -1
+# Build shared package
+if ! sudo -u "$BOT_USER" npm run build -w shared >> "$BUILD_LOG" 2>&1; then
+    err "shared/ build failed. Last 20 lines:"
+    tail -20 "$BUILD_LOG"
+    echo ""
+    echo -e "${YELLOW}Manual recovery:${NC}"
+    echo "  cd $DEPLOY_DIR/shared && sudo -u $BOT_USER npm run build"
+    exit 1
+fi
 log "Shared package built"
 
-sudo -u "$BOT_USER" npm run build -w server 2>&1 | tail -1
+# Build server package
+if ! sudo -u "$BOT_USER" npm run build -w server >> "$BUILD_LOG" 2>&1; then
+    err "server/ build failed. Last 20 lines:"
+    tail -20 "$BUILD_LOG"
+    echo ""
+    echo -e "${YELLOW}Manual recovery:${NC}"
+    echo "  cd $DEPLOY_DIR/server && sudo -u $BOT_USER npm run build"
+    exit 1
+fi
 log "Server built"
 
 # ============================================================
@@ -331,6 +484,20 @@ log "Server built"
 # ============================================================
 
 step "6/7 — Configuring systemd, Caddy, firewall, log rotation"
+
+# Verify build output exists before configuring services
+if [ ! -f "$DEPLOY_DIR/server/dist/index.js" ]; then
+    error "Build output not found at $DEPLOY_DIR/server/dist/index.js — cannot create service"
+    exit 1
+fi
+
+# Find node binary (works with NVM, snap, direct install)
+NODE_BIN=$(sudo -u "$BOT_USER" bash -c 'command -v node' 2>/dev/null || echo "/usr/bin/node")
+if [ ! -x "$NODE_BIN" ]; then
+    error "Node binary not found or not executable: $NODE_BIN"
+    exit 1
+fi
+log "Using node at: $NODE_BIN"
 
 # --- systemd service ---
 
@@ -346,7 +513,7 @@ Type=simple
 User=$BOT_USER
 Group=$BOT_USER
 WorkingDirectory=$DEPLOY_DIR
-ExecStart=/usr/bin/node $DEPLOY_DIR/server/dist/index.js
+ExecStart=$NODE_BIN $DEPLOY_DIR/server/dist/index.js
 Restart=always
 RestartSec=5
 StartLimitIntervalSec=60
@@ -421,18 +588,29 @@ $DOMAIN {
 EOF
 
 mkdir -p /var/log/caddy
-log "Caddy configured for $DOMAIN"
+
+# INSTALL-10: Validate Caddy config before applying
+if command -v caddy &>/dev/null; then
+  if ! caddy validate --config /etc/caddy/Caddyfile 2>/dev/null; then
+    warn "Caddyfile validation failed — check the config at /etc/caddy/Caddyfile"
+    warn "Caddy will NOT be restarted. Fix the config and run: systemctl restart caddy"
+  else
+    log "Caddy config validated for $DOMAIN"
+  fi
+else
+  log "Caddy configured for $DOMAIN (caddy binary not yet available for validation)"
+fi
 
 # --- Firewall ---
 
-ufw --force reset >/dev/null 2>&1
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow ssh
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw --force enable
-log "Firewall configured (SSH + HTTP + HTTPS only)"
+# Add required rules without destroying existing ones
+ufw allow ssh 2>/dev/null || true
+ufw allow 80/tcp 2>/dev/null || true
+ufw allow 443/tcp 2>/dev/null || true
+ufw default deny incoming 2>/dev/null || true
+ufw default allow outgoing 2>/dev/null || true
+ufw --force enable 2>/dev/null || true
+log "Firewall rules added (SSH + HTTP + HTTPS)"
 
 # --- Log rotation ---
 
@@ -476,7 +654,7 @@ if grep -q "your_key_here" "$ENV_FILE" 2>/dev/null || [ "$(grep -c '=.\+' "$ENV_
   else
     systemctl enable dotbot
     systemctl start dotbot
-    sleep 2
+    sleep 5
 
     if systemctl is-active --quiet dotbot; then
       log "DotBot server is running"
@@ -496,7 +674,7 @@ if grep -q "your_key_here" "$ENV_FILE" 2>/dev/null || [ "$(grep -c '=.\+' "$ENV_
 else
   systemctl enable dotbot
   systemctl start dotbot
-  sleep 2
+  sleep 5
 
   if systemctl is-active --quiet dotbot; then
     log "DotBot server is running"
@@ -509,6 +687,37 @@ else
 
   if systemctl is-active --quiet caddy; then
     log "Caddy is running"
+
+    # Verify HTTPS certificate provisioning
+    echo ""
+    echo "  Verifying HTTPS certificate provisioning..."
+    echo "  (This may take 30-60 seconds for Let's Encrypt to issue certificate)"
+
+    HTTPS_SUCCESS=false
+    for attempt in {1..12}; do
+      sleep 5
+      if curl -sf --max-time 5 "https://$DOMAIN/" &>/dev/null; then
+        HTTPS_SUCCESS=true
+        break
+      fi
+      echo "    Attempt $attempt/12: Certificate not ready yet..."
+    done
+
+    if [ "$HTTPS_SUCCESS" = true ]; then
+      log "HTTPS certificate provisioned successfully"
+      echo -e "  ${GREEN}✓${NC} Your server is accessible at: https://$DOMAIN"
+    else
+      warn "HTTPS certificate provisioning may have failed"
+      echo ""
+      echo -e "  ${YELLOW}Troubleshooting:${NC}"
+      echo "    1. Check Caddy logs: journalctl -u caddy -n 50"
+      echo "    2. Verify DNS: dig +short $DOMAIN A"
+      echo "    3. Ensure ports 80/443 are open: ufw status"
+      echo "    4. Check Let's Encrypt rate limits"
+      echo ""
+      echo "  Certificate provisioning can take up to 5 minutes."
+      echo "  Monitor progress: journalctl -u caddy -f"
+    fi
   else
     warn "Caddy may have failed to start. Check: journalctl -u caddy -n 50"
   fi

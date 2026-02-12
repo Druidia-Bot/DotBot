@@ -5,7 +5,9 @@
  * accessible through the barrel module after the split.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { promises as fs } from "fs";
+import * as path from "path";
 
 describe("Store Barrel Re-exports", () => {
   it("re-exports all store-core functions", async () => {
@@ -66,5 +68,62 @@ describe("Store Barrel Re-exports", () => {
     expect(typeof store.storeAsset).toBe("function");
     expect(typeof store.retrieveAsset).toBe("function");
     expect(typeof store.cleanupAssets).toBe("function");
+  });
+});
+
+// ============================================
+// SEC-03: Path Traversal Prevention
+// ============================================
+
+describe("storeAsset — SEC-03 path traversal prevention", () => {
+  beforeEach(() => {
+    vi.spyOn(fs, "mkdir").mockResolvedValue(undefined as any);
+    vi.spyOn(fs, "writeFile").mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("rejects ../../../etc/passwd traversal", async () => {
+    const { storeAsset } = await import("./store.js");
+    await expect(
+      storeAsset("sess1", "task1", { data: "test", filename: "../../../etc/passwd", assetType: "text" })
+    ).rejects.toThrow(/Invalid asset filename|escapes target directory/);
+  });
+
+  it("rejects ..\\..\\Windows\\System32 traversal", async () => {
+    const { storeAsset } = await import("./store.js");
+    await expect(
+      storeAsset("sess1", "task1", { data: "test", filename: "..\\..\\Windows\\System32\\config", assetType: "text" })
+    ).rejects.toThrow(/Invalid asset filename|escapes target directory/);
+  });
+
+  it("rejects filename that is just ..", async () => {
+    const { storeAsset } = await import("./store.js");
+    await expect(
+      storeAsset("sess1", "task1", { data: "test", filename: "..", assetType: "text" })
+    ).rejects.toThrow("Invalid asset filename");
+  });
+
+  it("rejects empty filename", async () => {
+    const { storeAsset } = await import("./store.js");
+    await expect(
+      storeAsset("sess1", "task1", { data: "test", filename: "", assetType: "text" })
+    ).rejects.toThrow("Invalid asset filename");
+  });
+
+  it("accepts clean filename and strips directory components", async () => {
+    const { storeAsset } = await import("./store.js");
+    const result = await storeAsset("sess1", "task1", { data: "hello", filename: "report.txt", assetType: "text" });
+    // Should contain the clean filename, not any traversal
+    expect(path.basename(result)).toBe("report.txt");
+  });
+
+  it("rejects filenames containing path separators", async () => {
+    const { storeAsset } = await import("./store.js");
+    await expect(
+      storeAsset("sess1", "task1", { data: "hello", filename: "subdir/image.png", assetType: "image" })
+    ).rejects.toThrow("Invalid asset filename");
   });
 });

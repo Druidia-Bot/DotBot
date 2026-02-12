@@ -460,7 +460,7 @@ export type {
   TaskStatus, TaskStep, Task, TaskLog,
   JSONSchema, MCPToolAnnotations, MCPTool,
   SkillFrontmatter, Skill, SkillIndexEntry,
-  DotBotTool, ToolManifestEntry, ToolRegistry,
+  Platform, DotBotTool, ToolManifestEntry, ToolRegistry,
   Persona, KnowledgeDocument, PersonaIndexEntry, PersonasIndex,
   CouncilMember, GoverningPrinciple, Council, CouncilIndexEntry, CouncilsIndex,
 } from "./types-tools.js";

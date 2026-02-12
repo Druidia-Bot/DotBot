@@ -27,18 +27,18 @@ $Root = $PSScriptRoot
 if ($Stop) {
     Write-Host ""
     Write-Host "  Stopping DotBot..." -ForegroundColor Yellow
-    # Kill by port
+    # Find DotBot node processes by command line or working directory
     $pids = @()
-    foreach ($port in @(3000, 3001)) {
-        $lines = netstat -aon 2>$null | Select-String ":$port\s.*LISTENING"
-        foreach ($line in $lines) {
-            if ($line -match '\s(\d+)\s*$') { $pids += $Matches[1] }
-        }
+    Get-Process -Name "node" -ErrorAction SilentlyContinue | ForEach-Object {
+        $proc = $_
+        try {
+            # Match by executable path or command line containing dotbot/.bot
+            $cmdLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $($proc.Id)" -ErrorAction SilentlyContinue).CommandLine
+            if (($proc.Path -and $proc.Path -match '[Dd]ot[Bb]ot|\.bot') -or ($cmdLine -and $cmdLine -match '[Dd]ot[Bb]ot|\.bot')) {
+                $pids += $proc.Id
+            }
+        } catch {}
     }
-    # Kill by process name
-    Get-Process -Name "node" -ErrorAction SilentlyContinue |
-        Where-Object { $_.Path -and $_.Path -match "dotbot" } |
-        ForEach-Object { $pids += $_.Id }
 
     $pids = $pids | Sort-Object -Unique
     if ($pids.Count -gt 0) {
@@ -74,25 +74,28 @@ if ($Update) {
         if ($LASTEXITCODE -ne 0) { throw "git pull failed" }
         Write-Host "  [OK] Code updated" -ForegroundColor Green
 
-        npm install --silent 2>$null
+        npm install 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
         Write-Host "  [OK] Dependencies updated" -ForegroundColor Green
 
         Push-Location "$Root\shared"
-        npm run build --silent 2>$null
+        $out = npm run build 2>&1
+        if ($LASTEXITCODE -ne 0) { $out | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }; throw "shared/ build failed" }
         Pop-Location
         Write-Host "  [OK] shared/ built" -ForegroundColor Green
 
         if (-not $Server) {
             Push-Location "$Root\local-agent"
-            npm run build --silent 2>$null
+            $out = npm run build 2>&1
+            if ($LASTEXITCODE -ne 0) { $out | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }; throw "local-agent/ build failed" }
             Pop-Location
             Write-Host "  [OK] local-agent/ built" -ForegroundColor Green
         }
 
         if (-not $Agent) {
             Push-Location "$Root\server"
-            npm run build --silent 2>$null
+            $out = npm run build 2>&1
+            if ($LASTEXITCODE -ne 0) { $out | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }; throw "server/ build failed" }
             Pop-Location
             Write-Host "  [OK] server/ built" -ForegroundColor Green
         }
@@ -122,10 +125,13 @@ if (-not $env:ANTHROPIC_API_KEY -and -not $env:DEEPSEEK_API_KEY) {
 # -- Clean up existing instances ------------------------
 
 foreach ($port in @(3000, 3001)) {
-    $lines = netstat -aon 2>$null | Select-String ":$port\s.*LISTENING"
-    foreach ($line in $lines) {
-        if ($line -match '\s(\d+)\s*$') {
-            Stop-Process -Id $Matches[1] -Force -ErrorAction SilentlyContinue
+    Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | ForEach-Object {
+        $proc = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue
+        if ($proc -and $proc.Name -eq "node") {
+            $cmdLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $($proc.Id)" -ErrorAction SilentlyContinue).CommandLine
+            if ($cmdLine -and $cmdLine -match '[Dd]ot[Bb]ot|\.bot') {
+                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 }

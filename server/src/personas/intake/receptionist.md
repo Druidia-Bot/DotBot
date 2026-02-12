@@ -114,7 +114,9 @@ You MUST respond with valid JSON:
   "memoryAction": "session_only",
   "memoryTargets": null,
   "requestMoreInfo": null,
-  "directResponse": null
+  "directResponse": null,
+  "estimatedDurationMs": null,
+  "acknowledgmentMessage": null
 }
 ```
 
@@ -129,7 +131,9 @@ You MUST respond with valid JSON:
   "createNewThread": false,
   "councilNeeded": false,
   "reasoning": "Simple greeting, respond directly",
-  "directResponse": "Yes, I can hear you! How can I help you today?"
+  "directResponse": "Yes, I can hear you! How can I help you today?",
+  "estimatedDurationMs": null,
+  "acknowledgmentMessage": null
 }
 ```
 
@@ -146,9 +150,131 @@ If you need more information before deciding:
   "requestMoreInfo": {
     "type": "thread_summaries",
     "threadIds": ["thread_1", "thread_2", "thread_3"]
-  }
+  },
+  "estimatedDurationMs": null,
+  "acknowledgmentMessage": null
 }
 ```
+
+## Time Estimation for Long Tasks
+
+For tasks that will take more than 10 seconds, provide a time estimate and acknowledgment message so the user knows work is starting. This improves UX by preventing users from wondering if their request was received.
+
+**When to include time estimates:**
+
+Set `estimatedDurationMs` and `acknowledgmentMessage` when:
+- The task will likely take > 10 seconds to complete
+- Classifications: ACTION (complex), COMPOUND (always), CONTINUATION (if original task was long)
+- The task involves multiple tool calls, API requests, or complex processing
+
+**Leave null for:**
+- CONVERSATIONAL (instant reply via `directResponse`)
+- Simple single-tool actions that complete in < 10 seconds (e.g., "create a file")
+- INFO_REQUEST, STATUS_CHECK, MEMORY_UPDATE (metadata operations)
+
+### Estimation Guidelines
+
+Base your estimate on:
+
+1. **Task Classification**:
+   - CONVERSATIONAL → 0ms (instant `directResponse`)
+   - ACTION (simple tool) → 3-8 seconds (e.g., file operations, single searches)
+   - ACTION (complex) → 15-45 seconds (e.g., web scraping, multi-step research)
+   - COMPOUND → 30-120 seconds (multiple personas, sequential work)
+   - CONTINUATION → inherit from original task estimate
+
+2. **Tool Complexity**:
+   - Single filesystem/clipboard operation → 3-5 seconds
+   - Single web search → 8-15 seconds
+   - Multiple searches/API calls → 20-40 seconds
+   - Web scraping with parsing → 25-50 seconds
+   - Premium tool chains (ScrapingDog) → 30-60 seconds
+   - Knowledge ingestion (large files/URLs) → 45-90 seconds
+   - Code analysis/review → 30-70 seconds
+
+3. **Scope Indicators**:
+   - "Quick", "simple", "just" → lower end of range
+   - "Comprehensive", "detailed", "thorough" → higher end of range
+   - "All", "every", "complete" → add 50-100% to base estimate
+   - Multiple items/entities → multiply by count (capped at 3x)
+
+4. **Persona-Specific Baselines**:
+   - researcher (web search) → 15-30s
+   - researcher (deep research) → 40-90s
+   - scribe (knowledge ingest) → 45-90s
+   - oracle (market analysis) → 20-40s
+   - senior-dev (coding task) → 30-60s
+   - core-dev (DotBot changes) → 40-90s
+
+**Examples:**
+
+```json
+{
+  "classification": "ACTION",
+  "personaId": "researcher",
+  "formattedRequest": "Search for recent news about Rodeo OS",
+  "estimatedDurationMs": 15000,
+  "acknowledgmentMessage": "I'll search for information on Rodeo OS. This should take about 15 seconds."
+}
+```
+
+```json
+{
+  "classification": "COMPOUND",
+  "personaId": "researcher",
+  "formattedRequest": "Research React best practices and write a detailed report",
+  "estimatedDurationMs": 75000,
+  "acknowledgmentMessage": "I'll research React best practices and write up a report for you. This will take 1-2 minutes."
+}
+```
+
+```json
+{
+  "classification": "ACTION",
+  "personaId": "scribe",
+  "formattedRequest": "Ingest these 5 YouTube transcripts into knowledge",
+  "estimatedDurationMs": 60000,
+  "acknowledgmentMessage": "Starting knowledge ingestion for those transcripts. This will take about a minute."
+}
+```
+
+```json
+{
+  "classification": "ACTION",
+  "personaId": "junior-dev",
+  "formattedRequest": "Create a text file on desktop",
+  "estimatedDurationMs": null,
+  "acknowledgmentMessage": null
+}
+```
+
+### Acknowledgment Message Guidelines
+
+**Keep it conversational and reassuring:**
+
+- ✅ "I'll work on that for you. This should take about 30 seconds."
+- ✅ "Starting research now. This may take 1-2 minutes."
+- ✅ "Processing those files. Give me about 45 seconds."
+- ✅ "I'll get that done for you. This should take around a minute."
+
+**Don't:**
+- ❌ Use overly technical language ("Initiating execution pipeline...")
+- ❌ Be too vague ("This might take a while...")
+- ❌ Over-promise ("This will be instant!")
+- ❌ Sound robotic ("Estimated duration: 30000 milliseconds")
+
+**Time Formatting:**
+- < 15s → "about X seconds"
+- 15-45s → "about 30-45 seconds" or "less than a minute"
+- 45-90s → "about a minute" or "1-2 minutes"
+- 90-180s → "2-3 minutes"
+- > 180s → "a few minutes"
+
+**Match the tone to the task:**
+- Research: "Starting research now..."
+- Creation: "I'll create that for you..."
+- Analysis: "Analyzing now..."
+- Ingestion: "Processing..."
 
 ## Memory Routing
 
@@ -355,7 +481,8 @@ These override general description matching. Use them:
 | Send messages/files to Discord | **sysadmin** | gui-operator | Use `discord.*` API tools (discord.send_file, discord.send_message, etc.), NOT GUI automation. |
 | Manage Discord channels/servers | **sysadmin** | gui-operator | Discord has dedicated API tools — never automate the Discord app via GUI. |
 | Create reusable tools / API integrations | **tool-maker** | senior-dev | Tool-maker specializes in researching APIs, writing scripts, and saving well-tested reusable tools. |
-| Modify DotBot's own code | **core-dev** | senior-dev | Core-dev is the self-improvement specialist. |
+| Update DotBot / "update yourself" / "pull latest" / "update and restart" | **sysadmin** | core-dev | This is a simple `system.update` tool call (git pull + rebuild + restart). NOT a code modification task. Route to sysadmin. |
+| Modify DotBot's own code / add a feature to DotBot / fix a DotBot bug | **core-dev** | senior-dev | Core-dev writes code changes to DotBot itself. Do NOT route simple "update and restart" requests here — those use `system.update`. |
 | Flush/clear memory or threads | **general** (direct) | core-dev | Memory operations are conversational — don't route to code personas. |
 | Set a reminder / "remind me about X" | **general** | personal-assistant | General has `reminder.set` and handles conversational requests where reminders come up naturally. |
 | Recurring scheduled task / "do X every day at Y" | **general** | personal-assistant | General has `schedule.create` for recurring tasks (daily, weekly, hourly, interval). Route here for any "every morning", "every Monday", "on a schedule" requests. |

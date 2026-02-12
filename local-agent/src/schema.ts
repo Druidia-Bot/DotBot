@@ -159,9 +159,9 @@ async function extractSpreadsheetSchema(filePath: string): Promise<SchemaReport>
 
 async function extractCSVSchema(filePath: string): Promise<SchemaReport> {
   const content = await fs.readFile(filePath, "utf-8");
-  const lines = content.split("\n").filter(l => l.trim());
+  const records = splitCSVRecords(content);
   
-  if (lines.length === 0) {
+  if (records.length === 0) {
     return {
       type: "spreadsheet",
       path: filePath,
@@ -171,7 +171,7 @@ async function extractCSVSchema(filePath: string): Promise<SchemaReport> {
   }
 
   // Detect delimiter
-  const firstLine = lines[0];
+  const firstLine = records[0];
   const delimiter = firstLine.includes("\t") ? "\t" : ",";
   
   // Parse headers
@@ -179,8 +179,8 @@ async function extractCSVSchema(filePath: string): Promise<SchemaReport> {
   
   // Sample data
   const sampleData: any[] = [];
-  for (let i = 1; i < Math.min(6, lines.length); i++) {
-    const values = parseCSVLine(lines[i], delimiter);
+  for (let i = 1; i < Math.min(6, records.length); i++) {
+    const values = parseCSVLine(records[i], delimiter);
     const row: Record<string, string> = {};
     headers.forEach((h, idx) => {
       row[h] = values[idx] || "";
@@ -193,12 +193,34 @@ async function extractCSVSchema(filePath: string): Promise<SchemaReport> {
     path: filePath,
     structure: {
       headers,
-      rowCount: lines.length - 1,
+      rowCount: records.length - 1,
       delimiter,
       sampleData
     },
-    preview: `CSV: ${lines.length - 1} rows, ${headers.length} columns\nHeaders: ${headers.join(", ")}`
+    preview: `CSV: ${records.length - 1} rows, ${headers.length} columns\nHeaders: ${headers.join(", ")}`
   };
+}
+
+function splitCSVRecords(content: string): string[] {
+  const records: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  
+  for (let i = 0; i < content.length; i++) {
+    const ch = content[i];
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      current += ch;
+    } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
+      if (ch === '\r' && content[i + 1] === '\n') i++; // skip \r\n
+      if (current.trim()) records.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) records.push(current);
+  return records;
 }
 
 function parseCSVLine(line: string, delimiter: string): string[] {
@@ -206,14 +228,20 @@ function parseCSVLine(line: string, delimiter: string): string[] {
   let current = "";
   let inQuotes = false;
   
-  for (const char of line) {
-    if (char === '"') {
-      inQuotes = !inQuotes;
-    } else if (char === delimiter && !inQuotes) {
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"'; // RFC 4180: "" → literal "
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === delimiter && !inQuotes) {
       result.push(current.trim());
       current = "";
     } else {
-      current += char;
+      current += ch;
     }
   }
   result.push(current.trim());

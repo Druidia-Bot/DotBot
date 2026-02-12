@@ -32,6 +32,7 @@ const log = createComponentLogger("scheduler");
 let config: SchedulerConfig = { ...DEFAULT_SCHEDULER_CONFIG };
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let running = false;
+let polling = false;
 const activeExecutions = new Set<string>();
 const eventListeners: SchedulerEventCallback[] = [];
 
@@ -72,13 +73,26 @@ export function startScheduler(overrides?: Partial<SchedulerConfig>): void {
 /**
  * Stop the scheduler gracefully.
  */
-export function stopScheduler(): void {
+export async function stopScheduler(): Promise<void> {
   if (!running) return;
 
   running = false;
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
+  }
+
+  // Drain active executions (wait up to 30s)
+  if (activeExecutions.size > 0) {
+    log.info("Scheduler draining active executions", { count: activeExecutions.size });
+    const drainStart = Date.now();
+    const drainTimeoutMs = 30_000;
+    while (activeExecutions.size > 0 && Date.now() - drainStart < drainTimeoutMs) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    if (activeExecutions.size > 0) {
+      log.warn("Scheduler drain timed out, abandoning tasks", { remaining: activeExecutions.size });
+    }
   }
 
   log.info("Scheduler stopped", { activeExecutions: activeExecutions.size });
@@ -308,7 +322,8 @@ export function getDueTasks(): DeferredTask[] {
 // ============================================
 
 async function pollDueTasks(): Promise<void> {
-  if (!running) return;
+  if (!running || polling) return;
+  polling = true;
 
   try {
     const dueTasks = getDueTasks();
@@ -339,6 +354,8 @@ async function pollDueTasks(): Promise<void> {
     }
   } catch (error) {
     log.error("Error polling due tasks", { error });
+  } finally {
+    polling = false;
   }
 }
 

@@ -176,22 +176,26 @@ export interface ReceptionistDecision {
   classification: RequestType;
   priority: PriorityTag;
   confidence: number;
-  
+
   threadIds: string[];
   createNewThread: boolean;
   newThreadTopic?: string;
-  
+
   // Primary persona to handle this request (from available internal personas)
   personaId?: string;
   // Legacy - still accepted but prefer personaId
   councilId?: string;
   councilNeeded: boolean;
-  
+
   // Council review — slug of a user-defined council to polish the output
   reviewCouncilSlug?: string;
-  
+
   reasoning: string;
   formattedRequest?: string;
+
+  // Task duration estimation (for user acknowledgment before long tasks)
+  estimatedDurationMs?: number;
+  acknowledgmentMessage?: string;
   
   requestMoreInfo?: {
     type: "thread_summaries" | "thread_packets" | "personas" | "assets";
@@ -461,7 +465,7 @@ export interface TaskProgressUpdate {
 export interface PersonaDefinition {
   id: string;
   name: string;
-  type: "intake" | "internal" | "client";
+  type: "intake" | "internal" | "client" | "dynamic";
   modelTier: "fast" | "smart" | "powerful";
   description: string;
   systemPrompt: string;

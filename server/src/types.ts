@@ -281,6 +281,8 @@ export interface DeviceSession {
   deviceName: string;
   capabilities: string[];
   tempDir?: string;
+  /** Client platform for V2 tool filtering. */
+  platform?: "windows" | "linux" | "macos" | "web";
   connectedAt: Date;
   lastActiveAt: Date;
   status: "connected" | "disconnected";
@@ -449,6 +451,8 @@ export interface WSAuthMessage extends WSMessage {
     tempDir?: string;
     hwFingerprint: string;
     webAuthToken?: string;
+    /** Client platform for V2 tool filtering. */
+    platform?: "windows" | "linux" | "macos";
   };
 }
 
@@ -460,6 +464,8 @@ export interface WSRegisterDeviceMessage extends WSMessage {
     hwFingerprint: string;
     capabilities: string[];
     tempDir?: string;
+    /** Client platform for V2 tool filtering. */
+    platform?: "windows" | "linux" | "macos";
   };
 }
 

@@ -6,10 +6,19 @@
     Single-command installer for DotBot. Handles prerequisites, clone, build,
     configuration, and first launch. Supports agent-only, server-only, or both.
 
-    Usage:
+    Includes automatic retry logic, pre-flight checks, and self-recovery for
+    network failures, disk space issues, and connection problems.
+
+    One-liner install:
       irm https://getmy.bot/install.ps1 | iex
-      # or
-      .\install.ps1 -RepoUrl <url> [-Mode agent|server|both] [-ServerUrl wss://your.server:3001] [-InviteToken dbot-XXXX-...]
+
+    Or download first and run:
+      irm https://getmy.bot/install.ps1 -OutFile install.ps1
+      .\install.ps1
+
+    With parameters:
+      .\install.ps1 -Mode agent -ServerUrl wss://your.server/ws -InviteToken dbot-XXXX-XXXX-XXXX-XXXX
+
 .PARAMETER Mode
     Install mode: "agent" (default), "server", or "both"
 .PARAMETER ServerUrl
@@ -20,6 +29,14 @@
     Git clone URL (required -- no default, will prompt if not provided)
 .PARAMETER InstallDir
     Where to clone DotBot (default: C:\Program Files\.bot)
+
+.NOTES
+    This installer includes:
+    • Pre-flight checks (disk space, internet, Windows version)
+    • Automatic retry logic for network operations (3 attempts)
+    • Invite token format validation
+    • WebSocket connectivity testing
+    • Comprehensive error diagnostics and recovery instructions
 #>
 
 param(
@@ -45,8 +62,10 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     # Determine script path -- $PSCommandPath is empty when piped (irm | iex)
     $scriptPath = $PSCommandPath
     if (-not $scriptPath) {
-        $scriptPath = Join-Path $env:TEMP "dotbot-install.ps1"
+        # INSTALL-08: Use random filename + read-only to mitigate TOCTOU race
+        $scriptPath = Join-Path $env:TEMP "dotbot-install-$([System.IO.Path]::GetRandomFileName()).ps1"
         Invoke-WebRequest -Uri "https://getmy.bot/install.ps1" -OutFile $scriptPath -UseBasicParsing
+        Set-ItemProperty -Path $scriptPath -Name IsReadOnly -Value $true
     }
 
     # Build argument list preserving any passed parameters
@@ -231,6 +250,49 @@ function Get-AgentConfig {
             exit 1
         }
     }
+
+    # Validate invite token format
+    if ($InviteToken -notmatch '^dbot-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}$') {
+        Write-Fail "Invalid invite token format: $InviteToken"
+        Write-Host "    Expected format: dbot-XXXX-XXXX-XXXX-XXXX (where X is alphanumeric)" -ForegroundColor Gray
+        Write-Host "    Example: dbot-a1b2-c3d4-e5f6-g7h8" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "    Common issues:" -ForegroundColor Yellow
+        Write-Host "      • Copy-paste error (check for extra spaces or missing characters)" -ForegroundColor Gray
+        Write-Host "      • Token expired (generate a new one on the server)" -ForegroundColor Gray
+        Write-Host ""
+        exit 1
+    }
+
+    # Test connectivity to server if not localhost
+    if ($ServerUrl -notmatch 'localhost|127\.0\.0\.1') {
+        Write-Host ""
+        Write-Host "  Testing connection to server..." -ForegroundColor Gray
+        $wsHost = ($ServerUrl -replace '^wss?://([^/]+).*', '$1')
+        $wsPort = if ($ServerUrl -match '^wss://') { 443 } else { 80 }
+
+        try {
+            $tcpTest = Test-NetConnection -ComputerName $wsHost -Port $wsPort -WarningAction SilentlyContinue -ErrorAction Stop
+            if ($tcpTest.TcpTestSucceeded) {
+                Write-OK "Server reachable at ${wsHost}:${wsPort}"
+            } else {
+                Write-Warn "Cannot reach server at ${wsHost}:${wsPort}"
+                Write-Host "    The agent may fail to connect. Check:" -ForegroundColor Gray
+                Write-Host "      • Server URL is correct" -ForegroundColor Gray
+                Write-Host "      • Server is running and accessible from this network" -ForegroundColor Gray
+                Write-Host "      • Firewall/proxy allows connections" -ForegroundColor Gray
+                Write-Host ""
+                $continue = Read-Host "  Continue anyway? (y/N)"
+                if ($continue -ne "y" -and $continue -ne "Y") {
+                    exit 1
+                }
+            }
+        } catch {
+            Write-Warn "Could not test connection to ${wsHost}:${wsPort}"
+            Write-Host "    Proceeding anyway..." -ForegroundColor Gray
+        }
+    }
+
     return @{ ServerUrl = $ServerUrl; InviteToken = $InviteToken }
 }
 
@@ -247,22 +309,57 @@ function Install-Git {
         return $true
     }
 
-    Write-Step "1/11" "Installing Git via winget..."
-    try {
-        winget install --id Git.Git -e --accept-source-agreements --accept-package-agreements --silent 2>$null | Out-Null
-        # Refresh PATH
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-        if (Test-Command "git") {
-            $ver = (git --version 2>$null) -replace 'git version ',''
-            Write-OK "Git $ver installed"
-            Set-StepStatus -StepName "git" -Status "success" -Version $ver
-            return $true
+    # Method 1: winget
+    if (Test-Command "winget") {
+        Write-Step "1/11" "Installing Git via winget..."
+        try {
+            winget install --id Git.Git -e --accept-source-agreements --accept-package-agreements --silent 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) { Write-Warn "winget exited with code $LASTEXITCODE" }
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+            if (Test-Command "git") {
+                $ver = (git --version 2>$null) -replace 'git version ',''
+                Write-OK "Git $ver installed via winget"
+                Set-StepStatus -StepName "git" -Status "success" -Version $ver
+                return $true
+            }
+        } catch {
+            Write-Warn "winget install failed: $($_.Exception.Message)"
         }
-    } catch {}
+    } else {
+        Write-Warn "winget not available — skipping"
+    }
 
-    Write-Fail "Git installation failed."
+    # Method 2: Direct download from GitHub releases
+    Write-Step "1/11" "Downloading Git installer from GitHub..."
+    try {
+        $gitInstaller = Join-Path $env:TEMP "git-installer.exe"
+        # Resolve latest 64-bit installer URL from GitHub API
+        $releaseInfo = Invoke-WebRequest -Uri "https://api.github.com/repos/git-for-windows/git/releases/latest" -UseBasicParsing | ConvertFrom-Json
+        $asset = $releaseInfo.assets | Where-Object { $_.name -match '64-bit\.exe$' -and $_.name -notmatch 'portable' } | Select-Object -First 1
+        if ($asset) {
+            Write-Host "    Downloading $($asset.name)..." -ForegroundColor Gray
+            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $gitInstaller -UseBasicParsing
+            Write-Host "    Running Git installer silently..." -ForegroundColor Gray
+            $proc = Start-Process -FilePath $gitInstaller -ArgumentList "/VERYSILENT", "/NORESTART", "/NOCANCEL", "/SP-", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS" -Wait -PassThru
+            Remove-Item $gitInstaller -Force -ErrorAction SilentlyContinue
+            if ($proc.ExitCode -ne 0) { Write-Warn "Git installer exited with code $($proc.ExitCode)" }
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+            if (Test-Command "git") {
+                $ver = (git --version 2>$null) -replace 'git version ',''
+                Write-OK "Git $ver installed via direct download"
+                Set-StepStatus -StepName "git" -Status "success" -Version $ver
+                return $true
+            }
+        } else {
+            Write-Warn "Could not find 64-bit installer in latest GitHub release"
+        }
+    } catch {
+        Write-Warn "Direct download failed: $($_.Exception.Message)"
+    }
+
+    Write-Fail "Git installation failed (tried winget + direct download)."
     Write-Host "    Download manually: https://git-scm.com/download/win" -ForegroundColor Gray
-    Set-StepStatus -StepName "git" -Status "failed" -ErrorMsg "winget install failed"
+    Set-StepStatus -StepName "git" -Status "failed" -ErrorMsg "all install methods failed"
     return $false
 }
 
@@ -283,21 +380,59 @@ function Install-NodeJS {
         Write-Warn "Node.js $ver found but need v${NODE_MAJOR}+. Upgrading..."
     }
 
-    Write-Step "2/11" "Installing Node.js ${NODE_MAJOR} LTS via winget..."
-    try {
-        winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements --silent 2>$null | Out-Null
-        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-        if (Test-Command "node") {
-            $ver = (node --version 2>$null) -replace 'v',''
-            Write-OK "Node.js $ver installed"
-            Set-StepStatus -StepName "nodejs" -Status "success" -Version $ver
-            return $true
+    # Method 1: winget
+    if (Test-Command "winget") {
+        Write-Step "2/11" "Installing Node.js ${NODE_MAJOR} LTS via winget..."
+        try {
+            winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements --silent 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) { Write-Warn "winget exited with code $LASTEXITCODE" }
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+            if (Test-Command "node") {
+                $ver = (node --version 2>$null) -replace 'v',''
+                Write-OK "Node.js $ver installed via winget"
+                Set-StepStatus -StepName "nodejs" -Status "success" -Version $ver
+                return $true
+            }
+        } catch {
+            Write-Warn "winget install failed: $($_.Exception.Message)"
         }
-    } catch {}
+    } else {
+        Write-Warn "winget not available — skipping"
+    }
 
-    Write-Fail "Node.js installation failed."
+    # Method 2: Direct MSI download from nodejs.org
+    Write-Step "2/11" "Downloading Node.js LTS from nodejs.org..."
+    try {
+        $nodeMsi = Join-Path $env:TEMP "node-lts-x64.msi"
+        # Resolve latest LTS version from nodejs.org index
+        $nodeIndex = Invoke-WebRequest -Uri "https://nodejs.org/dist/index.json" -UseBasicParsing | ConvertFrom-Json
+        $latest = $nodeIndex | Where-Object { $_.lts -and [int]($_.version.TrimStart('v').Split('.')[0]) -ge $NODE_MAJOR } | Select-Object -First 1
+        if ($latest) {
+            $nodeVer = $latest.version
+            $msiUrl = "https://nodejs.org/dist/${nodeVer}/node-${nodeVer}-x64.msi"
+            Write-Host "    Downloading Node.js $nodeVer..." -ForegroundColor Gray
+            Invoke-WebRequest -Uri $msiUrl -OutFile $nodeMsi -UseBasicParsing
+            Write-Host "    Running Node.js installer silently..." -ForegroundColor Gray
+            $proc = Start-Process msiexec -ArgumentList "/i", "`"$nodeMsi`"", "/qn", "/norestart" -Wait -PassThru
+            Remove-Item $nodeMsi -Force -ErrorAction SilentlyContinue
+            if ($proc.ExitCode -ne 0) { Write-Warn "Node.js MSI exited with code $($proc.ExitCode)" }
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+            if (Test-Command "node") {
+                $ver = (node --version 2>$null) -replace 'v',''
+                Write-OK "Node.js $ver installed via direct download"
+                Set-StepStatus -StepName "nodejs" -Status "success" -Version $ver
+                return $true
+            }
+        } else {
+            Write-Warn "Could not find LTS version >= $NODE_MAJOR in nodejs.org index"
+        }
+    } catch {
+        Write-Warn "Direct download failed: $($_.Exception.Message)"
+    }
+
+    Write-Fail "Node.js installation failed (tried winget + direct download)."
     Write-Host "    Download manually: https://nodejs.org/" -ForegroundColor Gray
-    Set-StepStatus -StepName "nodejs" -Status "failed" -ErrorMsg "winget install failed"
+    Set-StepStatus -StepName "nodejs" -Status "failed" -ErrorMsg "all install methods failed"
     return $false
 }
 
@@ -423,18 +558,35 @@ function Install-CloneRepo {
     }
 
     try {
-        git clone $RepoUrl $Dir 2>$null | Out-Null
-        if (Test-Path (Join-Path $Dir "package.json")) {
-            $commit = (git -C $Dir rev-parse --short HEAD 2>$null)
-            Write-OK "Cloned to $Dir (commit: $commit)"
-            Set-StepStatus -StepName "clone" -Status "success" -Path $Dir -Version $commit
-            return $true
+        Invoke-WithRetry -OperationName "Git clone" -MaxAttempts 3 -RetryDelaySeconds 10 -ScriptBlock {
+            $output = git clone $RepoUrl $Dir 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "git clone failed with exit code $LASTEXITCODE : $output"
+            }
+            if (-not (Test-Path (Join-Path $Dir "package.json"))) {
+                throw "package.json not found after clone"
+            }
         }
-    } catch {}
-
-    Write-Fail "Failed to clone repository."
-    Set-StepStatus -StepName "clone" -Status "failed" -ErrorMsg "git clone failed"
-    return $false
+        $commit = (git -C $Dir rev-parse --short HEAD 2>$null)
+        Write-OK "Cloned to $Dir (commit: $commit)"
+        Set-StepStatus -StepName "clone" -Status "success" -Path $Dir -Version $commit
+        return $true
+    } catch {
+        Write-Fail "Failed to clone repository after 3 attempts"
+        Write-Host "    Error: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "    Possible causes:" -ForegroundColor Yellow
+        Write-Host "      • Network/proxy blocking git connections" -ForegroundColor Gray
+        Write-Host "      • GitHub is temporarily unavailable" -ForegroundColor Gray
+        Write-Host "      • Repository URL is incorrect" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "    Manual recovery:" -ForegroundColor Yellow
+        Write-Host "      1. Clone manually: git clone $RepoUrl $Dir" -ForegroundColor White
+        Write-Host "      2. Re-run this installer" -ForegroundColor White
+        Write-Host ""
+        Set-StepStatus -StepName "clone" -Status "failed" -ErrorMsg $_.Exception.Message
+        return $false
+    }
 }
 
 # ============================================
@@ -447,10 +599,18 @@ function Install-NpmDeps {
 
     try {
         Push-Location $Dir
-        $npmOut = npm install 2>$null
-        if ($LASTEXITCODE -ne 0) {
-            $npmOut | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
-            throw "npm install exited with code $LASTEXITCODE"
+        Invoke-WithRetry -OperationName "npm install" -MaxAttempts 3 -RetryDelaySeconds 15 -ScriptBlock {
+            # Clear npm cache on retry to avoid corrupted cache issues
+            if ($attempt -gt 1) {
+                Write-Host "    Clearing npm cache..." -ForegroundColor Gray
+                npm cache clean --force 2>$null | Out-Null
+            }
+
+            $npmOut = npm install 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                $npmOut | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+                throw "npm install exited with code $LASTEXITCODE"
+            }
         }
         Pop-Location
         Write-OK "npm dependencies installed"
@@ -458,7 +618,20 @@ function Install-NpmDeps {
         return $true
     } catch {
         Pop-Location
-        Write-Fail "npm install failed: $($_.Exception.Message)"
+        Write-Fail "npm install failed after 3 attempts"
+        Write-Host "    Error: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "    Possible causes:" -ForegroundColor Yellow
+        Write-Host "      • Network/proxy blocking npm registry" -ForegroundColor Gray
+        Write-Host "      • Corrupted npm cache" -ForegroundColor Gray
+        Write-Host "      • Insufficient disk space" -ForegroundColor Gray
+        Write-Host "      • Antivirus blocking npm operations" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "    Manual recovery:" -ForegroundColor Yellow
+        Write-Host "      1. Configure proxy: npm config set proxy http://proxy:port" -ForegroundColor White
+        Write-Host "      2. Clear cache: npm cache clean --force" -ForegroundColor White
+        Write-Host "      3. Try again: cd $Dir && npm install" -ForegroundColor White
+        Write-Host ""
         Set-StepStatus -StepName "npm_install" -Status "failed" -ErrorMsg $_.Exception.Message
         return $false
     }
@@ -716,10 +889,101 @@ function Install-Shortcuts {
 }
 
 # ============================================
+# PRE-FLIGHT CHECKS
+# ============================================
+
+function Test-PreflightChecks {
+    Write-Step "0/11" "Running pre-flight checks..."
+    $failed = $false
+
+    # Check Windows version (need 10+)
+    $winVer = [System.Environment]::OSVersion.Version
+    if ($winVer.Major -lt 10) {
+        Write-Fail "Windows 10 or later required (detected: Windows $($winVer.Major).$($winVer.Minor))"
+        $failed = $true
+    } else {
+        Write-OK "Windows version: $($winVer.Major).$($winVer.Minor).$(${winVer}.Build)"
+    }
+
+    # Check disk space (need 2GB free on system drive)
+    try {
+        $sysDrive = $env:SystemDrive
+        $disk = Get-PSDrive -Name $sysDrive.TrimEnd(':') -ErrorAction Stop
+        $freeGB = [math]::Round($disk.Free / 1GB, 2)
+        if ($freeGB -lt 2) {
+            Write-Fail "Insufficient disk space: ${freeGB}GB free (need 2GB+)"
+            $failed = $true
+        } else {
+            Write-OK "Disk space: ${freeGB}GB free"
+        }
+    } catch {
+        Write-Warn "Could not check disk space: $($_.Exception.Message)"
+    }
+
+    # Check internet connectivity
+    $connected = $false
+    foreach ($testUrl in @("https://www.google.com", "https://github.com", "https://nodejs.org")) {
+        try {
+            $null = Invoke-WebRequest -Uri $testUrl -Method Head -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
+            $connected = $true
+            break
+        } catch {}
+    }
+    if (-not $connected) {
+        Write-Fail "No internet connection detected. Check network/proxy settings."
+        Write-Host "    If behind a corporate proxy, you may need to configure npm/git proxy settings." -ForegroundColor Gray
+        $failed = $true
+    } else {
+        Write-OK "Internet connectivity verified"
+    }
+
+    if ($failed) {
+        Write-Host ""
+        Write-Fail "Pre-flight checks failed. Fix the issues above and try again."
+        Read-Host "  Press Enter to exit"
+        exit 1
+    }
+
+    Write-OK "Pre-flight checks passed"
+}
+
+# ============================================
+# RETRY WRAPPER FOR NETWORK OPERATIONS
+# ============================================
+
+function Invoke-WithRetry {
+    param(
+        [ScriptBlock]$ScriptBlock,
+        [int]$MaxAttempts = 3,
+        [int]$RetryDelaySeconds = 5,
+        [string]$OperationName = "Operation"
+    )
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            return & $ScriptBlock
+        } catch {
+            if ($attempt -lt $MaxAttempts) {
+                Write-Warn "$OperationName failed (attempt $attempt/$MaxAttempts): $($_.Exception.Message)"
+                Write-Host "    Retrying in ${RetryDelaySeconds}s..." -ForegroundColor Gray
+                Start-Sleep -Seconds $RetryDelaySeconds
+            } else {
+                Write-Fail "$OperationName failed after $MaxAttempts attempts"
+                throw
+            }
+        }
+    }
+}
+
+# ============================================
 # MAIN
 # ============================================
 
 Write-Banner
+
+# Pre-flight checks
+Test-PreflightChecks
+Write-Host ""
 
 # Step 0: Select mode
 $selectedMode = Get-InstallMode
@@ -788,6 +1052,14 @@ if (-not $RepoUrl) {
             exit 1
         }
     }
+}
+
+# Validate git URL format
+if ($RepoUrl -notmatch '^(https?://|git@).+\.(git|com|org|io)') {
+    Write-Fail "Invalid Git URL: $RepoUrl"
+    Write-Host "    Expected format: https://github.com/user/repo.git or git@github.com:user/repo.git" -ForegroundColor Gray
+    Read-Host "  Press Enter to exit"
+    exit 1
 }
 
 # -- TIER 1: Clone + Build --
@@ -927,22 +1199,36 @@ if ($taskExists) {
 # Wait for the agent to authenticate and save the web auth token
 # The token file confirms: agent started, connected, and authenticated with server
 Write-Host "  Waiting for agent to connect and register..." -ForegroundColor Gray
+Write-Host "    (This may take up to 60 seconds for first connection)" -ForegroundColor DarkGray
 Start-Sleep -Seconds 3  # Grace period for node to start via launch.ps1
-$deadline = (Get-Date).AddSeconds(20)
+$deadline = (Get-Date).AddSeconds(60)
 $registered = $false
+$lastProgress = (Get-Date)
+$dots = 0
+
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 1
+
+    # Show progress dots every 5 seconds
+    if (((Get-Date) - $lastProgress).TotalSeconds -ge 5) {
+        $dots++
+        Write-Host "    Still waiting" -NoNewline -ForegroundColor DarkGray
+        Write-Host ("." * ($dots % 4)) -ForegroundColor DarkGray
+        $lastProgress = (Get-Date)
+    }
+
     if (Test-Path $webAuthTokenFile) {
         $registered = $true
         break
     }
+
     # Check if agent process died (no point waiting)
     $nodeProcs = $null
     try {
         $nodeProcs = Get-Process -Name "node" -ErrorAction SilentlyContinue
     } catch {}
     if (-not $nodeProcs) {
-        Write-Warn "Agent process exited unexpectedly."
+        Write-Warn "Agent process exited unexpectedly"
         break
     }
 }
@@ -950,21 +1236,67 @@ while ((Get-Date) -lt $deadline) {
 if ($registered) {
     Write-OK "DotBot agent registered with server"
 } else {
-    Write-Warn "Agent may not have started or registered. Check the log:"
-    if (Test-Path $agentLogFile) {
-        Write-Host ""
-        Get-Content $agentLogFile -Tail 10 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
-        Write-Host ""
+    Write-Host ""
+    Write-Warn "Agent did not register within 60 seconds"
+    Write-Host ""
+    Write-Host "  Checking for common issues..." -ForegroundColor Yellow
+    Write-Host ""
+
+    # Diagnostic 1: Check if process is still running
+    $nodeProcs = Get-Process -Name "node" -ErrorAction SilentlyContinue
+    if ($nodeProcs) {
+        Write-Host "    [✓] Agent process is running (PID: $($nodeProcs[0].Id))" -ForegroundColor Green
+    } else {
+        Write-Host "    [✗] Agent process is not running" -ForegroundColor Red
+        Write-Host "        Likely cause: Node.js startup error or crash" -ForegroundColor Gray
     }
+
+    # Diagnostic 2: Check log files for errors
+    if (Test-Path $agentLogFile) {
+        $logContent = Get-Content $agentLogFile -Tail 20 -Raw
+        if ($logContent -match "ECONNREFUSED|ENOTFOUND|EHOSTUNREACH") {
+            Write-Host "    [✗] Connection error detected in logs" -ForegroundColor Red
+            Write-Host "        Likely cause: Server unreachable or wrong URL" -ForegroundColor Gray
+        } elseif ($logContent -match "Invalid.*token|authentication.*failed") {
+            Write-Host "    [✗] Authentication error detected in logs" -ForegroundColor Red
+            Write-Host "        Likely cause: Invalid or expired invite token" -ForegroundColor Gray
+        } elseif ($logContent -match "Error|error|exception") {
+            Write-Host "    [!] Error detected in logs (see below)" -ForegroundColor Yellow
+        } else {
+            Write-Host "    [?] No obvious errors in logs" -ForegroundColor Yellow
+            Write-Host "        Agent may still be initializing..." -ForegroundColor Gray
+        }
+    }
+
+    # Show relevant log excerpts
+    Write-Host ""
+    Write-Host "  Recent log output:" -ForegroundColor Yellow
+    if (Test-Path $agentLogFile) {
+        Get-Content $agentLogFile -Tail 10 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+    } else {
+        Write-Host "    (No log file found at $agentLogFile)" -ForegroundColor DarkGray
+    }
+
     $agentErrFile = Join-Path $BOT_DIR "agent-error.log"
     if ((Test-Path $agentErrFile) -and (Get-Item $agentErrFile).Length -gt 0) {
+        Write-Host ""
         Write-Host "  Error log:" -ForegroundColor Red
         Get-Content $agentErrFile -Tail 5 | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
-        Write-Host ""
     }
+
+    Write-Host ""
+    Write-Host "  Troubleshooting steps:" -ForegroundColor Yellow
+    Write-Host "    1. Check server URL in ~/.bot/.env is correct" -ForegroundColor White
+    Write-Host "    2. Verify invite token is valid (not expired)" -ForegroundColor White
+    Write-Host "    3. Ensure server is running and accessible" -ForegroundColor White
+    Write-Host "    4. Check firewall/proxy settings" -ForegroundColor White
+    Write-Host ""
     Write-Host "  To start manually with visible output:" -ForegroundColor Gray
     Write-Host "    cd `"$InstallDir`"" -ForegroundColor White
     Write-Host "    node local-agent/dist/index.js" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  View full logs:" -ForegroundColor Gray
+    Write-Host "    Get-Content $agentLogFile -Tail 50" -ForegroundColor White
     Write-Host ""
 }
 

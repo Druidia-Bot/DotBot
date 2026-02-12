@@ -58,10 +58,19 @@ export interface ProxyHttpResponse {
  * The plaintext credential is only in local variables — once this function
  * returns, it's eligible for garbage collection.
  */
-/**
- * Validate that the proxy target URL is safe (no SSRF).
- * Blocks: localhost, private IPs, cloud metadata endpoints, non-HTTP protocols.
- */
+
+/** Ports commonly used by internal services that should never be proxy targets. */
+const BLOCKED_PORTS = new Set([
+  6379,  // Redis
+  27017, // MongoDB
+  5432,  // PostgreSQL
+  3306,  // MySQL
+  11211, // Memcached
+  9200,  // Elasticsearch
+  2379,  // etcd
+  8500,  // Consul
+]);
+
 function validateProxyUrl(urlStr: string): void {
   let parsed: URL;
   try {
@@ -74,17 +83,43 @@ function validateProxyUrl(urlStr: string): void {
     throw new Error(`Proxy only supports HTTP/HTTPS (got ${parsed.protocol})`);
   }
 
-  const host = parsed.hostname.toLowerCase();
-  if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0') {
+  // Strip IPv6 brackets for comparison
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+
+  // --- Localhost / loopback ---
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0' || host === '::') {
     throw new Error('Proxy cannot target localhost');
   }
-  // Cloud metadata endpoints
-  if (host === '169.254.169.254' || host === 'metadata.google.internal') {
+  // Full 127.0.0.0/8 loopback range
+  if (/^127\./.test(host)) {
+    throw new Error('Proxy cannot target localhost');
+  }
+
+  // --- IPv6 private ---
+  // fe80:: link-local, fc00::/7 unique-local (fc00:: and fd00::)
+  if (/^fe80/i.test(host) || /^fc/i.test(host) || /^fd/i.test(host)) {
+    throw new Error('Proxy cannot target private IPv6 addresses');
+  }
+
+  // --- Cloud metadata endpoints ---
+  if (host === '169.254.169.254' || host === 'metadata.google.internal' ||
+      host === 'metadata.internal' || host === '100.100.100.200') {
     throw new Error('Proxy cannot target cloud metadata endpoints');
   }
-  // Private IP ranges
+  // Link-local range 169.254.0.0/16 (AWS/Azure/GCP metadata lives here)
+  if (/^169\.254\./.test(host)) {
+    throw new Error('Proxy cannot target link-local addresses');
+  }
+
+  // --- IPv4 private ranges ---
   if (/^10\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host) || /^192\.168\./.test(host)) {
     throw new Error('Proxy cannot target private IP addresses');
+  }
+
+  // --- Blocked service ports ---
+  const port = parsed.port ? parseInt(parsed.port, 10) : undefined;
+  if (port && BLOCKED_PORTS.has(port)) {
+    throw new Error(`Proxy cannot target service port ${port}`);
   }
 }
 

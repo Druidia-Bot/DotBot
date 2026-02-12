@@ -42,6 +42,7 @@ export { selectModel, registerApiKeys, estimateTokens, detectLargeFileContext, d
 export function createLLMClient(options: LLMClientOptions): ILLMClient {
   const { provider, apiKey, baseUrl } = options;
   const config = PROVIDER_CONFIGS[provider];
+  if (!config) throw new Error(`Unknown provider: "${provider}". Valid providers: ${Object.keys(PROVIDER_CONFIGS).join(", ")}`);
   
   switch (provider) {
     case "deepseek":

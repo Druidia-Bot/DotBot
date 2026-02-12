@@ -17,30 +17,20 @@ import { createComponentLogger } from "../logging.js";
 import {
   devices,
   sendMessage,
-  sendError,
   getDeviceForUser,
-  broadcastToUser,
 } from "./devices.js";
 import {
   sendMemoryRequest,
 } from "./device-bridge.js";
-import {
-  hasActiveTaskForUser,
-  routeInjection,
-  injectMessageToTask,
-  spawnTask,
-  activeTaskCountForUser,
-  getActiveTasksForUser,
-  getBlockedTasksForUser,
-  getTaskById,
-  cancelAllTasksForUser,
-  resumeBlockedTask,
-} from "../agents/agent-tasks.js";
 import { buildRequestContext } from "./context-builder.js";
-import { createRunner, sendAgentWork, sendRunLog } from "./runner-factory.js";
-import { getTimeEstimate } from "../agents/task-monitor.js";
+import { createRunner } from "./runner-factory.js";
+import { executeV2Pipeline, MessageRouter } from "../agents/pipeline.js";
+import { filterManifest, mergeWithCoreRegistry } from "../tools/platform-filters.js";
 
 const log = createComponentLogger("ws.prompt");
+
+/** Per-user V2 message routers for session continuity (follow-up routing to existing agents). */
+const v2Routers = new Map<string, MessageRouter>();
 
 // ============================================
 // PROMPT HANDLER — ORCHESTRATOR
@@ -55,6 +45,10 @@ export async function handlePrompt(
   const device = devices.get(deviceId);
   if (!device) return;
 
+  if (!message.payload || typeof message.payload.prompt !== "string" || !message.payload.prompt.trim()) {
+    log.warn("Invalid prompt message — missing or empty payload.prompt", { deviceId });
+    return;
+  }
   const { prompt } = message.payload;
   const userId = device.session.userId;
   
@@ -63,6 +57,7 @@ export async function handlePrompt(
   // ── System commands ──
   const normalizedPrompt = prompt.toLowerCase().trim();
   if (normalizedPrompt === "flush session memory" || normalizedPrompt === "flush memory" || normalizedPrompt === "clear session memory") {
+    v2Routers.delete(userId); // Clear V2 agent routing state on session reset
     await handleFlushMemory(device, message, userId);
     return;
   }
@@ -71,336 +66,118 @@ export async function handlePrompt(
     return;
   }
 
-  // ── Check for active or blocked agent loops — route injection if any exist ──
-  // Use userId-based lookup so tasks survive browser reconnects (new web_<random> deviceId)
-  // Scheduled task prompts are always independent — never inject into running loops
-  const isScheduledTask = message.payload.source === "scheduled_task";
-  if (!isScheduledTask && (hasActiveTaskForUser(userId) || getBlockedTasksForUser(userId).length > 0)) {
-    const route = await routeInjection(deviceId, prompt, userId);
+  // ── V2 Pipeline (V1 removed) ──
+  try {
+    // Build enhanced request with context
+    const { enhancedRequest, toolManifest, platform, runtimeInfo } = await buildRequestContext(
+      deviceId,
+      userId,
+      prompt
+    );
 
-    // Status query — respond with task status from the server, don't inject
-    if (route.method === "status_query") {
-      const allTasks = getActiveTasksForUser(userId);
-      const blockedTasks = getBlockedTasksForUser(userId);
-      const fmtElapsed = (t: { startedAt: number }) => {
-        const s = Math.round((Date.now() - t.startedAt) / 1000);
-        return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
-      };
-      const taskSummaries = allTasks.map(task => {
-        const recentActions = task.recentActivity.slice(-3);
-        const activityStr = recentActions.length > 0
-          ? `\n${recentActions.map(a => `  - ${a}`).join("\n")}`
-          : "\n  _No tool activity yet_";
-        return `**${task.name}** (${task.personaId}) — ${fmtElapsed(task)}${activityStr}`;
-      });
-      for (const task of blockedTasks) {
-        const reason = task.waitReason || "waiting for your response";
-        taskSummaries.push(`⏸️ **${task.name}** (${task.personaId}) — ${fmtElapsed(task)} — **Waiting:** ${reason}`);
-      }
+    // Create LLM client
+    const { createLLMClient } = await import("../llm/providers.js");
+    const llm = createLLMClient({
+      provider: serverProvider as any,
+      apiKey,
+    });
 
-      log.info(`Status query`, { taskCount: allTasks.length, blockedCount: blockedTasks.length });
+    // Filter tool manifest by platform
+    const availableRuntimes = (runtimeInfo || [])
+      .filter((r: any) => r.available)
+      .map((r: any) => r.name as string);
+    const v2Manifest = platform
+      ? mergeWithCoreRegistry(filterManifest(toolManifest, platform, availableRuntimes))
+      : mergeWithCoreRegistry(toolManifest);
 
+    // Build runner options from the factory's callback shape (reuse the same runner factory for callbacks)
+    const v2Runner = createRunner(apiKey, userId, v2Manifest, runtimeInfo, serverProvider);
+
+    // Reuse existing router for follow-up message routing to active agents
+    const existingRouter = v2Routers.get(userId);
+
+    // ── Pre-classify for time estimation ──
+    // Run receptionist upfront so we can send acknowledgment for long-running tasks
+    const { runReceptionist } = await import("../agents/intake.js");
+    const classification = await runReceptionist(llm, v2Runner.options, enhancedRequest, userId);
+
+    // Send acknowledgment for long-running tasks (> 10s)
+    if (classification.estimatedDurationMs && classification.estimatedDurationMs > 10000 && classification.acknowledgmentMessage) {
       sendMessage(device.ws, {
         type: "response",
-        id: message.id,
+        id: `${message.id}_ack`,
         timestamp: Date.now(),
         payload: {
           success: true,
-          response: taskSummaries.join("\n\n"),
+          response: classification.acknowledgmentMessage,
           classification: "CONVERSATIONAL" as const,
           threadIds: [],
           keyPoints: [],
-          isRoutingAck: true,
         }
       });
-      return;
     }
 
-    // Blocked task resume — the task was waiting for user input
-    if (route.task && route.method === "blocked_resume") {
-      const resumed = resumeBlockedTask(route.task.id, prompt);
-      if (resumed) {
-        log.info(`Resumed blocked task with user response`, {
-          taskId: route.task.id,
-          taskName: route.task.name,
-          personaId: route.task.personaId,
-        });
-
-        sendMessage(device.ws, {
-          type: "response",
-          id: message.id,
-          timestamp: Date.now(),
-          payload: {
-            success: true,
-            response: `Got it — resuming **${route.task.name}** (${route.task.personaId}) with your response.`,
-            classification: "CONVERSATIONAL" as const,
-            threadIds: [],
-            keyPoints: [],
-            isRoutingAck: true,
-          }
-        });
-        return;
-      }
-    }
-
-    // Running task injection
-    if (route.task && route.method !== "none" && route.method !== "blocked_resume") {
-      const injected = injectMessageToTask(route.task.id, prompt);
-      if (injected) {
-        const taskCount = activeTaskCountForUser(userId);
-        const routeNote = route.method === "name_match" ? " (matched by name)" : "";
-
-        log.info(`Injected user correction into agent loop`, {
-          taskId: route.task.id,
-          taskName: route.task.name,
-          personaId: route.task.personaId,
-          method: route.method,
-          activeTasks: taskCount,
-        });
-
-        const taskLabel = `**${route.task.name}** (${route.task.personaId})`;
-        const countNote = taskCount > 1 ? `\n\n_${taskCount} tasks running — mention a task name to target a specific one._` : "";
-
-        sendMessage(device.ws, {
-          type: "response",
-          id: message.id,
-          timestamp: Date.now(),
-          payload: {
-            success: true,
-            response: `Got it — forwarded your update to ${taskLabel}${routeNote}. They'll pick it up on their next step.${countNote}`,
-            classification: "CONVERSATIONAL" as const,
-            threadIds: [],
-            keyPoints: [],
-            isRoutingAck: true,
-          }
-        });
-        return;
-      }
-    }
-    // If routing returned no task or injection failed, fall through to normal processing
-  }
-
-  // ── Build context (same as before) ──
-  const { enhancedRequest, toolManifest, runtimeInfo, agentConnected } = await buildRequestContext(
-    deviceId, userId, prompt
-  );
-
-  // Pass through local LLM hints (if present)
-  if (message.payload.hints) {
-    enhancedRequest.hints = message.payload.hints;
-  }
-
-  // Warn the user if the local agent is disconnected — they'll have no history, no tools, no memory
-  if (!agentConnected) {
-    log.warn("Processing prompt without local-agent — no history, tools, or memory available", { userId });
-    sendMessage(device.ws, {
-      type: "response",
-      id: `${message.id}_warn`,
-      timestamp: Date.now(),
-      payload: {
-        success: true,
-        response: "⚠️ **Local agent is not connected.** I won't have conversation history, memory, or tool access for this request. Please check that your local agent is running.",
-        classification: "CONVERSATIONAL" as const,
-        threadIds: [],
-        keyPoints: [],
-      }
-    });
-  }
-
-  // ── Create the runner ──
-  const runner = createRunner(apiKey, userId, toolManifest, runtimeInfo, serverProvider);
-
-  try {
-    // ── Phase 1: Quick classification via receptionist (~1-2s) ──
-    const decision = await runner.classify(enhancedRequest, userId);
-
-    log.info("Orchestrator classification", {
-      classification: decision.classification,
-      persona: decision.personaId,
-      directResponse: !!decision.directResponse,
-    });
-
-    // ── Phase 2: Decide — inline or background agent loop ──
-    const isActionable = ["ACTION", "COMPOUND", "INFO_REQUEST", "CONTINUATION", "CORRECTION"].includes(decision.classification);
-
-    // CANCELLATION — actually cancel running tasks, don't just talk about it
-    if (decision.classification === "CANCELLATION") {
-      const cancelled = cancelAllTasksForUser(userId);
-      log.info(`CANCELLATION: aborted ${cancelled} task(s)`, { deviceId });
-      const response = cancelled > 0
-        ? `Stopping all tasks now. Cancelled ${cancelled} running task${cancelled > 1 ? "s" : ""}.`
-        : "No tasks are currently running.";
-      sendMessage(device.ws, {
-        type: "response",
-        id: message.id,
-        timestamp: Date.now(),
-        payload: {
-          success: true,
-          response,
-          classification: "CANCELLATION" as const,
-          threadIds: [],
-          keyPoints: [],
-        }
-      });
-      return;
-    }
-
-    if (decision.directResponse || !isActionable) {
-      // INLINE PATH — fast, no tool loop needed
-      // Use runWithDecision so the receptionist isn't called twice
-      const result = await runner.runWithDecision(enhancedRequest, userId, decision);
-
-      sendMessage(device.ws, {
-        type: "response",
-        id: message.id,
-        timestamp: Date.now(),
-        payload: {
-          success: result.success,
-          response: result.response,
-          classification: result.classification,
-          threadIds: result.threadIds,
-          keyPoints: result.keyPoints,
-          ...(result.error && { error: result.error }),
-        }
-      });
-
-      sendRunLog(userId, message.id, enhancedRequest, result);
-      return;
-    }
-
-    // ── BACKGROUND PATH — spawn agent loop, respond immediately ──
-    const personaId = decision.personaId || "senior-dev";
-
-    // Derive a short task name from the formatted request or prompt
-    const taskName = (decision.formattedRequest || prompt).substring(0, 60).replace(/\n/g, " ").trim();
-    const taskDescription = (decision.formattedRequest || prompt).substring(0, 200);
-
-    // Spawn the background agent loop
-    const task = spawnTask(
-      deviceId, userId, prompt, personaId,
-      taskName, taskDescription,
-      async (injectionQueue: string[], agentTaskId: string, abortSignal: AbortSignal) => {
-        // Create a scoped runner that tags all progress with this agent's task ID
-        const agentRunner = createRunner(apiKey, userId, toolManifest, runtimeInfo, serverProvider, agentTaskId);
-
-        // Persist work thread start to local agent for crash recovery
-        sendAgentWork(userId, agentTaskId, "started", {
-          personaId, taskName, prompt: prompt.substring(0, 500),
-          startedAt: Date.now(),
-        });
-
-        // Getter closure — returns the CURRENT signal from the task's (possibly replaced) AbortController.
-        // The watchdog may replace the controller after a Phase 2 abort, so we look up the task each time.
-        const getAbortSignal = () => {
-          const t = getTaskById(agentTaskId);
-          return t?.abortController.signal;
-        };
-
-        const result = await agentRunner.runWithDecision(enhancedRequest, userId, decision, injectionQueue, getAbortSignal);
-
-        // Persist completion
-        sendAgentWork(userId, agentTaskId, "completed", {
-          success: result.success,
-          classification: result.classification,
-          responseLength: result.response?.length || 0,
-          threadIds: result.threadIds,
-        });
-
-        return result;
-      }
+    // Execute V2 pipeline with precomputed classification to avoid calling receptionist twice
+    const result = await executeV2Pipeline(
+      llm,
+      v2Runner.options, // AgentRunnerOptions with all callbacks wired
+      enhancedRequest,
+      userId,
+      `session_v2_${nanoid()}`,
+      existingRouter,
+      classification, // Pass precomputed decision to skip redundant receptionist call
     );
 
-    // Notify ALL of the user's devices that an agent loop was started
-    // (broadcastToUser ensures reconnected browsers see it too)
-    broadcastToUser(userId, {
-      type: "agent_started",
-      id: nanoid(),
-      timestamp: Date.now(),
-      payload: {
-        taskId: task.id,
-        taskName: task.name,
-        personaId,
-        prompt: prompt.substring(0, 200),
-      }
-    });
+    // Store the router for session continuity (follow-up routing)
+    if (result.router) {
+      v2Routers.set(userId, result.router);
+    }
 
-    // Send immediate acknowledgment so the user knows we're on it
-    const taskCountMsg = activeTaskCountForUser(userId) > 1
-      ? ` You now have ${activeTaskCountForUser(userId)} tasks running.`
-      : "";
-    const estimateMs = getTimeEstimate(decision.classification);
-    const estimateStr = estimateMs >= 60_000
-      ? `~${Math.round(estimateMs / 60_000)} minute${Math.round(estimateMs / 60_000) > 1 ? "s" : ""}`
-      : `~${Math.round(estimateMs / 1000)} seconds`;
+    // Check if multi-agent response (more than 1 completed agent)
+    const completedAgents = result.agentResults?.filter(r => r.status === "completed") || [];
+    const isMultiAgent = completedAgents.length > 1;
+
     sendMessage(device.ws, {
       type: "response",
       id: message.id,
       timestamp: Date.now(),
       payload: {
-        success: true,
-        response: `On it — I've assigned **${personaId}** to work on "**${task.name}**" (est. ${estimateStr}, could be longer for complex tasks). I'll report back when it's done.${taskCountMsg}`,
-        classification: decision.classification,
+        success: result.success,
+        response: result.response,
+        classification: result.classification,
+        threadIds: result.threadIds,
+        keyPoints: result.keyPoints,
+        ...(result.error && { error: result.error }),
+        // V2: Include agent details for multi-agent responses
+        ...(isMultiAgent && {
+          multiAgent: true,
+          agents: completedAgents.map(a => ({
+            topic: a.topic,
+            response: a.response,
+          })),
+        }),
+      }
+    });
+    return;
+  } catch (error) {
+    log.error("V2 pipeline error", { error });
+    sendMessage(device.ws, {
+      type: "response",
+      id: message.id,
+      timestamp: Date.now(),
+      payload: {
+        success: false,
+        response: `I encountered an error processing your request: ${error instanceof Error ? error.message : "Unknown error"}`,
+        classification: "CONVERSATIONAL" as const,
         threadIds: [],
         keyPoints: [],
-        agentTaskId: task.id,
+        error: error instanceof Error ? error.message : "Unknown error",
       }
     });
-
-    // When the background task completes, broadcast to ALL user devices.
-    // This ensures reconnected browsers (new web_<random> deviceId) still get the result.
-    task.promise.then((result) => {
-      const taskState = getTaskById(task.id);
-      if (taskState?.status === "cancelled") {
-        log.info(`Suppressed agent_complete for cancelled task`, { taskId: task.id, personaId });
-        return;
-      }
-
-      log.info(`Background agent task completed`, { taskId: task.id, personaId });
-
-      broadcastToUser(userId, {
-        type: "agent_complete",
-        id: nanoid(),
-        timestamp: Date.now(),
-        payload: {
-          taskId: task.id,
-          success: result.success,
-          response: `**[${personaId}]** ${result.response}`,
-          classification: result.classification,
-          threadIds: result.threadIds,
-          keyPoints: result.keyPoints,
-        }
-      });
-
-      sendRunLog(userId, message.id, enhancedRequest, result);
-    }).catch((error) => {
-      const taskState = getTaskById(task.id);
-      if (taskState?.status === "cancelled") {
-        log.info(`Suppressed agent_complete error for cancelled task`, { taskId: task.id, personaId });
-        return;
-      }
-
-      log.error(`Background agent task failed`, { taskId: task.id, error });
-
-      broadcastToUser(userId, {
-        type: "agent_complete",
-        id: nanoid(),
-        timestamp: Date.now(),
-        payload: {
-          taskId: task.id,
-          success: false,
-          response: `The agent task encountered an error: ${error instanceof Error ? error.message : "Unknown error"}`,
-          classification: decision.classification,
-          threadIds: [],
-          keyPoints: [],
-        }
-      });
-    });
-
-  } catch (error) {
-    log.error("Orchestrator error", { error });
-    sendError(device.ws, error instanceof Error ? error.message : "Unknown error");
+    return;
   }
 }
+
 
 // ============================================
 // SYSTEM COMMAND: FLUSH SESSION MEMORY

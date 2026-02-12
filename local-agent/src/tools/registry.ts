@@ -16,8 +16,26 @@ import { resolve, join } from "path";
 import { CORE_TOOLS } from "./core-tools.js";
 import { isRuntimeAvailable, getDetectedRuntimes } from "./tool-executor.js";
 import type { RuntimeInfo } from "./tool-executor.js";
-import type { DotBotTool, ToolManifestEntry } from "../memory/types.js";
+import type { DotBotTool, ToolManifestEntry, Platform } from "../memory/types.js";
 import { vaultHas } from "../credential-vault.js";
+
+// ============================================
+// PLATFORM INFERENCE
+// ============================================
+
+/** Default platform for tools that don't specify one. */
+const DEFAULT_DESKTOP: Platform[] = ["windows", "linux", "macos"];
+
+/**
+ * Get the platforms a tool supports. Uses explicit `platforms` field
+ * if set, otherwise infers from runtime and executor.
+ */
+export function getToolPlatforms(tool: DotBotTool): Platform[] {
+  if (tool.platforms && tool.platforms.length > 0) return tool.platforms;
+  if (tool.executor === "server-proxy") return ["windows", "linux", "macos", "web"];
+  if (tool.runtime === "powershell") return ["windows"];
+  return DEFAULT_DESKTOP;
+}
 
 // ============================================
 // REGISTRY STATE
@@ -124,10 +142,17 @@ function isToolAvailable(tool: DotBotTool): boolean {
 /**
  * Get the lightweight manifest for the server.
  * Only includes tools whose required runtime is available.
+ * If `forPlatform` is specified, also filters by platform compatibility.
  * Includes credential metadata (reference names + configured boolean) — never actual values.
  */
-export async function getToolManifest(): Promise<ToolManifestEntry[]> {
-  const tools = getAllTools().filter(isToolAvailable);
+export async function getToolManifest(forPlatform?: Platform): Promise<ToolManifestEntry[]> {
+  let tools = getAllTools().filter(isToolAvailable);
+
+  // Filter by platform if specified
+  if (forPlatform) {
+    tools = tools.filter(t => getToolPlatforms(t).includes(forPlatform));
+  }
+
   const entries: ToolManifestEntry[] = [];
 
   for (const t of tools) {
@@ -138,6 +163,7 @@ export async function getToolManifest(): Promise<ToolManifestEntry[]> {
       category: t.category,
       inputSchema: t.inputSchema,
       annotations: t.annotations,
+      platforms: getToolPlatforms(t),
     };
 
     // Include credential metadata — reference name only, never the value

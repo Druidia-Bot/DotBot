@@ -209,8 +209,14 @@ export interface SkillIndexEntry {
 // ============================================
 
 /**
+ * Supported client platforms for tool filtering.
+ * Used to determine which tools are available on each platform.
+ */
+export type Platform = "windows" | "linux" | "macos" | "web";
+
+/**
  * DotBot Tool — extends MCP Tool with execution and source metadata.
- * 
+ *
  * Tools are atomic capabilities the agent can invoke. They come from:
  * - core: ship with the local agent (filesystem, shell, http, etc.)
  * - api: auto-generated from API specs (weather, search, etc.)
@@ -229,6 +235,13 @@ export interface DotBotTool extends MCPTool {
   executor: "local" | "server-proxy";
   /** Execution runtime */
   runtime?: "powershell" | "node" | "python" | "http" | "mcp" | "internal";
+
+  /**
+   * Which platforms this tool works on.
+   * Used for filtering when building the manifest for a specific client.
+   * Defaults to ["windows", "linux", "macos"] if not specified.
+   */
+  platforms?: Platform[];
 
   /**
    * Credential vault reference name. If set, the credential must exist
@@ -266,6 +279,8 @@ export interface ToolManifestEntry {
   category: string;
   inputSchema: JSONSchema;
   annotations?: MCPToolAnnotations;
+  /** Which platforms this tool works on. */
+  platforms?: Platform[];
   /** Credential vault reference name (e.g., "DISCORD_BOT_TOKEN"). Never contains the actual value. */
   credentialRequired?: string;
   /** Whether the required credential is configured in the local vault. Safe to share — boolean only. */

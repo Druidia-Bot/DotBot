@@ -1,8 +1,8 @@
 /**
- * Task Execution
- * 
- * Handles executing tasks with personas — both the multi-step planner
- * pipeline and the single-persona agentic tool loop.
+ * Task Execution — V2
+ *
+ * Handles executing tasks with personas using the agentic tool loop.
+ * Supports memory context injection, knowledge retrieval, and skill execution.
  */
 
 import { nanoid } from "nanoid";
@@ -23,9 +23,7 @@ import type { AgentRunnerOptions } from "./runner.js";
 import type {
   EnhancedPromptRequest,
   ReceptionistDecision,
-  ExecutionPlan,
   PersonaDefinition,
-  ThreadPacket,
 } from "../types/agent.js";
 import * as db from "../db/index.js";
 
@@ -74,123 +72,6 @@ export async function resolveModelAndClient(
     log.warn(`Failed to create client for ${selectedModel.provider}, falling back to ${currentLlm.provider}`, { error });
     return { selectedModel, client: currentLlm };
   }
-}
-
-// ============================================
-// PLAN EXECUTION (multi-task pipeline)
-// ============================================
-
-export async function executePlan(
-  llm: ILLMClient,
-  options: AgentRunnerOptions,
-  plan: ExecutionPlan,
-  sessionId: string,
-  userId: string,
-  threads: ThreadPacket[],
-  request: EnhancedPromptRequest,
-  injectionQueue?: string[],
-  getAbortSignal?: () => AbortSignal | undefined,
-  onWaitForUser?: (reason: string) => Promise<string>
-): Promise<Map<string, any>> {
-  const results = new Map<string, any>();
-
-  for (const step of plan.executionOrder) {
-    if (step.parallel && step.parallel.length > 0) {
-      // Snapshot prior results before parallel batch starts —
-      // parallel tasks should NOT see each other's partial output
-      const priorSnapshot = new Map(results);
-
-      // Run tasks in parallel (no streaming to avoid interleaved output)
-      const parallelOptions = { ...options, onStream: undefined };
-      const parallelTasks = step.parallel.map((taskId) => {
-        const task = plan.tasks.find((t) => t.id === taskId);
-        if (!task) return Promise.resolve(null);
-        return executeTask(llm, parallelOptions, task, request, priorSnapshot, injectionQueue, getAbortSignal, onWaitForUser);
-      });
-
-      const parallelResults = await Promise.all(parallelTasks);
-      parallelResults.forEach((result, idx) => {
-        if (result && step.parallel) {
-          results.set(step.parallel[idx], result);
-        }
-      });
-    }
-
-    if (step.sequential && step.sequential.length > 0) {
-      // Run tasks sequentially
-      for (const taskId of step.sequential) {
-        const task = plan.tasks.find((t) => t.id === taskId);
-        if (!task) continue;
-
-        const result = await executeTask(
-          llm, options, task, request, results, injectionQueue, getAbortSignal, onWaitForUser
-        );
-        results.set(taskId, result);
-      }
-    }
-  }
-
-  return results;
-}
-
-async function executeTask(
-  llm: ILLMClient,
-  options: AgentRunnerOptions,
-  task: db.Task | any,
-  request: EnhancedPromptRequest,
-  priorResults: Map<string, any>,
-  injectionQueue?: string[],
-  getAbortSignal?: () => AbortSignal | undefined,
-  onWaitForUser?: (reason: string, resumeHint?: string, timeoutMs?: number) => Promise<string>
-): Promise<any> {
-  // Get persona — try to resolve any personaId from the server persona cache
-  const persona = getPersona(task.personaId);
-
-  if (!persona) {
-    log.warn(`Persona not found: ${task.personaId}, using writer`);
-  }
-
-  const activePersona = persona || getPersona("writer")!;
-  if (!activePersona) throw new Error("Writer persona not found");
-
-  // Notify progress
-  if (options.onTaskProgress) {
-    options.onTaskProgress({
-      taskId: task.id,
-      status: "running",
-      message: `Running ${activePersona.name}...`,
-    });
-  }
-
-  // Build task description with prior context (natural language, not JSON dump)
-  const priorContext = Array.from(priorResults.entries())
-    .map(([id, result]) => `[${result.personaId}]: ${result.response}`)
-    .join("\n\n---\n\n");
-
-  const taskDescription = [
-    task.description,
-    task.expectedOutput ? `Expected output: ${task.expectedOutput}` : "",
-    priorContext ? `\nContext from prior steps:\n${priorContext}` : "",
-  ].filter(Boolean).join("\n\n");
-
-  // Use executeWithPersona for full tool/memory/knowledge support
-  const execResult = await executeWithPersona(
-    llm, options, activePersona, taskDescription, request,
-    injectionQueue, getAbortSignal,
-    undefined, // modelRoleHint
-    task.requiredToolCategories,
-    onWaitForUser
-  );
-
-  // Notify completion
-  if (options.onTaskProgress) {
-    options.onTaskProgress({
-      taskId: task.id,
-      status: "completed",
-    });
-  }
-
-  return { response: execResult.response, personaId: activePersona.id };
 }
 
 // ============================================
@@ -363,6 +244,8 @@ export interface PersonaExecutionResult {
   escalationReason?: string;
   /** Brief work log summarizing what tools were used and key results */
   workLog: string;
+  /** Raw tool call data for V2 workspace logging (tool-calls.jsonl) */
+  toolCallsMade?: { tool: string; args: Record<string, any>; result: string; success: boolean }[];
 }
 
 /**
@@ -410,7 +293,9 @@ export async function executeWithPersona(
   getAbortSignal?: () => AbortSignal | undefined,
   modelRoleHint?: "workhorse" | "deep_context" | "architect" | "gui_fast",
   extraToolCategories?: string[],
-  onWaitForUser?: (reason: string, resumeHint?: string, timeoutMs?: number) => Promise<string>
+  onWaitForUser?: (reason: string, resumeHint?: string, timeoutMs?: number) => Promise<string>,
+  /** V2: When provided, filters manifest to these specific tool IDs instead of using category-based filtering. */
+  selectedToolIds?: string[]
 ): Promise<PersonaExecutionResult> {
   // Select model based on: persona.modelRole (highest) > receptionist hint > task detection
   const { selectedModel, client: taskLlm } = await resolveModelAndClient(llm, {
@@ -553,9 +438,19 @@ export async function executeWithPersona(
   const hasNoTools = personaToolCategories.includes("none") || personaToolCategories.length === 0;
   const hasAllTools = personaToolCategories.includes("all");
 
-  // Filter tool manifest based on persona's allowed categories
+  // Filter tool manifest: V2 ID-based slicing takes priority over V1 category filtering
   let filteredManifest = options.toolManifest;
-  if (filteredManifest && !hasAllTools && !hasNoTools) {
+  if (filteredManifest && selectedToolIds && selectedToolIds.length > 0) {
+    // V2 path: receptionist picked specific tool IDs for this agent
+    const idSet = new Set(selectedToolIds);
+    filteredManifest = filteredManifest.filter((t: any) => idSet.has(t.id));
+    log.info("Tool manifest sliced by selected IDs", {
+      persona: persona.id,
+      requested: selectedToolIds.length,
+      matched: filteredManifest.length,
+    });
+  } else if (filteredManifest && !hasAllTools && !hasNoTools) {
+    // V1 path: filter by persona's allowed categories
     filteredManifest = filteredManifest.filter((t: any) =>
       personaToolCategories.includes(t.category) || t.id === "tools.list_tools"
     );
@@ -596,11 +491,13 @@ export async function executeWithPersona(
         executePremiumTool: options.onExecutePremiumTool,
         executeImageGenTool: options.onExecuteImageGenTool,
         executeKnowledgeIngest: options.onExecuteKnowledgeIngest,
+        executeScheduleTool: options.onExecuteScheduleTool,
         skillMatched,
         injectionQueue,
         onWaitForUser,
         getAbortSignal,
         onStream: options.onStream,
+        onLLMResponse: options.onLLMResponse,
         onToolCall: (tool, args) => {
           log.info(`Tool call: ${tool}`, { persona: persona.id, args });
           const argsSummary = Object.keys(args).slice(0, 3).map(k => `${k}=${String(args[k]).substring(0, 40)}`).join(", ");
@@ -645,6 +542,7 @@ export async function executeWithPersona(
       escalated: result.escalated,
       neededToolCategories: result.neededToolCategories,
       escalationReason: result.escalationReason,
+      toolCallsMade: result.toolCallsMade,
     };
   }
 
@@ -696,56 +594,12 @@ export async function executeWithPersonaPlain(
     duration: Date.now() - startTime,
     responseLength: response.content.length,
     response: response.content,
+    model: response.model,
+    provider: response.provider,
+    inputTokens: response.usage?.inputTokens,
+    outputTokens: response.usage?.outputTokens,
   });
 
   return response.content;
 }
 
-// ============================================
-// SIMPLE RESPONSE (no persona, just writer)
-// ============================================
-
-export async function generateSimpleResponse(
-  llm: ILLMClient,
-  options: AgentRunnerOptions,
-  request: EnhancedPromptRequest,
-  decision: ReceptionistDecision
-): Promise<string> {
-  const writer = getPersona("writer");
-  if (!writer) return "I can help you with that.";
-
-  // Simple responses always use workhorse — fast and cheap
-  const { selectedModel: sel, client } = await resolveModelAndClient(llm, { personaModelTier: "fast" });
-
-  const memoryContext = await buildMemoryContextSection(request, request.prompt, options.onPersistMemory);
-  const systemPrompt = `You are a helpful assistant. Respond naturally and conversationally to the user's message. Keep responses brief and friendly. Do NOT return JSON - just respond with plain text.${memoryContext}`;
-
-  const messages = buildMessagesWithHistory(systemPrompt, request.prompt, request);
-
-  // Debug callback - LLM request
-  options.onLLMRequest?.({
-    persona: "writer",
-    provider: sel.provider,
-    model: sel.model,
-    promptLength: messages.reduce((acc, m) => acc + m.content.length, 0),
-    maxTokens: 500,
-    messages,
-  });
-
-  const startTime = Date.now();
-  const response = await client.chat(messages, {
-    model: sel.model,
-    maxTokens: 500,
-    temperature: sel.temperature,
-  });
-
-  // Debug callback - LLM response
-  options.onLLMResponse?.({
-    persona: "writer",
-    duration: Date.now() - startTime,
-    responseLength: response.content.length,
-    response: response.content,
-  });
-
-  return response.content;
-}

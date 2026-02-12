@@ -1,12 +1,11 @@
 /**
- * Intake Agent Stages
- * 
- * Standalone functions for each intake persona stage:
+ * Intake Agent Stages — V2
+ *
+ * Standalone functions for intake persona stages:
  * - Receptionist: classifies and routes requests
- * - Planner: breaks complex tasks into execution plans
- * - Chairman: synthesizes multi-persona output
+ * - Judge: validates final responses (quality gate)
  * - Updater: extracts memory deltas (runs in background)
- * 
+ *
  * Each function accepts an LLM client and runner options so they
  * can be tested independently of the AgentRunner class.
  */
@@ -14,8 +13,6 @@
 import { nanoid } from "nanoid";
 import {
   getReceptionist,
-  getPlanner,
-  getChairman,
   getUpdater,
   getJudge,
   getPersona,
@@ -27,14 +24,11 @@ import type { MemoryDelta } from "../types.js";
 import * as memory from "../memory/manager.js";
 import { createComponentLogger } from "../logging.js";
 import { getSystemContext, generateToolCapabilitiesSummary } from "./tools.js";
+import { generateCompactCatalog } from "../tools/catalog.js";
 import type { AgentRunnerOptions } from "./runner.js";
 import type {
   EnhancedPromptRequest,
   ReceptionistDecision,
-  ExecutionPlan,
-  ChairmanResponse,
-  ThreadPacket,
-  PersonaDefinition,
 } from "../types/agent.js";
 
 const log = createComponentLogger("agents.intake");
@@ -100,15 +94,17 @@ export async function runReceptionist(
   const allPersonaRows = [internalRows, userRows].filter(Boolean).join("\n");
   const personaTableSection = `\n\n## Available Personas\n\nThese are ALL the personas you can route to. Use the description to pick the best match.\n\n| Persona | Description | Source |\n|---------|-------------|--------|\n${allPersonaRows}\n\n**Important:** Do NOT invent persona IDs. Use ONLY personas listed above. Prefer user-defined personas when their description matches the request better than a built-in.\n`;
 
-  // Build tool capabilities summary for routing decisions
+  // Build tool catalog — receptionist sees every tool ID + one-line description
+  // so it can pick specific tools for each agent (V2 compact catalog).
+  // Also keep persona tool access info for routing decisions.
   const personaToolMap: Record<string, string[]> = {};
   for (const p of internalPersonas) {
     if (p.tools && p.tools.length > 0) personaToolMap[p.id] = p.tools;
   }
   for (const p of (request.userPersonas || [])) {
-    // User personas get all tools by default (their definitions may include tools)
     personaToolMap[p.id] = ["all"];
   }
+  const compactCatalog = generateCompactCatalog(options.toolManifest || []);
   const toolCapabilities = generateToolCapabilitiesSummary(options.toolManifest, personaToolMap);
 
   // Build active tasks context
@@ -124,7 +120,11 @@ export async function runReceptionist(
 
   // Build system prompt with context
   const systemContext = getSystemContext(options.runtimeInfo);
-  const systemPrompt = `${receptionist.systemPrompt}${personaTableSection}${toolCapabilities}
+  const systemPrompt = `${receptionist.systemPrompt}${personaTableSection}
+
+${compactCatalog}
+
+${toolCapabilities}
 
 ${systemContext}
 
@@ -185,6 +185,10 @@ Analyze the conversation and provide your routing decision as JSON.`;
     duration: Date.now() - startTime,
     responseLength: response.content.length,
     response: response.content,
+    model: response.model,
+    provider: response.provider,
+    inputTokens: response.usage?.inputTokens,
+    outputTokens: response.usage?.outputTokens,
   });
 
   // Parse JSON response
@@ -225,232 +229,6 @@ Analyze the conversation and provide your routing decision as JSON.`;
   }
 
   return decision;
-}
-
-// ============================================
-// PLANNER
-// ============================================
-
-export async function runPlanner(
-  llm: ILLMClient,
-  options: AgentRunnerOptions,
-  formattedRequest: string,
-  threads: ThreadPacket[],
-  personas: PersonaDefinition[]
-): Promise<ExecutionPlan> {
-  const planner = getPlanner();
-  if (!planner) throw new Error("Planner agent not loaded");
-
-  const { selectedModel: modelConfig, client } = await resolveModelAndClient(llm, { personaModelTier: planner.modelTier });
-
-  const personaSummary = personas
-    .map((p) => `- ${p.id} (${p.type}): ${p.description}${p.tools?.length ? ` [tools: ${p.tools.join(", ")}]` : ""}`)
-    .join("\n") || "No personas available";
-
-  const threadContext =
-    threads
-      .map(
-        (t) =>
-          `Thread "${t.topic}": ${t.beliefs.length} beliefs, ${t.openLoops.length} open loops`
-      )
-      .join("\n") || "No thread context";
-
-  // Build tool capabilities summary for planning
-  const personaToolMap: Record<string, string[]> = {};
-  for (const p of personas) {
-    if (p.tools && p.tools.length > 0) personaToolMap[p.id] = p.tools;
-  }
-  const toolCapabilities = generateToolCapabilitiesSummary(options.toolManifest, personaToolMap);
-
-  // Show skills to the planner so it can make informed routing decisions.
-  // Small inventory (≤ 20): show all. Large inventory: show top search matches + total count.
-  const SKILL_FULL_DISPLAY_LIMIT = 20;
-  const SKILL_SEARCH_DISPLAY_LIMIT = 10;
-  let skillSection = "";
-  if (options.onSearchSkills) {
-    try {
-      const allSkills = await options.onSearchSkills("");
-      if (allSkills.length > 0) {
-        const formatSkill = (s: typeof allSkills[0]) =>
-          `- **${s.name}** (slug: ${s.slug}): ${s.description}${s.allowedTools?.length ? ` [allowed-tools: ${s.allowedTools.join(", ")}]` : ""}${s.tags?.length ? ` [tags: ${s.tags.join(", ")}]` : ""}`;
-
-        let skillLines: string;
-        let skillFooter: string;
-
-        if (allSkills.length <= SKILL_FULL_DISPLAY_LIMIT) {
-          // Small inventory — show everything
-          skillLines = allSkills.map(formatSkill).join("\n");
-          skillFooter = "";
-        } else {
-          // Large inventory — show top search matches for this request + summary
-          const searchMatches = await options.onSearchSkills(formattedRequest);
-          const topMatches = searchMatches.slice(0, SKILL_SEARCH_DISPLAY_LIMIT);
-          skillLines = topMatches.map(formatSkill).join("\n");
-          const remaining = allSkills.length - topMatches.length;
-          skillFooter = remaining > 0
-            ? `\n\n_Showing ${topMatches.length} most relevant of ${allSkills.length} total skills. Other skills: ${allSkills.filter(s => !topMatches.some(m => m.slug === s.slug)).map(s => s.slug).join(", ")}_`
-            : "";
-        }
-
-        skillSection = `\n\nAVAILABLE SKILLS (auto-injected into the executing persona):\n${skillLines}${skillFooter}\n\nIf a skill matches the request, check its **allowed-tools** and assign the task to a persona whose tool categories cover those tools. The skill content will be automatically injected into the persona's context at execution time. Skills contain expert step-by-step instructions — prefer skill-matched routing over generic approaches.`;
-        log.info(`Planner sees ${allSkills.length} skill(s)`, {
-          skills: allSkills.map(s => s.slug),
-        });
-      }
-    } catch (error) {
-      log.warn("Skill listing for planner failed (non-fatal)", { error });
-    }
-  }
-
-  // Build system prompt with context
-  const systemPrompt = `${planner.systemPrompt}
-${toolCapabilities}
-## Current Context
-
-AVAILABLE PERSONAS:
-${personaSummary}
-${skillSection}
-
-THREAD CONTEXT:
-${threadContext}`;
-
-  const messages = [
-    { role: "system" as const, content: systemPrompt },
-    { role: "user" as const, content: formattedRequest },
-  ];
-
-  // Debug callback - LLM request
-  options.onLLMRequest?.({
-    persona: "planner",
-    provider: modelConfig.provider,
-    model: modelConfig.model,
-    promptLength: messages.reduce((acc, m) => acc + m.content.length, 0),
-    maxTokens: modelConfig.maxTokens,
-    messages,
-  });
-
-  const startTime = Date.now();
-  const response = await client.chat(messages, {
-    model: modelConfig.model,
-    maxTokens: modelConfig.maxTokens,
-    temperature: modelConfig.temperature,
-    responseFormat: "json_object",
-  });
-
-  // Debug callback - LLM response
-  options.onLLMResponse?.({
-    persona: "planner",
-    duration: Date.now() - startTime,
-    responseLength: response.content.length,
-    response: response.content,
-  });
-
-  // Parse JSON response
-  let plan: ExecutionPlan;
-  try {
-    const jsonMatch = response.content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      plan = JSON.parse(jsonMatch[0]) as ExecutionPlan;
-    } else {
-      throw new Error("No JSON found");
-    }
-  } catch (e) {
-    log.error("Failed to parse Planner response", { error: e });
-    plan = {
-      planId: `plan_${nanoid(12)}`,
-      tasks: [
-        {
-          id: `task_${nanoid(12)}`,
-          description: formattedRequest,
-          personaId: "writer",
-          personaSource: "internal",
-          estimatedDurationMs: 10000,
-          dependsOn: [],
-          canParallelize: true,
-          requiredAssets: [],
-          expectedOutput: "Response to user",
-        },
-      ],
-      executionOrder: [{ sequential: ["task_1"] }],
-      totalEstimatedMs: 10000,
-      reasoning: "Fallback plan - single writer task",
-    };
-  }
-
-  // Debug callback - Planner output
-  options.onPlannerOutput?.(plan);
-
-  return plan;
-}
-
-// ============================================
-// CHAIRMAN
-// ============================================
-
-export async function runChairman(
-  llm: ILLMClient,
-  originalPrompt: string,
-  decision: ReceptionistDecision,
-  taskResults: Map<string, any>,
-  threads: ThreadPacket[]
-): Promise<ChairmanResponse> {
-  const chairman = getChairman();
-  if (!chairman) throw new Error("Chairman agent not loaded");
-
-  const { selectedModel: modelConfig, client } = await resolveModelAndClient(llm, { personaModelTier: chairman.modelTier });
-
-  const resultsSummary = Array.from(taskResults.entries())
-    .map(([id, result]) => `${result.personaId}: ${result.response}`)
-    .join("\n\n---\n\n");
-
-  // Build system prompt with context
-  const systemPrompt = `${chairman.systemPrompt}
-
-## Current Context
-
-CLASSIFICATION: ${decision.classification}
-REASONING: ${decision.reasoning}
-
-PERSONA OUTPUTS:
-${resultsSummary}
-
-Synthesize a final response to the user's request as JSON.`;
-
-  const messages = [
-    { role: "system" as const, content: systemPrompt },
-    { role: "user" as const, content: originalPrompt },
-  ];
-
-  const response = await client.chat(messages, {
-    model: modelConfig.model,
-    maxTokens: modelConfig.maxTokens,
-    temperature: modelConfig.temperature,
-    responseFormat: "json_object",
-  });
-
-  // Parse JSON response
-  try {
-    const jsonMatch = response.content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]) as ChairmanResponse;
-    }
-  } catch (e) {
-    log.error("Failed to parse Chairman response", { error: e });
-  }
-
-  // Fallback - use raw response
-  return {
-    response: response.content,
-    tone: "professional",
-    keyPoints: [],
-    commitments: [],
-    suggestedFollowups: [],
-    confidenceInAnswer: 0.7,
-    sourcesUsed: [],
-    personasContributed: Array.from(taskResults.values()).map(
-      (r) => r.personaId
-    ),
-  };
 }
 
 // ============================================
@@ -527,6 +305,10 @@ Return your verdict as JSON.`;
       duration: Date.now() - startTime,
       responseLength: response.content.length,
       response: response.content,
+      model: response.model,
+      provider: response.provider,
+      inputTokens: response.usage?.inputTokens,
+      outputTokens: response.usage?.outputTokens,
     });
 
     const jsonMatch = response.content.match(/\{[\s\S]*\}/);

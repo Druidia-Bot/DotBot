@@ -13,6 +13,16 @@ $BotDir = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".bot"
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
 
 # Detect what's installed
+# INSTALL-14: Load .env file into process environment
+$envFile = Join-Path $BotDir ".env"
+if (Test-Path $envFile) {
+    Get-Content $envFile | ForEach-Object {
+        if ($_ -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$' -and $_ -notmatch '^\s*#') {
+            [System.Environment]::SetEnvironmentVariable($Matches[1], $Matches[2].Trim('"').Trim("'"), "Process")
+        }
+    }
+}
+
 $hasAgent = Test-Path (Join-Path $Root "local-agent\dist\index.js")
 $hasServer = Test-Path (Join-Path $Root "server\dist\index.js")
 
@@ -40,10 +50,17 @@ if ($Service) {
 
     if ($hasServer -and $hasAgent) {
         $serverLog = Join-Path $BotDir "server.log"
-        Start-Process -FilePath "node" -ArgumentList "server/dist/index.js" `
+        $serverProc = Start-Process -FilePath "node" -ArgumentList "server/dist/index.js" `
             -WorkingDirectory $Root -NoNewWindow -PassThru `
-            -RedirectStandardOutput $serverLog -RedirectStandardError (Join-Path $BotDir "server-error.log") | Out-Null
-        Start-Sleep -Seconds 2
+            -RedirectStandardOutput $serverLog -RedirectStandardError (Join-Path $BotDir "server-error.log")
+        Start-Sleep -Seconds 3
+        # INSTALL-15: Verify server is still running before starting agent
+        if ($serverProc.HasExited) {
+            $errLog = Join-Path $BotDir "server-error.log"
+            if (Test-Path $errLog) { Get-Content $errLog -Tail 10 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray } }
+            Write-Host "  [X] Server exited immediately (code $($serverProc.ExitCode)). Check $serverLog" -ForegroundColor Red
+            exit 1
+        }
     }
 
     if ($hasAgent) {
@@ -108,10 +125,10 @@ if (Test-Path $clientPath) {
 if ($hasServer -and $hasAgent) {
     Write-Host "  Starting server in new window..." -ForegroundColor Green
     Start-Process powershell -ArgumentList @(
-        "-NoExit", "-ExecutionPolicy", "Bypass", "-Command",
+        "-NoExit", "-ExecutionPolicy", "RemoteSigned", "-Command",
         "`$Host.UI.RawUI.WindowTitle = 'DotBot Server'; Set-Location '$Root'; node server/dist/index.js"
     )
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 3
 }
 
 # Start the primary component in this window

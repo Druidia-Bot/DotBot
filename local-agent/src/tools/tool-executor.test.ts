@@ -5,7 +5,7 @@
  * from reading device credentials, vault, .env files, etc.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { isAllowedRead, isAllowedWrite } from "./tool-executor.js";
 import { homedir } from "os";
 import { join } from "path";
@@ -81,5 +81,81 @@ describe("isAllowedWrite — sensitive file blocklist", () => {
     expect(isAllowedWrite(join(HOME, "Desktop", "test.txt"))).toBe(true);
     expect(isAllowedWrite("~/.bot/memory/index.json")).toBe(true);
     expect(isAllowedWrite("~/.bot/reminders.json")).toBe(true);
+  });
+});
+
+// ============================================
+// SEC-04: Dangerous PowerShell Command Blocklist
+// ============================================
+
+describe("SEC-04 — dangerous PowerShell command blocklist", () => {
+  // The pattern matcher is internal, so we test it indirectly via executeTool.
+  // Dangerous commands are blocked before spawning a PowerShell process.
+
+  let executeTool: (toolId: string, args: Record<string, any>) => Promise<any>;
+
+  beforeAll(async () => {
+    const mod = await import("./tool-executor.js");
+    executeTool = mod.executeTool;
+  });
+
+  it("blocks Format-Volume", async () => {
+    const result = await executeTool("shell.powershell", { command: "Format-Volume -DriveLetter D -FileSystem NTFS" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("disk formatting");
+  });
+
+  it("blocks Format-Disk", async () => {
+    const result = await executeTool("shell.powershell", { command: "Format-Disk -Number 1" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("disk formatting");
+  });
+
+  it("blocks Clear-Disk", async () => {
+    const result = await executeTool("shell.powershell", { command: "Clear-Disk -Number 0 -RemoveData" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("disk wiping");
+  });
+
+  it("blocks bcdedit", async () => {
+    const result = await executeTool("shell.powershell", { command: "bcdedit /set safeboot minimal" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("boot configuration");
+  });
+
+  it("blocks recursive deletion of C:\\Windows", async () => {
+    const result = await executeTool("shell.powershell", { command: "Remove-Item C:\\Windows\\Temp -Recurse -Force" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("recursive deletion");
+  });
+
+  it("blocks Stop-Computer", async () => {
+    const result = await executeTool("shell.powershell", { command: "Stop-Computer -Force" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("computer shutdown");
+  });
+
+  it("blocks Restart-Computer", async () => {
+    const result = await executeTool("shell.powershell", { command: "Restart-Computer" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("computer restart");
+  });
+
+  it("blocks Set-ExecutionPolicy Unrestricted", async () => {
+    const result = await executeTool("shell.powershell", { command: "Set-ExecutionPolicy Unrestricted -Force" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("execution policy");
+  });
+
+  it("blocks Disable-NetAdapter", async () => {
+    const result = await executeTool("shell.powershell", { command: "Disable-NetAdapter -Name 'Ethernet'" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("network adapter");
+  });
+
+  it("blocks registry hive manipulation", async () => {
+    const result = await executeTool("shell.powershell", { command: "reg delete HKLM\\SYSTEM\\CurrentControlSet" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("registry hive");
   });
 });

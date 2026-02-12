@@ -45,12 +45,14 @@ export function handleAdminRequest(deviceId: string, message: WSMessage): void {
       case "create_token": {
         const { maxUses = 1, expiryDays = 7, label = "WS-generated token" } = message.payload;
         const { token, expiresAt } = createInviteToken({ maxUses, expiryDays, label });
+        const publicUrl = process.env.PUBLIC_URL || "http://localhost:3000";
+        const inviteUrl = `${publicUrl}/invite/${token}`;
         log.info("Admin created invite token", { deviceId, label });
         sendMessage(device.ws, {
           type: "admin_response",
           id: nanoid(),
           timestamp: Date.now(),
-          payload: { requestId: respId, success: true, action, data: { token, expiresAt, maxUses, label } },
+          payload: { requestId: respId, success: true, action, data: { token, expiresAt, maxUses, label, inviteUrl } },
         });
         break;
       }

@@ -193,6 +193,72 @@ describe("credentials/proxy", () => {
     ).rejects.toThrow("HTTP/HTTPS");
   });
 
+  // --- SEC-02: IPv6, link-local, service ports ---
+
+  it("blocks IPv6 loopback [::1]", async () => {
+    const blob = encryptCredential("user_demo", "token", "[::1]");
+    await expect(
+      executeProxyRequest(blob, { url: "http://[::1]:8080/admin", method: "GET", headers: {} },
+        { header: "Authorization", prefix: "Bearer " })
+    ).rejects.toThrow(/localhost|private IPv6/);
+  });
+
+  it("blocks IPv6 link-local (fe80::)", async () => {
+    const blob = encryptCredential("user_demo", "token", "[fe80::1]");
+    await expect(
+      executeProxyRequest(blob, { url: "http://[fe80::1]/admin", method: "GET", headers: {} },
+        { header: "Authorization", prefix: "Bearer " })
+    ).rejects.toThrow("private IPv6");
+  });
+
+  it("blocks IPv6 unique-local (fd00::)", async () => {
+    const blob = encryptCredential("user_demo", "token", "[fd12::1]");
+    await expect(
+      executeProxyRequest(blob, { url: "http://[fd12::1]/internal", method: "GET", headers: {} },
+        { header: "Authorization", prefix: "Bearer " })
+    ).rejects.toThrow("private IPv6");
+  });
+
+  it("blocks full 127.x.x.x loopback range", async () => {
+    const blob = encryptCredential("user_demo", "token", "127.0.0.2");
+    await expect(
+      executeProxyRequest(blob, { url: "http://127.0.0.2/admin", method: "GET", headers: {} },
+        { header: "Authorization", prefix: "Bearer " })
+    ).rejects.toThrow("localhost");
+  });
+
+  it("blocks link-local range 169.254.x.x", async () => {
+    const blob = encryptCredential("user_demo", "token", "169.254.1.1");
+    await expect(
+      executeProxyRequest(blob, { url: "http://169.254.1.1/metadata", method: "GET", headers: {} },
+        { header: "Authorization", prefix: "Bearer " })
+    ).rejects.toThrow("link-local");
+  });
+
+  it("blocks Alibaba Cloud metadata (100.100.100.200)", async () => {
+    const blob = encryptCredential("user_demo", "token", "100.100.100.200");
+    await expect(
+      executeProxyRequest(blob, { url: "http://100.100.100.200/latest/meta-data/", method: "GET", headers: {} },
+        { header: "Authorization", prefix: "Bearer " })
+    ).rejects.toThrow("cloud metadata");
+  });
+
+  it("blocks Redis port 6379", async () => {
+    const blob = encryptCredential("user_demo", "token", "api.example.com");
+    await expect(
+      executeProxyRequest(blob, { url: "https://api.example.com:6379/", method: "GET", headers: {} },
+        { header: "Authorization", prefix: "Bearer " })
+    ).rejects.toThrow("service port 6379");
+  });
+
+  it("blocks MongoDB port 27017", async () => {
+    const blob = encryptCredential("user_demo", "token", "db.example.com");
+    await expect(
+      executeProxyRequest(blob, { url: "https://db.example.com:27017/", method: "GET", headers: {} },
+        { header: "Authorization", prefix: "Bearer " })
+    ).rejects.toThrow("service port 27017");
+  });
+
   it("allows legitimate external HTTPS URLs", async () => {
     const blob = encryptCredential("user_demo", "token", "discord.com");
     vi.stubGlobal("fetch", async () => ({

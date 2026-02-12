@@ -38,11 +38,6 @@ import {
 } from "./credential-proxy.js";
 import { initDiscordAdapter, stopDiscordAdapter, handleDiscordResponse, sendToConversationChannel, sendToUpdatesChannel, sendToLogsChannel } from "./discord/adapter.js";
 import { checkReminders, canCheckReminders, setReminderNotifyCallback } from "./reminders/checker.js";
-import {
-  initScheduledTaskChecker, checkScheduledTasks, canCheckScheduledTasks,
-  handleScheduledTaskResponse,
-  setScheduledTaskResultCallback, setScheduledTaskErrorCallback, setScheduledTaskMissedCallback,
-} from "./scheduled-tasks/checker.js";
 import { checkOnboarding, canCheckOnboarding, setOnboardingNotifyCallback, setOnboardingDiscordCallback } from "./onboarding/checker.js";
 import { onboardingExists, initOnboarding } from "./onboarding/store.js";
 import { checkForUpdates, canCheckForUpdates, setUpdateNotifyCallback } from "./onboarding/update-checker.js";
@@ -202,10 +197,12 @@ try {
 
 let ws: WebSocket | null = null;
 let reconnectAttempts = 0;
+let failingSinceMs = 0;
 let pendingFormatFixes: MalformedFile[] = [];
 const MAX_RECONNECT_ATTEMPTS = 50;
 const BASE_RECONNECT_DELAY_MS = 2_000;
 const MAX_RECONNECT_DELAY_MS = 60_000;
+const CIRCUIT_BREAKER_MS = 60 * 60 * 1000; // 1 hour
 
 // Pending server responses for async request/response (sleep cycle condense, resolve loop)
 const pendingServerResponses = new Map<string, { resolve: (value: any) => void; reject: (err: any) => void }>();
@@ -219,6 +216,7 @@ function connect(): void {
   ws.on("open", () => {
     console.log("[Agent] Connected! Authenticating...");
     reconnectAttempts = 0;
+    failingSinceMs = 0;
     authenticate();
   });
 
@@ -242,11 +240,21 @@ function connect(): void {
 }
 
 function scheduleReconnect(): void {
+  if (!failingSinceMs) failingSinceMs = Date.now();
+  const failingDuration = Date.now() - failingSinceMs;
+
+  // Circuit breaker: after 1 hour of continuous failures, exit permanently (code 1)
+  if (failingDuration > CIRCUIT_BREAKER_MS) {
+    console.error(`[Agent] Server unreachable for over 1 hour. Exiting permanently (not restarting).`);
+    console.error(`[Agent] Check server status and restart the agent manually.`);
+    process.exit(1);
+  }
+
   if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
     reconnectAttempts++;
     // Exponential backoff: 2s, 4s, 8s, 16s, 32s, capped at 60s
     const delay = Math.min(BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY_MS);
-    console.log(`[Agent] Reconnecting in ${(delay/1000).toFixed(0)}s (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+    console.log(`[Agent] Reconnecting in ${(delay/1000).toFixed(0)}s (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}, failing for ${Math.round(failingDuration/1000)}s)...`);
     setTimeout(connect, delay);
   } else {
     // Exit with restart signal so the launcher restarts us with a clean slate
@@ -351,6 +359,12 @@ async function resubmitRestartQueue(sendFn: (msg: WSMessage) => void): Promise<v
 function authenticate(): void {
   const capabilities = ["powershell", "file_read", "file_write", "schema_extract", "memory", "skills"];
 
+  // Detect platform for V2 tool filtering
+  const nodePlatform = process.platform;
+  const platform = nodePlatform === "win32" ? "windows"
+    : nodePlatform === "darwin" ? "macos"
+    : "linux";
+
   if (deviceCredentials) {
     // Existing device — authenticate with stored credentials
     send({
@@ -364,6 +378,7 @@ function authenticate(): void {
         capabilities,
         tempDir: TEMP_DIR,
         hwFingerprint,
+        platform,
       },
     });
   } else {
@@ -385,6 +400,7 @@ function authenticate(): void {
         hwFingerprint,
         capabilities,
         tempDir: TEMP_DIR,
+        platform,
       },
     });
   }
@@ -521,27 +537,6 @@ async function handleMessage(message: WSMessage): Promise<void> {
         });
 
         // Wire scheduled task checker
-        initScheduledTaskChecker(send);
-
-        // Wire scheduled task results → Discord #conversation + #updates
-        setScheduledTaskResultCallback((task, result) => {
-          sendToConversationChannel(`📋 **${task.name}**\n${result}`);
-          sendToUpdatesChannel(`⏰ Scheduled task "${task.name}" completed`);
-        });
-
-        setScheduledTaskErrorCallback((task, error, paused) => {
-          const msg = paused
-            ? `⚠️ Scheduled task "${task.name}" paused after repeated failures: ${error}`
-            : `❌ Scheduled task "${task.name}" failed: ${error}`;
-          sendToUpdatesChannel(msg);
-        });
-
-        setScheduledTaskMissedCallback((task) => {
-          sendToConversationChannel(
-            `⏰ It looks like you missed your scheduled task **"${task.name}"** (was due ${new Date(task.nextRunAt).toLocaleString()}). Would you like me to run it now?`
-          );
-        });
-
         // Wire reminder notifications → Discord #conversation + #updates
         setReminderNotifyCallback((reminder) => {
           const emoji = reminder.priority === "P0" ? "🚨" : "🔔";
@@ -586,15 +581,6 @@ async function handleMessage(message: WSMessage): Promise<void> {
             canRun: canCheckReminders,
           },
           {
-            id: "scheduled-task-check",
-            name: "Scheduled Task Runner",
-            intervalMs: 60_000, // Check every 60s
-            initialDelayMs: 30_000, // 30 seconds after startup
-            enabled: true,
-            run: () => checkScheduledTasks(),
-            canRun: canCheckScheduledTasks,
-          },
-          {
             id: "sleep-cycle",
             name: "Memory Consolidation",
             intervalMs: CYCLE_INTERVAL_MS,
@@ -628,6 +614,12 @@ async function handleMessage(message: WSMessage): Promise<void> {
           pendingFormatFixes = [];
           processFormatFixes(fixes, sendAndWaitForResponse).catch(err => {
             console.error("[Agent] Format fix processing failed:", err);
+            send({
+              type: "user_notification",
+              id: nanoid(),
+              timestamp: Date.now(),
+              payload: { level: "warn", message: `Format fix processing failed: ${err instanceof Error ? err.message : String(err)}` },
+            });
           });
         }
 
@@ -745,7 +737,7 @@ async function handleMessage(message: WSMessage): Promise<void> {
 
     case "task_progress": {
       // Route to Discord if applicable, then display locally
-      handleDiscordResponse(message);
+      await handleDiscordResponse(message);
       const { status, message: msg, persona, eventType } = message.payload;
       if (msg) console.log(`[Task] ${status}: ${msg}`);
       // Forward tool activity to Discord #updates channel
@@ -767,17 +759,13 @@ async function handleMessage(message: WSMessage): Promise<void> {
       break;
 
     case "response":
-      // Check if this is a scheduled task response first
-      if (handleScheduledTaskResponse(message)) break;
       // Route to Discord if this was a Discord-originated prompt
-      if (!handleDiscordResponse(message)) {
+      if (!(await handleDiscordResponse(message))) {
         console.log("\n[Response]", message.payload.response);
       }
       break;
 
     case "error":
-      // Check if this error is for a scheduled task prompt
-      handleScheduledTaskResponse(message);
       console.error("[Error]", message.payload.error);
       break;
 
@@ -837,11 +825,8 @@ async function handleMessage(message: WSMessage): Promise<void> {
       break;
 
     case "agent_complete":
-      // Check if this is a scheduled task completion first
-      if (!handleScheduledTaskResponse(message)) {
-        // Route to Discord #conversation if this was a Discord-originated prompt
-        handleDiscordResponse(message);
-      }
+      // Route to Discord #conversation if this was a Discord-originated prompt
+      await handleDiscordResponse(message);
       // Always log locally too
       console.log(`[Agent] Task completed: ${message.payload.taskId} (${message.payload.success ? "success" : "failed"})`);
       // Forward completion summary to Discord #logs channel

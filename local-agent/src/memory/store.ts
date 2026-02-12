@@ -62,10 +62,25 @@ export async function storeAsset(
     const assetDir = path.join(TEMP_DIR, sessionId, taskId);
     await fs.mkdir(assetDir, { recursive: true });
     
-    const assetPath = path.join(assetDir, asset.filename);
+    // SEC-03: Sanitize filename to prevent path traversal
+    // Reject raw filenames containing traversal patterns BEFORE basename stripping
+    if (!asset.filename || asset.filename.includes('..') || /[/\\]/.test(asset.filename)) {
+      throw new Error(`Invalid asset filename: ${asset.filename}`);
+    }
+    const safeName = path.basename(asset.filename);
+    if (!safeName || safeName === '.') {
+      throw new Error(`Invalid asset filename: ${asset.filename}`);
+    }
+    const assetPath = path.join(assetDir, safeName);
+    // Belt-and-suspenders: verify resolved path is still inside assetDir
+    const resolvedAssetPath = path.resolve(assetPath);
+    const resolvedAssetDir = path.resolve(assetDir);
+    if (!resolvedAssetPath.startsWith(resolvedAssetDir + path.sep) && resolvedAssetPath !== resolvedAssetDir) {
+      throw new Error(`Asset path escapes target directory: ${asset.filename}`);
+    }
     
-    // Decode base64 if needed
-    if (asset.data.startsWith("data:") || /^[A-Za-z0-9+/=]+$/.test(asset.data)) {
+    // Decode base64 if needed — require data: prefix or long base64 string with padding
+    if (asset.data.startsWith("data:") || (asset.data.length >= 100 && /^[A-Za-z0-9+/]+=*$/.test(asset.data) && asset.data.length % 4 === 0)) {
       const base64Data = asset.data.replace(/^data:[^;]+;base64,/, "");
       await fs.writeFile(assetPath, Buffer.from(base64Data, "base64"));
     } else {

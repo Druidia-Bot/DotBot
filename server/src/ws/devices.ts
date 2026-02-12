@@ -171,6 +171,16 @@ export function getTempDirForUser(userId: string): string | undefined {
 }
 
 /**
+ * Get the platform for a user's connected local-agent device (V2).
+ * Returns undefined if no device is connected or device didn't send platform.
+ */
+export function getPlatformForUser(userId: string): "windows" | "linux" | "macos" | "web" | undefined {
+  const deviceId = getDeviceForUser(userId);
+  if (!deviceId) return undefined;
+  return devices.get(deviceId)?.session.platform;
+}
+
+/**
  * Send a security alert to all connected admin devices.
  * Delivered as user_notification — the local agent forwards these to Discord #updates.
  */

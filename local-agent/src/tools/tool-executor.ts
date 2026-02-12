@@ -17,7 +17,6 @@ import { handleKnowledge, handlePersonas } from "./tool-handlers-knowledge.js";
 import { handleGui } from "./gui/index.js";
 import { handleDiscord } from "./tool-handlers-discord.js";
 import { handleReminder } from "./tool-handlers-reminder.js";
-import { handleSchedule } from "./tool-handlers-schedule.js";
 import { handleAdmin } from "./tool-handlers-admin.js";
 import { handleEmail } from "./tool-handlers-email.js";
 import { handleMarket } from "./tool-handlers-market.js";
@@ -109,7 +108,7 @@ function detectRuntimes(): void {
     { name: "python", cmd: "python", args: ["--version"], hint: "Install via: winget install Python.Python.3  or  https://python.org/downloads" },
     { name: "git", cmd: "git", args: ["--version"], hint: "Install via: winget install Git.Git  or  https://git-scm.com" },
     { name: "docker", cmd: "docker", args: ["--version"], hint: "Install via: https://docs.docker.com/desktop/install/windows-install/" },
-    { name: "powershell", cmd: "powershell", args: ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"], hint: "Built-in on Windows" },
+    { name: "powershell", cmd: "powershell", args: ["-Command", "echo 5"], hint: "Built-in on Windows" },
     { name: "claude", cmd: "claude", args: ["--version"], hint: "Install via: npm install -g @anthropic-ai/claude-code  or  https://code.claude.com" },
     { name: "codex", cmd: "codex", args: ["--version"], hint: "Install via: npm install -g @openai/codex  or  https://github.com/openai/codex" },
     { name: "wsl", cmd: "wsl", args: ["--status"], hint: "Install via: wsl --install  (requires Windows 10+)" },
@@ -473,7 +472,7 @@ async function executeScriptTool(toolId: string, tool: DotBotTool, args: Record<
   const extMap: Record<string, { ext: string; cmd: string; cmdArgs: string[] }> = {
     python: { ext: ".py", cmd: "python", cmdArgs: ["-u"] },
     node: { ext: ".js", cmd: "node", cmdArgs: [] },
-    powershell: { ext: ".ps1", cmd: "powershell.exe", cmdArgs: ["-NoProfile", "-NonInteractive", "-File"] },
+    powershell: { ext: ".ps1", cmd: "powershell.exe", cmdArgs: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "RemoteSigned", "-File"] },
   };
 
   const config = extMap[tool.runtime!];
@@ -583,7 +582,6 @@ export async function executeTool(toolId: string, args: Record<string, any>): Pr
       case "gui":        return await handleGui(toolId, args);
       case "discord":    return await handleDiscord(toolId, args);
       case "reminder":   return await handleReminder(toolId, args);
-      case "schedule":   return await handleSchedule(toolId, args);
       case "admin":      return await handleAdmin(toolId, args);
       case "email":      return await handleEmail(toolId, args);
       case "market":     return await handleMarket(toolId, args);
@@ -1045,11 +1043,45 @@ Show-Tree -Path "${safePath}"`.trim());
 // SHELL HANDLERS
 // ============================================
 
+/**
+ * SEC-04: Dangerous command patterns that LLM-generated PowerShell must never run.
+ * Each entry: [regex, human-readable reason].
+ * Matched case-insensitively against the full command string.
+ */
+const DANGEROUS_PS_PATTERNS: Array<[RegExp, string]> = [
+  [/\bFormat-(?:Volume|Disk)\b/i, "disk formatting"],
+  [/\bClear-Disk\b/i, "disk wiping"],
+  [/\bInitialize-Disk\b/i, "disk initialization"],
+  [/\bbcdedit\b/i, "boot configuration editing"],
+  [/\bRemove-Item\s[^|]*?-Recurse[^|]*?(?:C:\\Windows|C:\\Program\sFiles|\$env:SystemRoot|\$env:windir)/i, "recursive deletion of system directories"],
+  [/\bRemove-Item\s[^|]*?(?:C:\\Windows|C:\\Program\sFiles|\$env:SystemRoot|\$env:windir)[^|]*?-Recurse/i, "recursive deletion of system directories"],
+  [/\breg\s+(?:delete|import)\s+(?:HKLM|HKEY_LOCAL_MACHINE)\\SYSTEM/i, "system registry hive manipulation"],
+  [/\bRemove-ItemProperty\s[^|]*?HKLM:\\SYSTEM/i, "system registry hive manipulation"],
+  [/\bDisable-NetAdapter\b/i, "network adapter disabling"],
+  [/\bStop-Computer\b/i, "computer shutdown"],
+  [/\bRestart-Computer\b/i, "computer restart"],
+  [/\bsfc\s+\/scannow\b/i, "system file checker (requires elevation)"],
+  [/\bdism\b[^|]*?\/Online\b[^|]*?\/Cleanup-Image/i, "DISM system image manipulation"],
+  [/\bSet-ExecutionPolicy\s+Unrestricted/i, "disabling script execution policy"],
+];
+
+/** Check if a PowerShell command matches any dangerous pattern. Returns reason or null. */
+function matchesDangerousPattern(command: string): string | null {
+  for (const [pattern, reason] of DANGEROUS_PS_PATTERNS) {
+    if (pattern.test(command)) return reason;
+  }
+  return null;
+}
+
 async function handleShell(toolId: string, args: Record<string, any>): Promise<ToolExecResult> {
   switch (toolId) {
     case "shell.powershell": {
       if (commandTargetsProtectedProcess(args.command)) {
         return { success: false, output: "", error: "Blocked: this command would kill DotBot's own process. The local agent and server must not be terminated by tool calls." };
+      }
+      const dangerousReason = matchesDangerousPattern(args.command);
+      if (dangerousReason) {
+        return { success: false, output: "", error: `Blocked: command rejected for safety (${dangerousReason}). This operation is too destructive to run via tool call.` };
       }
       const timeoutMs = args.timeout_seconds ? Math.min(safeInt(args.timeout_seconds, 30), 600) * 1000 : 30_000;
       return runPowershell(args.command, timeoutMs);
@@ -2010,7 +2042,7 @@ async function handleCodegen(toolId: string, args: Record<string, any>): Promise
 
 export function runPowershell(script: string, timeout = 30_000): Promise<ToolExecResult> {
   return runProcess("powershell.exe", [
-    "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script
+    "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "RemoteSigned", "-Command", script
   ], timeout);
 }
 

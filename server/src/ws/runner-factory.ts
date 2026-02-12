@@ -12,7 +12,6 @@
 import { nanoid } from "nanoid";
 import { AgentRunner } from "../agents/runner.js";
 import type { AgentRunResult } from "../agents/runner.js";
-import { selectModel, createClientForSelection } from "../llm/providers.js";
 import { createComponentLogger } from "../logging.js";
 import type {
   EnhancedPromptRequest,
@@ -32,15 +31,9 @@ import {
   sendMemoryRequest,
   sendSkillRequest,
 } from "./device-bridge.js";
-import {
-  getTaskById,
-  recordTaskActivity,
-  setWatchdogLLM,
-} from "../agents/agent-tasks.js";
+import { recordTokenUsage } from "../agents/token-tracker.js";
 
 const log = createComponentLogger("ws.runner");
-
-let watchdogLLMInitialized = false;
 
 // ============================================
 // RUNNER FACTORY
@@ -54,16 +47,6 @@ export function createRunner(
   serverProvider: string,
   agentTaskId?: string
 ): AgentRunner {
-  // Initialize watchdog LLM once (cheap workhorse call for investigation)
-  if (!watchdogLLMInitialized) {
-    try {
-      const watchdogConfig = selectModel({});
-      const watchdogClient = createClientForSelection(watchdogConfig);
-      setWatchdogLLM(watchdogClient);
-      watchdogLLMInitialized = true;
-    } catch { /* non-fatal */ }
-  }
-
   // Track whether this background agent has sent its first stream chunk
   // so we can prefix with the persona label once.
   let agentStreamStarted = false;
@@ -96,67 +79,7 @@ export function createRunner(
         timestamp: Date.now(),
         payload: agentTaskId ? { ...update, taskId: agentTaskId } : update
       });
-      // Feed activity to the watchdog so it knows the agent is alive
-      if (agentTaskId && update.message) {
-        recordTaskActivity(agentTaskId, update.message);
-      }
-    },
-    onRequestThreadData: async (level: 1 | 2, threadIds: string[], councilId?: string) => {
-      const agentId = getDeviceForUser(userId);
-      if (!agentId) return { summaries: [], packets: [], personas: [] };
-
-      try {
-        if (level === 1) {
-          const summaries = [];
-          for (const threadId of threadIds) {
-            const detail = await sendMemoryRequest(agentId, {
-              action: "get_thread_detail",
-              data: { threadId },
-            } as MemoryRequest);
-            if (detail) {
-              summaries.push({
-                id: detail.id || threadId,
-                topic: detail.topic || "",
-                keywords: detail.keywords || [],
-                lastMessage: (detail.messages?.slice(-1)[0]?.content || "").substring(0, 100),
-                openLoopCount: detail.openLoops?.length || 0,
-                beliefCount: detail.beliefs?.length || 0,
-              });
-            }
-          }
-          return { summaries, packets: [], personas: [] };
-        } else {
-          const packets = [];
-          for (const threadId of threadIds) {
-            const detail = await sendMemoryRequest(agentId, {
-              action: "get_thread_detail",
-              data: { threadId },
-            } as MemoryRequest);
-            if (detail) packets.push(detail);
-          }
-          return { summaries: [], packets, personas: [] };
-        }
-      } catch (err) {
-        log.warn("Failed to fetch thread data from local agent", { error: err });
-        return { summaries: [], packets: [], personas: [] };
-      }
-    },
-    onSaveToThread: async (threadId: string, entry: any) => {
-      const agentDeviceId = getDeviceForUser(userId);
-      if (!agentDeviceId) { log.warn("No local-agent connected for thread persistence"); return; }
-      const agentDevice = devices.get(agentDeviceId);
-      if (!agentDevice) return;
-      sendMessage(agentDevice.ws, {
-        type: "save_to_thread",
-        id: nanoid(),
-        timestamp: Date.now(),
-        payload: {
-          threadId,
-          createIfMissing: true,
-          newThreadTopic: entry.topic,
-          entry: { role: entry.role, content: entry.content },
-        },
-      });
+      // V2: Progress tracking handled by supervisor, not watchdog
     },
     onThreadUpdate: (threadId: string, updates: UpdaterRecommendations) => {
       broadcastToUser(userId, {
@@ -175,11 +98,19 @@ export function createRunner(
       broadcastToUser(userId, {
         type: "llm_response", id: nanoid(), timestamp: Date.now(), payload: info
       });
-    },
-    onPlannerOutput: (plan) => {
-      broadcastToUser(userId, {
-        type: "planner_output", id: nanoid(), timestamp: Date.now(), payload: plan
-      });
+      // Record token usage to SQLite (fire-and-forget)
+      if (info.inputTokens || info.outputTokens) {
+        const deviceId = getDeviceForUser(userId);
+        if (deviceId) {
+          recordTokenUsage({
+            deviceId,
+            model: info.model || "unknown",
+            role: info.persona,
+            inputTokens: info.inputTokens || 0,
+            outputTokens: info.outputTokens || 0,
+          });
+        }
+      }
     },
     onExecuteCommand: async (command) => {
       const agentDeviceId = getDeviceForUser(userId);
@@ -249,6 +180,16 @@ export function createRunner(
       const { executeKnowledgeIngest } = await import("../knowledge/ingest.js");
       return executeKnowledgeIngest(args, geminiKey);
     },
+    onExecuteScheduleTool: async (toolId, args) => {
+      const { executeScheduleTool } = await import("../scheduler/index.js");
+      return executeScheduleTool(userId, toolId, args);
+    },
+    onExecuteResearchTool: async (toolId, args, executeCommand) => {
+      const { executeResearchTool } = await import("../scheduler/index.js");
+      // agentTaskId is the agent ID for the current execution
+      const currentAgentId = agentTaskId || `temp_${nanoid()}`;
+      return executeResearchTool(currentAgentId, toolId, args, executeCommand);
+    },
     onSearchSkills: async (query) => {
       const agentDeviceId = getDeviceForUser(userId);
       if (!agentDeviceId) return [];
@@ -270,19 +211,36 @@ export function createRunner(
         action, modelSlug: data.slug, data,
       } as MemoryRequest);
     },
-    onCreateTask: async (data) => {
-      const agentDeviceId = getDeviceForUser(userId);
-      if (!agentDeviceId) { log.warn("No local-agent connected for task tracking"); return null; }
-      return sendMemoryRequest(agentDeviceId, {
-        action: "create_task", data,
-      } as MemoryRequest);
+    // V2: Per-agent lifecycle notifications
+    onAgentStarted: (info) => {
+      broadcastToUser(userId, {
+        type: "agent_started",
+        id: nanoid(),
+        timestamp: Date.now(),
+        payload: {
+          taskId: info.agentId,
+          taskName: info.topic,
+          personaId: info.agentRole,
+          agentRole: info.agentRole,
+          toolCount: info.toolCount,
+        }
+      });
     },
-    onUpdateTask: async (taskId, updates) => {
-      const agentDeviceId = getDeviceForUser(userId);
-      if (!agentDeviceId) { log.warn("No local-agent connected for task tracking"); return null; }
-      return sendMemoryRequest(agentDeviceId, {
-        action: "update_task", data: { taskId, ...updates },
-      } as MemoryRequest);
+    onAgentComplete: (info) => {
+      broadcastToUser(userId, {
+        type: "agent_complete",
+        id: nanoid(),
+        timestamp: Date.now(),
+        payload: {
+          taskId: info.agentId,
+          success: info.success,
+          response: info.response,
+          agentRole: info.agentRole,
+          classification: "ACTION",
+          threadIds: [],
+          keyPoints: [],
+        }
+      });
     },
   });
 }
@@ -291,55 +249,3 @@ export function createRunner(
 // HELPER: Persist agent work thread to local agent
 // ============================================
 
-export function sendAgentWork(
-  userId: string,
-  agentTaskId: string,
-  entryType: "started" | "tool_call" | "tool_result" | "iteration" | "completed" | "failed",
-  data: Record<string, any>
-): void {
-  const agentDeviceId = getDeviceForUser(userId);
-  if (!agentDeviceId) return;
-
-  const device = devices.get(agentDeviceId);
-  if (!device) return;
-
-  sendMessage(device.ws, {
-    type: "save_agent_work",
-    id: nanoid(),
-    timestamp: Date.now(),
-    payload: {
-      agentTaskId,
-      entry: {
-        type: entryType,
-        timestamp: Date.now(),
-        ...data,
-      },
-    },
-  });
-}
-
-// ============================================
-// HELPER: Send run log
-// ============================================
-
-export function sendRunLog(
-  userId: string,
-  messageId: string,
-  request: EnhancedPromptRequest,
-  result: AgentRunResult
-): void {
-  if (!result.runLog) return;
-  broadcastToUser(userId, {
-    type: "run_log",
-    id: nanoid(),
-    timestamp: Date.now(),
-    payload: {
-      sessionId: messageId,
-      prompt: request.prompt.substring(0, 200),
-      success: result.success,
-      classification: result.classification,
-      taskId: result.taskId,
-      runLog: result.runLog,
-    }
-  });
-}

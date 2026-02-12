@@ -101,6 +101,17 @@ describe("device-store", () => {
       expect(isDeviceAdmin(secondId)).toBe(false);
     });
 
+    it("SEC-05: does NOT auto-promote after admin is revoked", () => {
+      const { deviceId: adminId } = registerDevice({ label: "Admin PC", hwFingerprint: "fp1", ip: "1.1.1.1" });
+      expect(isDeviceAdmin(adminId)).toBe(true);
+
+      revokeDevice(adminId);
+      expect(getActiveDeviceCount()).toBe(0);
+
+      const { deviceId: newId } = registerDevice({ label: "Attacker PC", hwFingerprint: "fp_evil", ip: "6.6.6.6" });
+      expect(isDeviceAdmin(newId)).toBe(false);
+    });
+
     it("stores hardware fingerprint and metadata", () => {
       const { deviceId } = registerDevice({
         label: "Wallace Desktop",

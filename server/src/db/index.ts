@@ -167,6 +167,21 @@ export function initDatabase(): Database.Database {
       CREATE INDEX IF NOT EXISTS idx_auth_events_type ON auth_events(event_type);
       CREATE INDEX IF NOT EXISTS idx_auth_events_ip ON auth_events(ip);
       CREATE INDEX IF NOT EXISTS idx_auth_events_created ON auth_events(created_at);
+
+      CREATE TABLE IF NOT EXISTS token_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        model TEXT NOT NULL,
+        role TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL,
+        output_tokens INTEGER NOT NULL,
+        agent_id TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_token_usage_device ON token_usage(device_id);
+      CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_token_usage_agent ON token_usage(agent_id);
     `);
   }
   

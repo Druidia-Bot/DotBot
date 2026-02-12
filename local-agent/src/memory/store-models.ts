@@ -739,13 +739,20 @@ export async function mergeMentalModels(
     }
   }
 
-  // ── Save the merged model and delete the absorbed one ──
+  // ── Save with merge journal for crash recovery ──
+  // If the process crashes between save and delete, the journal indicates pending cleanup
+  const journalPath = path.join(MODELS_DIR, `.merge-journal.json`);
+  await writeJson(journalPath, { keepSlug, absorbSlug, startedAt: new Date().toISOString() });
+
   await saveMentalModel(keep);
   await deleteMentalModel(absorbSlug);
 
   // Also try to delete from deep memory if it was demoted
   const deepPath = path.join(DEEP_MEMORY_DIR, `${absorbSlug}.json`);
   try { await fs.unlink(deepPath); } catch { /* not in deep — fine */ }
+
+  // Remove journal — merge complete
+  try { await fs.unlink(journalPath); } catch { /* fine */ }
 
   await rebuildMemoryIndex();
 

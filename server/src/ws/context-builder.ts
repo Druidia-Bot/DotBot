@@ -13,6 +13,7 @@ import { createComponentLogger } from "../logging.js";
 import type { EnhancedPromptRequest } from "../types/agent.js";
 import {
   getDeviceForUser,
+  getPlatformForUser,
   type MemoryRequest,
 } from "./devices.js";
 import {
@@ -36,6 +37,8 @@ export async function buildRequestContext(
   toolManifest: any[];
   runtimeInfo: any[];
   agentConnected: boolean;
+  /** Client platform from device session (V2). */
+  platform?: "windows" | "linux" | "macos" | "web";
 }> {
   const agentDeviceId = getDeviceForUser(userId);
 
@@ -210,5 +213,6 @@ export async function buildRequestContext(
     agentIdentity,
   };
 
-  return { enhancedRequest, toolManifest, runtimeInfo, agentConnected: !!agentDeviceId };
+  const devicePlatform = getPlatformForUser(userId);
+  return { enhancedRequest, toolManifest, runtimeInfo, agentConnected: !!agentDeviceId, platform: devicePlatform };
 }

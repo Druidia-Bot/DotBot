@@ -29,11 +29,25 @@ const maxUsesIdx = process.argv.indexOf("--max-uses");
 const maxUses = maxUsesIdx !== -1 ? parseInt(process.argv[maxUsesIdx + 1]) || 1 : 1;
 
 const { token, expiresAt } = createInviteToken({ label, expiryDays, maxUses });
-console.log("\n╔═══════════════════════════════════════════════════════════════╗");
-console.log("║  🔑 Invite Token Generated                                   ║");
-console.log("║                                                               ║");
-console.log(`║     ${token}                                ║`);
-console.log("║                                                               ║");
-console.log(`║  Expires: ${expiresAt.substring(0, 10)}    Max uses: ${String(maxUses).padEnd(25)}║`);
-console.log(`║  Label:   ${label.substring(0, 47).padEnd(47)}║`);
-console.log("╚═══════════════════════════════════════════════════════════════╝\n");
+
+const publicUrl = process.env.PUBLIC_URL || "http://localhost:3000";
+const inviteUrl = `${publicUrl}/invite/${token}`;
+
+const contentLines = [
+  `  🔑 Invite Token Generated`,
+  ``,
+  `     ${token}`,
+  ``,
+  `  Expires: ${expiresAt.substring(0, 10)}    Max uses: ${maxUses}`,
+  `  Label:   ${label}`,
+  ``,
+  `  📋 Share this link with the user:`,
+  `     ${inviteUrl}`,
+];
+const innerWidth = Math.max(59, ...contentLines.map(l => l.length + 2));
+const hr = "═".repeat(innerWidth);
+console.log(`\n╔${hr}╗`);
+for (const line of contentLines) {
+  console.log(`║${line.padEnd(innerWidth)}║`);
+}
+console.log(`╚${hr}╝\n`);

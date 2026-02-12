@@ -46,20 +46,30 @@ const MAX_STORED = 50;
 /** Max single screenshot size (10 MB) */
 const MAX_SIZE = 10 * 1024 * 1024;
 
+/** Max total memory for all screenshots (200 MB) */
+const MAX_TOTAL_BYTES = 200 * 1024 * 1024;
+
+let totalBytes = 0;
+
 // Cleanup expired entries every 60 seconds
-setInterval(() => {
+let cleanupTimer: ReturnType<typeof setInterval> | null = setInterval(() => {
   const now = Date.now();
   let cleaned = 0;
   for (const [id, entry] of store) {
     if (now - entry.created > TTL_MS) {
+      totalBytes -= entry.buffer.length;
       store.delete(id);
       cleaned++;
     }
   }
   if (cleaned > 0) {
-    log.info(`Cleaned ${cleaned} expired screenshots, ${store.size} remaining`);
+    log.info(`Cleaned ${cleaned} expired screenshots, ${store.size} remaining, ${Math.round(totalBytes / 1024 / 1024)}MB used`);
   }
 }, 60_000);
+
+export function stopScreenshotCleanup(): void {
+  if (cleanupTimer) { clearInterval(cleanupTimer); cleanupTimer = null; }
+}
 
 // ============================================
 // PUBLIC API
@@ -92,10 +102,13 @@ function storeScreenshot(
   width?: number,
   height?: number,
 ): string {
-  // Evict oldest if at capacity
-  if (store.size >= MAX_STORED) {
+  // Evict oldest entries if at capacity or over memory limit
+  while (store.size >= MAX_STORED || totalBytes + buffer.length > MAX_TOTAL_BYTES) {
     const oldest = store.keys().next().value;
-    if (oldest) store.delete(oldest);
+    if (!oldest) break;
+    const evicted = store.get(oldest);
+    if (evicted) totalBytes -= evicted.buffer.length;
+    store.delete(oldest);
   }
 
   const id = `ss_${nanoid(16)}`;
@@ -106,6 +119,7 @@ function storeScreenshot(
     height,
     created: Date.now(),
   });
+  totalBytes += buffer.length;
   return id;
 }
 

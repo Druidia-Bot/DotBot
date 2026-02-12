@@ -200,7 +200,7 @@ async function executePowerShell(
     const args = [
       "-NoProfile",
       "-NonInteractive",
-      "-ExecutionPolicy", "Bypass",
+      "-ExecutionPolicy", "RemoteSigned",
       "-Command", finalScript
     ];
 

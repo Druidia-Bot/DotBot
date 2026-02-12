@@ -212,8 +212,12 @@ export async function handleCredentialResolveRequest(
     return;
   }
 
-  // One resolve per credential per connection
-  const deviceResolved = resolvedThisConnection.get(deviceId) || new Set();
+  // One resolve per credential per connection — check-and-set atomically
+  let deviceResolved = resolvedThisConnection.get(deviceId);
+  if (!deviceResolved) {
+    deviceResolved = new Set();
+    resolvedThisConnection.set(deviceId, deviceResolved);
+  }
   if (deviceResolved.has(credential_name)) {
     log.warn("Credential resolve REJECTED — already resolved this connection", {
       credential_name,
@@ -231,15 +235,13 @@ export async function handleCredentialResolveRequest(
     });
     return;
   }
+  // Mark as resolved BEFORE decryption to prevent concurrent duplicates
+  deviceResolved.add(credential_name);
 
   try {
     // Decrypt — domain enforcement happens inside decryptCredential()
     const domain = getBlobDomain(encrypted_blob);
     const plaintext = decryptCredential(encrypted_blob, domain || undefined);
-
-    // Track that this credential was resolved for this connection
-    deviceResolved.add(credential_name);
-    resolvedThisConnection.set(deviceId, deviceResolved);
 
     log.info("Credential RESOLVED", {
       credential_name,
@@ -260,6 +262,9 @@ export async function handleCredentialResolveRequest(
       },
     });
   } catch (err: any) {
+    // Rollback — allow retry on failure
+    deviceResolved.delete(credential_name);
+
     log.error("Credential resolve FAILED", {
       credential_name,
       error: err.message,

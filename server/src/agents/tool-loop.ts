@@ -158,6 +158,10 @@ export interface ToolLoopOptions {
   executeImageGenTool?: (toolId: string, args: Record<string, any>, executeCommand: (cmd: ExecutionCommand) => Promise<string>) => Promise<{ success: boolean; output: string; error?: string }>;
   /** Server-side knowledge ingestion (Gemini Files API + processing) */
   executeKnowledgeIngest?: (toolId: string, args: Record<string, any>) => Promise<{ success: boolean; output: string; error?: string }>;
+  /** Server-side schedule tool executor (recurring tasks in SQLite) */
+  executeScheduleTool?: (toolId: string, args: Record<string, any>) => Promise<{ success: boolean; output: string; error?: string }>;
+  /** Server-side research artifact tool (saves to agent workspace) */
+  executeResearchTool?: (toolId: string, args: Record<string, any>, executeCommand: (cmd: ExecutionCommand) => Promise<string>) => Promise<{ success: boolean; output: string; error?: string }>;
   /** When true, a skill was injected into the user message. The tool loop will nudge
    *  the LLM to make tool calls if it tries to respond with text-only on early iterations.
    *  This prevents the "output plan and stop" failure mode. */
@@ -173,6 +177,24 @@ export interface ToolLoopOptions {
    *  When signaled, the pending await rejects, catch block handles it,
    *  and the next iteration drains the injection queue. */
   getAbortSignal?: () => AbortSignal | undefined;
+
+  /** Called after each LLM call with model/token info (for token tracking) */
+  onLLMResponse?: (info: {
+    persona: string;
+    duration: number;
+    responseLength: number;
+    response: string;
+    model?: string;
+    provider?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+  }) => void;
+
+  // V2: Agent protocol callbacks
+  /** Called when agent requests additional tool categories at runtime */
+  onRequestTools?: (toolCategories: string[]) => string[];
+  /** Called when agent requests research delegation */
+  onRequestResearch?: (query: string, depth: string, format: string) => Promise<string>;
 }
 
 export interface ToolLoopResult {
@@ -190,6 +212,8 @@ export interface ToolLoopResult {
   neededToolCategories?: string[];
   /** Why the escalation happened */
   escalationReason?: string;
+  /** V2: Whether research was requested during execution */
+  researchRequested?: boolean;
 }
 
 // ============================================
@@ -275,6 +299,60 @@ export async function runToolLoop(
     });
   }
 
+  // V2: Inject agent.request_tools — lets agents expand their tool set at runtime
+  if (options.onRequestTools && nativeTools) {
+    nativeTools.push({
+      type: "function" as const,
+      function: {
+        name: "agent__request_tools",
+        description: "Request additional tool categories to be added to your active tool set. Use this when you discover you need tools from a category you weren't given (e.g., you need discord tools to send a notification, or shell tools to run a command). The tools will be available on your next LLM call.",
+        parameters: {
+          type: "object",
+          properties: {
+            categories: {
+              type: "string",
+              description: "Comma-separated tool categories you need (e.g., 'discord, shell, filesystem')",
+            },
+            reason: {
+              type: "string",
+              description: "Brief explanation of why you need these tools",
+            },
+          },
+          required: ["categories", "reason"],
+        },
+      },
+    });
+  }
+
+  // V2: Inject agent.request_research — lets agents delegate research to a sub-agent
+  if (options.onRequestResearch && nativeTools) {
+    nativeTools.push({
+      type: "function" as const,
+      function: {
+        name: "agent__request_research",
+        description: "Delegate a research task to a specialized research agent. Use this when you need to look up information (pricing, docs, competitors, etc.) but want to continue working on your primary task. The research agent will search the web, read pages, and return structured findings.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "What to research — be specific (e.g., 'Current pricing tiers for Monday.com, Asana, and ClickUp')",
+            },
+            depth: {
+              type: "string",
+              description: "Research depth: 'quick' (5 iterations, basic search), 'moderate' (15 iterations, multi-source), 'thorough' (30 iterations, deep dive). Default: moderate",
+            },
+            format: {
+              type: "string",
+              description: "Output format: 'plain_text', 'structured_json', 'markdown'. Default: markdown",
+            },
+          },
+          required: ["query"],
+        },
+      },
+    });
+  }
+
   const enrichedLlmOptions: LLMRequestOptions = {
     ...llmOptions,
     tools: nativeTools,
@@ -340,10 +418,23 @@ export async function runToolLoop(
     // Defensive: ensure message sequence is valid before calling LLM
     sanitizeMessages(messages);
 
+    const iterStartTime = Date.now();
     const response = await abortableCall(
       () => llm.chat(messages, enrichedLlmOptions),
       currentSignal
     );
+
+    // Track per-iteration token usage
+    options.onLLMResponse?.({
+      persona: personaId,
+      duration: Date.now() - iterStartTime,
+      responseLength: response.content?.length || 0,
+      response: response.content || "",
+      model: response.model,
+      provider: response.provider,
+      inputTokens: response.usage?.inputTokens,
+      outputTokens: response.usage?.outputTokens,
+    });
 
     const textContent = response.content || "";
     const toolCalls: ToolCall[] = response.toolCalls || [];
@@ -530,6 +621,42 @@ export async function runToolLoop(
         break;
       }
 
+      // ── request_tools: agent needs more tool categories at runtime ──
+      if (toolId === "agent.request_tools" && options.onRequestTools) {
+        const categories = (toolArgs.categories || "")
+          .split(",").map((s: string) => s.trim()).filter(Boolean);
+        const reason = toolArgs.reason || "Agent requested additional tools";
+        log.info("Tool loop: agent requesting additional tools", { personaId, categories, reason });
+
+        const addedTools = options.onRequestTools(categories);
+        const resultMsg = addedTools.length > 0
+          ? `Added ${addedTools.length} tools from categories: ${categories.join(", ")}. They're now available for your next action.`
+          : `No additional tools found for categories: ${categories.join(", ")}. Try different category names or call agent.escalate.`;
+
+        messages.push({ role: "tool", content: resultMsg, tool_call_id: call.id });
+        toolCallsMade.push({ tool: toolId, args: toolArgs, result: resultMsg, success: addedTools.length > 0 });
+        continue;
+      }
+
+      // ── request_research: delegate research to a sub-agent ──
+      if (toolId === "agent.request_research" && options.onRequestResearch) {
+        const query = toolArgs.query || "";
+        const depth = toolArgs.depth || "moderate";
+        const format = toolArgs.format || "markdown";
+        log.info("Tool loop: agent requesting research", { personaId, query, depth });
+
+        try {
+          const findings = await options.onRequestResearch(query, depth, format);
+          messages.push({ role: "tool", content: findings, tool_call_id: call.id });
+          toolCallsMade.push({ tool: toolId, args: toolArgs, result: findings, success: true });
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          messages.push({ role: "tool", content: `Research failed: ${errMsg}`, tool_call_id: call.id });
+          toolCallsMade.push({ tool: toolId, args: toolArgs, result: `Research failed: ${errMsg}`, success: false });
+        }
+        continue;
+      }
+
       let resultContent: string;
       let resultImages: Array<{ base64: string; media_type: "image/jpeg" | "image/png" }> | undefined;
       let success: boolean;
@@ -539,6 +666,8 @@ export async function runToolLoop(
         const isPremium = toolEntry?.category === "premium" && options.executePremiumTool;
         const isImageGen = toolEntry?.category === "imagegen" && options.executeImageGenTool;
         const isKnowledgeIngest = toolId === "knowledge.ingest" && options.executeKnowledgeIngest;
+        const isScheduleTool = toolEntry?.category === "schedule" && options.executeScheduleTool;
+        const isResearchTool = toolEntry?.category === "research" && options.executeResearchTool;
 
         let result: string;
         if (isPremium) {
@@ -562,6 +691,20 @@ export async function runToolLoop(
             throw new Error(ingestResult.error || "Knowledge ingestion failed");
           }
           result = ingestResult.output;
+        } else if (isScheduleTool) {
+          log.info(`Routing to schedule executor`, { personaId, tool: toolId });
+          const schedResult = await options.executeScheduleTool!(toolId, toolArgs);
+          if (!schedResult.success) {
+            throw new Error(schedResult.error || "Schedule operation failed");
+          }
+          result = schedResult.output;
+        } else if (isResearchTool) {
+          log.info(`Routing to research executor`, { personaId, tool: toolId });
+          const researchResult = await options.executeResearchTool!(toolId, toolArgs, options.executeCommand);
+          if (!researchResult.success) {
+            throw new Error(researchResult.error || "Research save failed");
+          }
+          result = researchResult.output;
         } else {
           const command = buildExecutionCommand(
             { tool: toolId, args: toolArgs },
@@ -657,9 +800,21 @@ export async function runToolLoop(
       // Drop tools parameter for synthesis — force text-only response
       const synthesisOptions: LLMRequestOptions = { ...llmOptions };
       sanitizeMessages(messages);
+      const synthStartTime = Date.now();
       const synthesisResponse = await llm.chat(messages, synthesisOptions);
       finalResponse = synthesisResponse.content || "I completed several actions but couldn't generate a final summary.";
       log.info(`Synthesis pass produced ${finalResponse.length} chars`, { personaId });
+
+      options.onLLMResponse?.({
+        persona: personaId,
+        duration: Date.now() - synthStartTime,
+        responseLength: finalResponse.length,
+        response: finalResponse,
+        model: synthesisResponse.model,
+        provider: synthesisResponse.provider,
+        inputTokens: synthesisResponse.usage?.inputTokens,
+        outputTokens: synthesisResponse.usage?.outputTokens,
+      });
     } catch (err) {
       log.error(`Synthesis pass failed`, { personaId, error: err });
       finalResponse = "I completed several tool actions but ran into an issue generating the final summary. Please check the results above.";

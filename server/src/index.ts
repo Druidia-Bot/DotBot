@@ -29,7 +29,20 @@ import {
   cancelTask,
   getStats as getSchedulerStats,
   onSchedulerEvent,
+  startRecurringScheduler,
+  stopRecurringScheduler,
+  setRecurringExecuteCallback,
+  onRecurringEvent,
+  listRecurringTasks,
+  getRecurringTask,
+  createRecurringTask,
+  cancelRecurringTask,
+  pauseRecurringTask,
+  resumeRecurringTask,
+  getRecurringStats,
+  pruneOldCancelledTasks,
 } from "./scheduler/index.js";
+import { stopWorkspaceCleanup } from "./agents/workspace.js";
 
 // Initialize ~/.bot/ environment first
 initBotEnvironment();
@@ -41,6 +54,21 @@ initBotEnvironment();
 const PORT = parseInt(process.env.PORT || "3000");
 const WS_PORT = parseInt(process.env.WS_PORT || "3001");
 const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+
+// INSTALL-01: Validate PUBLIC_URL in production
+if (process.env.NODE_ENV === "production") {
+  if (!process.env.PUBLIC_URL) {
+    console.error("FATAL: PUBLIC_URL must be set in production (e.g. https://dotbot.yourdomain.com)");
+    console.error("  Without it, QR codes, credential pages, and client links all point to localhost.");
+    process.exit(1);
+  }
+  const publicHost = new URL(PUBLIC_URL).hostname;
+  if (publicHost === "localhost" || publicHost === "127.0.0.1" || publicHost === "0.0.0.0") {
+    console.error(`FATAL: PUBLIC_URL cannot be ${publicHost} in production (got ${PUBLIC_URL})`);
+    console.error("  Set PUBLIC_URL to your server's public domain (e.g. https://dotbot.yourdomain.com)");
+    process.exit(1);
+  }
+}
 
 // LLM Provider Configuration (DeepSeek is default)
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "";
@@ -111,7 +139,7 @@ if (!hasCloudKeys) {
       if (ok) console.log(`✅ ${probe.modelName} ready for offline use`);
       else console.log(`⚠️  Local model download failed — offline fallback unavailable`);
     }
-  })();
+  })().catch(err => console.error("Local LLM setup failed:", err));
 }
 
 // ============================================
@@ -138,6 +166,10 @@ import { startSessionCleanup } from "./credentials/sessions.js";
 initMasterKey();
 startSessionCleanup();
 registerCredentialRoutes(app);
+
+// Invite page (public — serves install instructions for new users)
+import { registerInviteRoutes } from "./auth/invite-page.js";
+registerInviteRoutes(app, { publicUrl: PUBLIC_URL, wsPort: String(WS_PORT) });
 
 // Health check
 app.get("/", (c) => c.json({ 
@@ -323,6 +355,81 @@ app.delete("/api/scheduler/tasks/:taskId", (c) => {
 });
 
 // ============================================
+// RECURRING SCHEDULER API
+// ============================================
+
+// Get recurring scheduler stats
+app.get("/api/recurring/stats", (c) => {
+  return c.json(getRecurringStats());
+});
+
+// List recurring tasks for a user
+app.get("/api/recurring/tasks/:userId", (c) => {
+  const userId = c.req.param("userId");
+  const status = c.req.query("status") || undefined;
+  const tasks = listRecurringTasks(userId, status);
+  return c.json({ userId, tasks, count: tasks.length });
+});
+
+// Get a single recurring task
+app.get("/api/recurring/task/:taskId", (c) => {
+  const taskId = c.req.param("taskId");
+  const task = getRecurringTask(taskId);
+  if (!task) return c.json({ error: "Task not found" }, 404);
+  return c.json(task);
+});
+
+// Create a recurring task
+app.post("/api/recurring/tasks", async (c) => {
+  const body = await c.req.json();
+  const { userId, name, prompt, schedule, personaHint, timezone, priority, maxFailures, deviceId } = body;
+
+  if (!userId || !name || !prompt || !schedule?.type) {
+    return c.json({ error: "userId, name, prompt, and schedule.type are required" }, 400);
+  }
+
+  const task = createRecurringTask({
+    userId,
+    deviceId,
+    name,
+    prompt,
+    personaHint,
+    schedule,
+    timezone,
+    priority,
+    maxFailures,
+  });
+  return c.json(task, 201);
+});
+
+// Cancel a recurring task
+app.delete("/api/recurring/tasks/:taskId", async (c) => {
+  const taskId = c.req.param("taskId");
+  const { userId } = await c.req.json().catch(() => ({ userId: "" }));
+  if (!userId) return c.json({ error: "userId is required in body" }, 400);
+  const cancelled = cancelRecurringTask(taskId, userId);
+  return c.json({ taskId, cancelled });
+});
+
+// Pause a recurring task
+app.post("/api/recurring/tasks/:taskId/pause", async (c) => {
+  const taskId = c.req.param("taskId");
+  const { userId } = await c.req.json().catch(() => ({ userId: "" }));
+  if (!userId) return c.json({ error: "userId is required in body" }, 400);
+  const paused = pauseRecurringTask(taskId, userId);
+  return c.json({ taskId, paused });
+});
+
+// Resume a recurring task
+app.post("/api/recurring/tasks/:taskId/resume", async (c) => {
+  const taskId = c.req.param("taskId");
+  const { userId } = await c.req.json().catch(() => ({ userId: "" }));
+  if (!userId) return c.json({ error: "userId is required in body" }, 400);
+  const resumed = resumeRecurringTask(taskId, userId);
+  return c.json({ taskId, resumed });
+});
+
+// ============================================
 // STARTUP
 // ============================================
 
@@ -348,19 +455,37 @@ console.log(`🔌 WebSocket server running on ws://localhost:${WS_PORT}`);
 // Initialize knowledge service (must be after WebSocket server)
 initKnowledgeService();
 
-// Start task scheduler
+// Start task schedulers
 startScheduler();
 onSchedulerEvent((event) => {
   console.log(`[Scheduler] ${event.type}: ${event.taskId}`);
 });
 
+// Start recurring task scheduler
+startRecurringScheduler();
+
+// NOTE: Recurring task execution callback is wired in ws/server.ts via setRecurringExecuteCallback()
+// It routes through the V2 pipeline (handlePrompt → receptionist → persona writer → orchestrator → judge)
+// This ensures recurring tasks use the full V2 architecture, not the old V1 AgentRunner
+
+onRecurringEvent((event) => {
+  console.log(`[Recurring] ${event.type}: ${event.taskName} (${event.taskId})`);
+});
+
+// Prune old cancelled recurring tasks on startup
+pruneOldCancelledTasks();
+
 // Graceful shutdown
-process.on("SIGINT", () => {
-  stopScheduler();
+process.on("SIGINT", async () => {
+  await stopScheduler();
+  await stopRecurringScheduler();
+  stopWorkspaceCleanup();
   process.exit(0);
 });
-process.on("SIGTERM", () => {
-  stopScheduler();
+process.on("SIGTERM", async () => {
+  await stopScheduler();
+  await stopRecurringScheduler();
+  stopWorkspaceCleanup();
   process.exit(0);
 });
 

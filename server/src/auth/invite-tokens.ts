@@ -188,3 +188,19 @@ export function hasAnyTokens(): boolean {
   const db = getDatabase();
   return ((db.prepare("SELECT COUNT(*) as cnt FROM invite_tokens").get() as any)?.cnt || 0) > 0;
 }
+
+export function peekToken(token: string): { valid: boolean; label?: string; expiresAt?: string } {
+  const db = getDatabase();
+  expireTokens();
+
+  const hash = hashToken(token);
+  const row = db.prepare("SELECT * FROM invite_tokens WHERE token_hash = ?").get(hash) as any;
+
+  if (!row || row.status !== "active") {
+    return { valid: false };
+  }
+  if (row.used_count >= row.max_uses) {
+    return { valid: false };
+  }
+  return { valid: true, label: row.label, expiresAt: row.expires_at };
+}

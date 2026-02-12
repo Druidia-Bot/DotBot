@@ -132,6 +132,18 @@ CREATE TABLE IF NOT EXISTS auth_events (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- LLM token usage tracking (V2 token tracker)
+CREATE TABLE IF NOT EXISTS token_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  timestamp TEXT NOT NULL,
+  model TEXT NOT NULL,
+  role TEXT NOT NULL,
+  input_tokens INTEGER NOT NULL,
+  output_tokens INTEGER NOT NULL,
+  agent_id TEXT
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_session_id ON tasks(session_id);
@@ -146,3 +158,6 @@ CREATE INDEX IF NOT EXISTS idx_invite_tokens_status ON invite_tokens(status);
 CREATE INDEX IF NOT EXISTS idx_auth_events_type ON auth_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_auth_events_ip ON auth_events(ip);
 CREATE INDEX IF NOT EXISTS idx_auth_events_created ON auth_events(created_at);
+CREATE INDEX IF NOT EXISTS idx_token_usage_device ON token_usage(device_id);
+CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage(timestamp);
+CREATE INDEX IF NOT EXISTS idx_token_usage_agent ON token_usage(agent_id);

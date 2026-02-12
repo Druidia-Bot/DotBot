@@ -164,6 +164,9 @@ export function getSystemContext(runtimeInfo?: any[]): string {
 // TOOL MANIFEST TYPES (from local agent)
 // ============================================
 
+/** Supported client platforms for tool filtering. */
+export type Platform = "windows" | "linux" | "macos" | "web";
+
 export interface ToolManifestEntry {
   id: string;
   name: string;
@@ -179,6 +182,8 @@ export interface ToolManifestEntry {
     destructiveHint?: boolean;
     requiresConfirmation?: boolean;
   };
+  /** Which platforms this tool works on. */
+  platforms?: Platform[];
   /** Credential vault reference name (e.g., "DISCORD_BOT_TOKEN"). Never contains the actual value. */
   credentialRequired?: string;
   /** Whether the required credential is configured in the local vault. Safe — boolean only. */

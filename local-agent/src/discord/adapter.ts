@@ -53,8 +53,8 @@ const pendingDiscordResponses = new Map<string, {
 const typingIntervals = new Map<string, ReturnType<typeof setInterval>>();
 
 // Pending response timeout — must exceed watchdog KILL_TOTAL_MS (10min) + LLM processing time.
-// 30 minutes gives ample margin for long-running background tasks.
-const PENDING_RESPONSE_TTL_MS = 30 * 60 * 1000;
+// 2 hours covers long-running research/compound tasks that chain multiple personas.
+const PENDING_RESPONSE_TTL_MS = 2 * 60 * 60 * 1000;
 
 // Fallback: track Discord-originated task IDs + channel so we can still
 // deliver agent_complete even if the pending entry expired.
@@ -225,7 +225,7 @@ async function handleDiscordMessage(message: DiscordMessage): Promise<void> {
  * If it matches a Discord-originated prompt, send it to Discord.
  * Returns true if the message was handled (consumed), false otherwise.
  */
-export function handleDiscordResponse(message: WSMessage): boolean {
+export async function handleDiscordResponse(message: WSMessage): Promise<boolean> {
   if (!gateway) return false;
 
   switch (message.type) {
@@ -269,8 +269,12 @@ export function handleDiscordResponse(message: WSMessage): boolean {
       // Inline response — send to Discord and clean up
       pendingDiscordResponses.delete(message.id);
       stopTyping(pending.channelId);
-      if (payload.response) {
-        sendToDiscord(pending.channelId, payload.response);
+
+      // V2: Multi-agent responses use Discord embeds
+      if (payload.multiAgent && payload.agents && payload.agents.length > 0) {
+        await sendEmbedsToDiscord(pending.channelId, payload.agents);
+      } else if (payload.response) {
+        await sendToDiscord(pending.channelId, payload.response);
       }
       return true;
     }
@@ -304,8 +308,11 @@ export function handleDiscordResponse(message: WSMessage): boolean {
         }
       }
 
-      if (message.payload.response) {
-        sendToDiscord(channelId, message.payload.response);
+      // V2: Multi-agent responses use Discord embeds
+      if (message.payload.multiAgent && message.payload.agents && message.payload.agents.length > 0) {
+        await sendEmbedsToDiscord(channelId, message.payload.agents);
+      } else if (message.payload.response) {
+        await sendToDiscord(channelId, message.payload.response);
       }
       return true;
     }
@@ -430,6 +437,63 @@ async function sendToDiscord(channelId: string, content: string): Promise<void> 
     }
   } catch (err: any) {
     console.error(`[Discord] Failed to send message: ${err.message}`);
+  }
+}
+
+/**
+ * Send a multi-agent response to Discord using embeds.
+ * Each agent gets its own embed card.
+ */
+async function sendEmbedsToDiscord(
+  channelId: string,
+  agents: Array<{ topic: string; response: string }>
+): Promise<void> {
+  try {
+    // Discord color palette for agent embeds
+    const colors = [
+      0x5865F2, // Blurple
+      0x57F287, // Green
+      0xFEE75C, // Yellow
+      0xEB459E, // Fuchsia
+      0xED4245, // Red
+    ];
+
+    // Build embeds (max 10 per message, Discord API limit)
+    const embeds = agents.map((agent, idx) => {
+      // Sanitize agent response
+      const sanitized = agent.response.replace(/@(everyone|here)/g, "@\u200b$1");
+
+      // Truncate if too long (embed description limit is 4096 chars)
+      const description = sanitized.length > 4096
+        ? sanitized.substring(0, 4093) + "..."
+        : sanitized;
+
+      return {
+        title: agent.topic,
+        description,
+        color: colors[idx % colors.length],
+        footer: {
+          text: `Agent ${idx + 1} of ${agents.length}`,
+        },
+      };
+    });
+
+    // Send embeds in batches of 10 (Discord limit)
+    for (let i = 0; i < embeds.length; i += 10) {
+      const batch = embeds.slice(i, i + 10);
+      await credentialProxyFetch(`/channels/${channelId}/messages`, DISCORD_CREDENTIAL_NAME, {
+        baseUrl: DISCORD_API,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "DotBot (https://getmy.bot, 1.0)",
+        },
+        body: JSON.stringify({ embeds: batch }),
+        placement: { header: "Authorization", prefix: "Bot " },
+      });
+    }
+  } catch (err: any) {
+    console.error(`[Discord] Failed to send embeds: ${err.message}`);
   }
 }
 

@@ -17,8 +17,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVER_PID_FILE="/tmp/dotbot-server.pid"
-AGENT_PID_FILE="/tmp/dotbot-agent.pid"
+# INSTALL-16: Use ~/.bot/pids/ instead of /tmp (tmpfiles can clean /tmp)
+PID_DIR="${HOME}/.bot/pids"
+mkdir -p "$PID_DIR"
+SERVER_PID_FILE="$PID_DIR/dotbot-server.pid"
+AGENT_PID_FILE="$PID_DIR/dotbot-agent.pid"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -129,7 +132,14 @@ fi
 for port in 3000 3001; do
   pid=$(lsof -ti :"$port" 2>/dev/null || true)
   if [ -n "$pid" ]; then
-    kill "$pid" 2>/dev/null || true
+    # Only kill if the process command line matches DotBot
+    cmdline=$(ps -p "$pid" -o args= 2>/dev/null || true)
+    if echo "$cmdline" | grep -qi 'dotbot\|\.bot'; then
+      kill "$pid" 2>/dev/null || true
+      echo -e "${GRAY}  Killed DotBot process on port $port (PID $pid)${NC}"
+    else
+      echo -e "${YELLOW}  ⚠️  Port $port in use by non-DotBot process (PID $pid) — skipping${NC}"
+    fi
   fi
 done
 sleep 0.5
@@ -154,28 +164,33 @@ elif [[ "$MODE" == "--agent" ]]; then
 
 else
   # Run both — server in background, agent in foreground
+  SERVER_LOG="${HOME}/.bot/server-dev.log"
+
+  # INSTALL-17: Trap signals to clean up background server
+  cleanup_both() {
+    echo -e "\n${YELLOW}  Stopping DotBot...${NC}"
+    if [ -f "$SERVER_PID_FILE" ]; then
+      kill "$(cat "$SERVER_PID_FILE")" 2>/dev/null || true
+      rm -f "$SERVER_PID_FILE"
+    fi
+  }
+  trap cleanup_both EXIT INT TERM
+
   echo -e "${GREEN}  Starting Server in background...${NC}"
   cd "$SCRIPT_DIR/server"
-  npm run dev > /tmp/dotbot-server.log 2>&1 &
+  npm run dev > "$SERVER_LOG" 2>&1 &
   echo $! > "$SERVER_PID_FILE"
-  echo -e "${GRAY}  Server PID: $(cat "$SERVER_PID_FILE") — logs: /tmp/dotbot-server.log${NC}"
+  echo -e "${GRAY}  Server PID: $(cat "$SERVER_PID_FILE") — logs: $SERVER_LOG${NC}"
 
   sleep 2
 
   echo -e "${GREEN}  Starting Local Agent...${NC}"
   echo ""
   echo -e "${GRAY}  ════════════════════════════════════════════════════${NC}"
-  echo -e "${GRAY}    Press Ctrl+C to stop the agent${NC}"
-  echo -e "${GRAY}    Run: bash run-dev.sh --stop  to kill everything${NC}"
+  echo -e "${GRAY}    Press Ctrl+C to stop both server and agent${NC}"
   echo -e "${GRAY}  ════════════════════════════════════════════════════${NC}"
   echo ""
 
   cd "$SCRIPT_DIR/local-agent"
   npm run dev
-
-  # Cleanup server when agent exits
-  if [ -f "$SERVER_PID_FILE" ]; then
-    kill "$(cat "$SERVER_PID_FILE")" 2>/dev/null || true
-    rm -f "$SERVER_PID_FILE"
-  fi
 fi

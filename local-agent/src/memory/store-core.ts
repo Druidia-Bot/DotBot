@@ -65,7 +65,25 @@ export async function writeJson(filePath: string, data: any): Promise<void> {
   // rename() is atomic on the same filesystem, preventing partial-write corruption.
   const tmpPath = filePath + `.tmp_${Date.now()}`;
   await fs.writeFile(tmpPath, json, "utf-8");
-  await fs.rename(tmpPath, filePath);
+  // AGENT-08: Retry rename on Windows — NTFS can fail with EPERM if target is locked
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await fs.rename(tmpPath, filePath);
+      return;
+    } catch (err: any) {
+      if (err.code === "EPERM" && attempt < 2) {
+        await new Promise(r => setTimeout(r, 100 * (attempt + 1)));
+        continue;
+      }
+      // Final attempt failed — clean up temp file and fall back to direct write
+      try { await fs.unlink(tmpPath); } catch {}
+      if (err.code === "EPERM") {
+        await fs.writeFile(filePath, json, "utf-8");
+        return;
+      }
+      throw err;
+    }
+  }
 }
 
 export function slugify(text: string): string {

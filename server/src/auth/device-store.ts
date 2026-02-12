@@ -118,11 +118,12 @@ export function registerDevice(options: {
   const deviceId = `${DEVICE_ID_PREFIX}${randomBytes(8).toString("hex")}`;
   const deviceSecret = randomBytes(DEVICE_SECRET_BYTES).toString("base64url");
 
-  // First device registered is admin
-  const activeCount = (db.prepare(
-    "SELECT COUNT(*) as cnt FROM devices WHERE status = 'active'"
+  // SEC-05: Only auto-promote to admin if no device has EVER been admin.
+  // Checking active count alone allows re-promotion after revoking all devices.
+  const hasEverHadAdmin = (db.prepare(
+    "SELECT COUNT(*) as cnt FROM devices WHERE is_admin = 1"
   ).get() as any)?.cnt || 0;
-  const isAdmin = activeCount === 0;
+  const isAdmin = hasEverHadAdmin === 0;
 
   db.prepare(`
     INSERT INTO devices (id, secret_hash, hw_fingerprint, label, status, is_admin, last_ip)

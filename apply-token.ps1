@@ -18,10 +18,18 @@ if (-not $token) {
     exit 1
 }
 
-# Stop running agent
+# Stop running DotBot agent (only DotBot processes, not all node)
 Write-Host ""
-Write-Host "  Stopping agent..." -ForegroundColor Gray
-Get-Process -Name "node" -ErrorAction SilentlyContinue | Stop-Process -Force 2>$null
+Write-Host "  Stopping DotBot agent..." -ForegroundColor Gray
+Get-Process -Name "node" -ErrorAction SilentlyContinue | ForEach-Object {
+    try {
+        $cmdLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction SilentlyContinue).CommandLine
+        if (($_.Path -and $_.Path -match '[Dd]ot[Bb]ot|\.bot') -or ($cmdLine -and $cmdLine -match '[Dd]ot[Bb]ot|\.bot')) {
+            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+            Write-Host "  Killed PID $($_.Id)" -ForegroundColor Gray
+        }
+    } catch {}
+}
 Start-Sleep -Seconds 1
 
 # Clear stale credentials so agent re-registers
@@ -61,7 +69,7 @@ Start-Process powershell -ArgumentList @(
 $tokenFile = Join-Path $BotDir "web-auth-token"
 Write-Host "  Waiting for agent to register..." -ForegroundColor Gray
 Start-Sleep -Seconds 3  # Grace period for node to start via launch.ps1
-$deadline = (Get-Date).AddSeconds(20)
+$deadline = (Get-Date).AddSeconds(60)  # INSTALL-13: 60s timeout (was 20s)
 $registered = $false
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 1

@@ -60,12 +60,9 @@ if [ "$(id -u)" -ne 0 ]; then
   err "Run this script as root"
 fi
 
-if [ "$DOMAIN" = "dotbot.yourdomain.com" ]; then
-  warn "You haven't set DOMAIN in this script."
-  warn "Caddy will fail to get HTTPS certs without a real domain."
-  read -p "Continue anyway? (y/N) " -n 1 -r
-  echo
-  [[ $REPLY =~ ^[Yy]$ ]] || exit 1
+if echo "$DOMAIN" | grep -qi "yourdomain"; then
+  warn "Edit the DOMAIN variable at the top of this script to your actual domain."
+  err "DOMAIN is still set to a placeholder ('$DOMAIN')."
 fi
 
 step "Starting DotBot server deployment"
@@ -222,13 +219,30 @@ step "6/8 — Building application"
 
 cd "$DEPLOY_DIR"
 
-sudo -u "$BOT_USER" npm install --production=false 2>&1 | tail -1
+BUILD_LOG="$DEPLOY_DIR/build.log"
+
+sudo -u "$BOT_USER" npm install --production=false >> "$BUILD_LOG" 2>&1
+if [ $? -ne 0 ]; then
+    error "npm install failed. Last 20 lines:"
+    tail -20 "$BUILD_LOG"
+    exit 1
+fi
 log "Dependencies installed"
 
-sudo -u "$BOT_USER" npm run build -w shared 2>&1 | tail -1
+sudo -u "$BOT_USER" npm run build -w shared >> "$BUILD_LOG" 2>&1
+if [ $? -ne 0 ]; then
+    error "shared/ build failed. Last 20 lines:"
+    tail -20 "$BUILD_LOG"
+    exit 1
+fi
 log "Shared package built"
 
-sudo -u "$BOT_USER" npm run build -w server 2>&1 | tail -1
+sudo -u "$BOT_USER" npm run build -w server >> "$BUILD_LOG" 2>&1
+if [ $? -ne 0 ]; then
+    error "server/ build failed. Last 20 lines:"
+    tail -20 "$BUILD_LOG"
+    exit 1
+fi
 log "Server built"
 
 # ============================================================
@@ -236,6 +250,20 @@ log "Server built"
 # ============================================================
 
 step "7/8 — Configuring services"
+
+# Verify build output exists before configuring services
+if [ ! -f "$DEPLOY_DIR/server/dist/index.js" ]; then
+    error "Build output not found at $DEPLOY_DIR/server/dist/index.js — cannot create service"
+    exit 1
+fi
+
+# Find node binary (works with NVM, snap, direct install)
+NODE_BIN=$(sudo -u "$BOT_USER" bash -c 'command -v node' 2>/dev/null || echo "/usr/bin/node")
+if [ ! -x "$NODE_BIN" ]; then
+    error "Node binary not found or not executable: $NODE_BIN"
+    exit 1
+fi
+log "Using node at: $NODE_BIN"
 
 # --- systemd service ---
 
@@ -251,7 +279,7 @@ Type=simple
 User=$BOT_USER
 Group=$BOT_USER
 WorkingDirectory=$DEPLOY_DIR
-ExecStart=/usr/bin/node $DEPLOY_DIR/server/dist/index.js
+ExecStart=$NODE_BIN $DEPLOY_DIR/server/dist/index.js
 Restart=always
 RestartSec=5
 StartLimitIntervalSec=60
@@ -302,6 +330,11 @@ $DOMAIN {
         reverse_proxy localhost:3000
     }
 
+    # Invite pages (onboarding for new users)
+    handle /invite/* {
+        reverse_proxy localhost:3000
+    }
+
     # WebSocket connections
     handle /ws {
         reverse_proxy localhost:3001
@@ -326,16 +359,27 @@ $DOMAIN {
 EOF
 
 mkdir -p /var/log/caddy
-log "Caddy configured for $DOMAIN"
+
+# INSTALL-10: Validate Caddy config before applying
+if command -v caddy &>/dev/null; then
+  if ! caddy validate --config /etc/caddy/Caddyfile 2>/dev/null; then
+    warn "Caddyfile validation failed — check the config at /etc/caddy/Caddyfile"
+    warn "Caddy will NOT be restarted. Fix the config and run: systemctl restart caddy"
+  else
+    log "Caddy config validated for $DOMAIN"
+  fi
+else
+  log "Caddy configured for $DOMAIN (caddy binary not yet available for validation)"
+fi
 
 # --- Firewall ---
 
-ufw --force reset >/dev/null 2>&1
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow ssh
-ufw allow 80/tcp    # HTTP (Caddy redirect)
-ufw allow 443/tcp   # HTTPS (Caddy)
+# INSTALL-11: Add required rules without destroying existing ones
+ufw allow ssh 2>/dev/null || true
+ufw allow 80/tcp 2>/dev/null || true
+ufw allow 443/tcp 2>/dev/null || true
+ufw default deny incoming 2>/dev/null || true
+ufw default allow outgoing 2>/dev/null || true
 ufw --force enable
 log "Firewall configured (SSH + HTTP + HTTPS only)"
 
@@ -372,7 +416,7 @@ if grep -q "your_key_here" "$DEPLOY_DIR/.env"; then
 else
   systemctl enable dotbot
   systemctl start dotbot
-  sleep 2
+  sleep 5
 
   if systemctl is-active --quiet dotbot; then
     log "DotBot server is running"

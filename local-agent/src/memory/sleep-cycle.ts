@@ -202,21 +202,25 @@ async function runCycle(): Promise<void> {
 
   } catch (err) {
     console.error("[SleepCycle] Cycle error:", err);
+  } finally {
+    // Save cycle state
+    const duration = Date.now() - startTime;
+    try {
+      await saveSleepState({
+        lastCycleAt: new Date().toISOString(),
+        lastCycleDurationMs: duration,
+        threadsProcessed,
+        loopsInvestigated,
+        instructionsApplied: totalInstructionsApplied,
+        reviewedPairs: state.reviewedPairs,
+      });
+    } catch (saveErr) {
+      console.error("[SleepCycle] Failed to save sleep state:", saveErr);
+    }
+
+    running = false;
+    console.log(`[SleepCycle] Complete — ${threadsProcessed} threads, ${loopsInvestigated} loops, ${totalInstructionsApplied} instructions in ${(duration / 1000).toFixed(1)}s`);
   }
-
-  // Save cycle state
-  const duration = Date.now() - startTime;
-  await saveSleepState({
-    lastCycleAt: new Date().toISOString(),
-    lastCycleDurationMs: duration,
-    threadsProcessed,
-    loopsInvestigated,
-    instructionsApplied: totalInstructionsApplied,
-    reviewedPairs: state.reviewedPairs,
-  });
-
-  running = false;
-  console.log(`[SleepCycle] Complete — ${threadsProcessed} threads, ${loopsInvestigated} loops, ${totalInstructionsApplied} instructions in ${(duration / 1000).toFixed(1)}s`);
 }
 
 // ============================================
