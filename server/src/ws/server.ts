@@ -595,15 +595,6 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
   if (!authResult.success) {
     log.warn("Device auth failed", { deviceId, reason: authResult.reason, ip });
 
-    // Security alert on fingerprint mismatch (device was revoked)
-    if (authResult.reason === "fingerprint_mismatch") {
-      notifyAdminDevices({
-        title: "🚨 Hardware Fingerprint Mismatch",
-        message: `Device \`${deviceId}\` attempted auth from IP \`${ip}\` with a different hardware fingerprint. **Device has been revoked.** This may indicate credential theft.`,
-        level: "critical",
-      });
-    }
-
     sendMessage(ws, {
       type: "auth_failed",
       id: nanoid(),
@@ -611,6 +602,15 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
       payload: { reason: authResult.reason, message: `Authentication failed: ${authResult.reason}` },
     });
     return null;
+  }
+
+  // Security alert on fingerprint change (auth succeeded, fingerprint updated)
+  if (authResult.fingerprintChanged) {
+    notifyAdminDevices({
+      title: "⚠️ Hardware Fingerprint Changed",
+      message: `Device \`${deviceId}\` (\`${authResult.device!.label}\`) authenticated from IP \`${ip}\` with a different hardware fingerprint. Fingerprint has been updated. This is normal after a code update but may indicate credential theft if unexpected.`,
+      level: "warning",
+    });
   }
 
   // If this device was already connected (reconnect), close the old WS gracefully

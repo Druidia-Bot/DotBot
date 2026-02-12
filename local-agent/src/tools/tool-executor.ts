@@ -1467,8 +1467,8 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
         if (!pullResult.success) {
           return { success: false, output: pullResult.output, error: `git pull failed: ${pullResult.error}` };
         }
-        // Install deps + build
-        await runPowershell(`cd '${safeDir}'; npm install 2>&1; npm run build -w shared -w local-agent 2>&1`, 120_000);
+        // Install deps + build (scoped to shared + local-agent only — server may not be present on client-only machines)
+        await runPowershell(`cd '${safeDir}'; npm install -w shared -w local-agent 2>&1; npm run build -w shared -w local-agent 2>&1`, 120_000);
         // Get new commit
         const afterHash = await runPowershell(`cd '${safeDir}'; git rev-parse --short HEAD`, 5_000);
         // Get diff summary

@@ -212,8 +212,10 @@ async function poll(): Promise<void> {
   const idleMs = Date.now() - lastActivityAt;
   if (idleMs < DEFAULT_IDLE_THRESHOLD_MS) return;
 
-  // Find the highest-priority due task
-  // Priority: tasks are checked in registration order; first due task wins
+  // Run ALL due tasks in priority order (registration order)
+  // Fixed: Previously only ran ONE task per poll, causing starvation where
+  // short-interval tasks (reminder-check at 15s) monopolized the loop and
+  // starved longer-interval tasks (sleep-cycle at 30min, never ran since Feb 8)
   for (const task of tasks) {
     if (!task.enabled) continue;
 
@@ -221,9 +223,8 @@ async function poll(): Promise<void> {
     const elapsed = Date.now() - last;
     if (elapsed < task.intervalMs) continue;
 
-    // Task is due — run it
+    // Task is due — run it (continue checking remaining tasks)
     await runTask(task, idleMs);
-    break; // Only one task per poll cycle
   }
 }
 

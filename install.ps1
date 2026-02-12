@@ -89,6 +89,10 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
 
+# Refresh PATH from registry — the elevated session may have a stale PATH
+# that doesn't include tools installed since the last logon (e.g. Git, Node)
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+
 # ============================================
 # CONSTANTS
 # ============================================

@@ -10,12 +10,13 @@
  *   revoke_token  — revoke an invite token by plaintext
  *   list_devices  — list all registered devices
  *   revoke_device — revoke a registered device
+ *   unrevoke_device — un-revoke a device (admin recovery after fingerprint mismatch)
  */
 
 import { nanoid } from "nanoid";
 import type { WSMessage } from "../types.js";
 import { devices, sendMessage } from "./devices.js";
-import { isDeviceAdmin, listDevices, revokeDevice } from "../auth/device-store.js";
+import { isDeviceAdmin, listDevices, revokeDevice, unrevokeDevice } from "../auth/device-store.js";
 import { createInviteToken, listTokens, revokeToken } from "../auth/invite-tokens.js";
 import { createComponentLogger } from "../logging.js";
 
@@ -119,6 +120,28 @@ export function handleAdminRequest(deviceId: string, message: WSMessage): void {
           id: nanoid(),
           timestamp: Date.now(),
           payload: { requestId: respId, success: true, action, data: { deviceId: targetDeviceId, revoked } },
+        });
+        break;
+      }
+
+      case "unrevoke_device": {
+        const { targetDeviceId } = message.payload;
+        if (!targetDeviceId) {
+          sendMessage(device.ws, {
+            type: "admin_response",
+            id: nanoid(),
+            timestamp: Date.now(),
+            payload: { requestId: respId, success: false, error: "targetDeviceId is required" },
+          });
+          return;
+        }
+        const restored = unrevokeDevice(targetDeviceId);
+        log.info("Admin un-revoked device", { deviceId, targetDeviceId, restored });
+        sendMessage(device.ws, {
+          type: "admin_response",
+          id: nanoid(),
+          timestamp: Date.now(),
+          payload: { requestId: respId, success: true, action, data: { deviceId: targetDeviceId, restored } },
         });
         break;
       }

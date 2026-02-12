@@ -139,14 +139,18 @@ export function registerDevice(options: {
  * Authenticate a device. Validates secret AND hardware fingerprint.
  * Returns the reason for failure if auth fails.
  * 
- * On fingerprint mismatch: device is IMMEDIATELY REVOKED.
+ * On fingerprint mismatch: auth SUCCEEDS but fingerprint is updated
+ * and a security warning is logged + admin notified. The device secret
+ * (256-bit) is the real auth factor; the fingerprint is defense-in-depth
+ * monitoring. Code updates that change the hash computation shouldn't
+ * brick all devices.
  */
 export function authenticateDevice(options: {
   deviceId: string;
   deviceSecret: string;
   hwFingerprint: string;
   ip: string;
-}): { success: boolean; reason?: string; device?: RegisteredDevice } {
+}): { success: boolean; reason?: string; device?: RegisteredDevice; fingerprintChanged?: boolean } {
   const db = getDatabase();
   const row = db.prepare("SELECT * FROM devices WHERE id = ?").get(options.deviceId) as any;
 
@@ -169,19 +173,21 @@ export function authenticateDevice(options: {
     return { success: false, reason: "invalid_credentials" };
   }
 
-  // Validate hardware fingerprint — HARD BLOCK on mismatch
+  // Check hardware fingerprint — warn + update on mismatch (don't revoke)
+  let fingerprintChanged = false;
   if (options.hwFingerprint !== device.hwFingerprint) {
-    const now = new Date().toISOString();
+    fingerprintChanged = true;
     db.prepare(
-      "UPDATE devices SET status = 'revoked', revoked_at = ?, revoke_reason = 'fingerprint_mismatch' WHERE id = ?"
-    ).run(now, options.deviceId);
-    logAuthEvent({ eventType: "fingerprint_mismatch", deviceId: options.deviceId, ip: options.ip });
-    log.warn("SECURITY: Hardware fingerprint mismatch — device revoked", {
+      "UPDATE devices SET hw_fingerprint = ? WHERE id = ?"
+    ).run(options.hwFingerprint, options.deviceId);
+    logAuthEvent({ eventType: "fingerprint_mismatch", deviceId: options.deviceId, ip: options.ip,
+      metadata: { oldPrefix: device.hwFingerprint.slice(0, 8), newPrefix: options.hwFingerprint.slice(0, 8) },
+    });
+    log.warn("SECURITY: Hardware fingerprint changed — updated and allowing auth", {
       deviceId: device.deviceId,
       label: device.label,
       ip: options.ip,
     });
-    return { success: false, reason: "fingerprint_mismatch" };
   }
 
   // Auth success — update last seen
@@ -192,7 +198,8 @@ export function authenticateDevice(options: {
   // Return updated device
   device.lastSeenAt = now;
   device.lastSeenIp = options.ip;
-  return { success: true, device };
+  if (fingerprintChanged) device.hwFingerprint = options.hwFingerprint;
+  return { success: true, device, fingerprintChanged };
 }
 
 export function revokeDevice(deviceId: string): boolean {
@@ -233,4 +240,28 @@ export function isDeviceAdmin(deviceId: string): boolean {
   const db = getDatabase();
   const row = db.prepare("SELECT is_admin FROM devices WHERE id = ?").get(deviceId) as any;
   return !!row?.is_admin;
+}
+
+/**
+ * Un-revoke a device and update its fingerprint.
+ * Used for admin recovery when a device was revoked due to
+ * fingerprint mismatch (e.g., code update changed hash computation).
+ */
+export function unrevokeDevice(deviceId: string, newFingerprint?: string): boolean {
+  const db = getDatabase();
+  const row = db.prepare("SELECT * FROM devices WHERE id = ? AND status = 'revoked'").get(deviceId) as any;
+  if (!row) return false;
+
+  if (newFingerprint) {
+    db.prepare(
+      "UPDATE devices SET status = 'active', revoked_at = NULL, revoke_reason = NULL, hw_fingerprint = ? WHERE id = ?"
+    ).run(newFingerprint, deviceId);
+  } else {
+    db.prepare(
+      "UPDATE devices SET status = 'active', revoked_at = NULL, revoke_reason = NULL WHERE id = ?"
+    ).run(deviceId);
+  }
+  logAuthEvent({ eventType: "register", deviceId, reason: "unrevoked_by_admin" });
+  log.info("Device un-revoked", { deviceId, label: row.label, fingerprintUpdated: !!newFingerprint });
+  return true;
 }

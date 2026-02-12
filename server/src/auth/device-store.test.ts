@@ -179,7 +179,7 @@ describe("device-store", () => {
       expect(result.reason).toBe("invalid_credentials");
     });
 
-    it("REVOKES device on fingerprint mismatch", () => {
+    it("allows auth on fingerprint mismatch but flags the change", () => {
       const { deviceId, deviceSecret } = registerDevice({
         label: "Test PC",
         hwFingerprint: "original_fp",
@@ -189,15 +189,16 @@ describe("device-store", () => {
       const result = authenticateDevice({
         deviceId,
         deviceSecret,
-        hwFingerprint: "stolen_different_machine",
+        hwFingerprint: "different_machine_fp",
         ip: "666.666.666.666",
       });
-      expect(result.success).toBe(false);
-      expect(result.reason).toBe("fingerprint_mismatch");
+      expect(result.success).toBe(true);
+      expect(result.fingerprintChanged).toBe(true);
 
-      // Device should now be permanently revoked
+      // Device should still be active with updated fingerprint
       const device = getDevice(deviceId)!;
-      expect(device.status).toBe("revoked");
+      expect(device.status).toBe("active");
+      expect(device.hwFingerprint).toBe("different_machine_fp");
     });
 
     it("rejects revoked device even with correct credentials", () => {

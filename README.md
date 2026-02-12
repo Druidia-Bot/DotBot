@@ -79,15 +79,15 @@ Stateless AI assistants forget everything between sessions. DotBot doesn't.
 
 Different tasks need different thinking. A code review requires different expertise than writing marketing copy or debugging a Docker container.
 
-DotBot uses **specialized personas** — each with a focused system prompt, curated tool access, and the right model tier. A receptionist classifies and routes. Workers execute. Councils optionally review. The result: better output from smaller, sharper prompts.
+DotBot uses **specialized personas** — each with a focused system prompt, curated tool access, and the right model tier. A receptionist classifies and routes. A persona writer generates custom system prompts per task. An orchestrator spawns isolated agents. Workers execute. A judge evaluates quality. The result: better output from smaller, sharper prompts.
 
 15 built-in personas include developers (junior, senior, core), researcher, writer, scribe, comedian, sysadmin, data analyst, code reviewer, GUI operator, tool maker, personal assistant, oracle, and a general-purpose fallback. You can create your own by dropping a `.md` file — no code changes needed.
 
-### 42+ Tools That Actually Work
+### 130+ Tools That Actually Work
 
 Purpose-built tools — each doing one thing reliably — replace fragile shell commands. `create_file(path, content)` beats `echo '...' > file.txt` every time. Deterministic parameters, explicit errors, no quoting bugs.
 
-Categories include filesystem, shell (PowerShell/Bash/Python/Node), HTTP, browser automation, desktop GUI automation, Discord, email, search, reminders, knowledge management, and more. See [Coding Patterns — Many Specific Tools](docs/CODING_PATTERNS.md#many-specific-tools-not-few-general-ones).
+Categories include filesystem, shell (PowerShell/Bash/Python/Node), HTTP, browser automation, desktop GUI automation, Discord, email, search, reminders, runtime management, knowledge management, and more. See [Coding Patterns — Many Specific Tools](docs/CODING_PATTERNS.md#many-specific-tools-not-few-general-ones).
 
 ### It Keeps Working While You Keep Talking
 
@@ -109,85 +109,93 @@ DotBot integrates with **Discord** as a first-class remote interface. Talk to it
 
 ---
 
-## Quick Start
+## Getting Started
 
-Pick the setup that matches what you want to do:
+DotBot is a two-part system: a **cloud server** (handles AI reasoning) and a **local agent** (runs on your Windows PC). You install the server first, then use an invite link to connect agents.
 
-| Setup | Who It's For | What You Need |
-|-------|-------------|---------------|
-| **A. Full Setup** | Production use | A Linux VPS + a Windows PC |
-| **B. Dev Setup** | Developers, testing | One machine (any OS) |
-| **C. Client Only** | Connecting to someone else's server | A Windows PC + an invite token |
+### Step 1 — Install the Server
 
----
+SSH into a Linux server (Ubuntu/Debian recommended) with a domain name pointed at it, and run:
 
-### Option A: Full Setup (Recommended)
-
-This is how DotBot is designed to run — server on a Linux VPS, agent on your Windows PC. The server handles AI reasoning; your PC executes the actions.
-
-**What you'll need before starting:**
-- A Linux server (Ubuntu/Debian) with a domain name pointed at it
-- A Windows PC
-- At least one AI API key (DeepSeek is cheapest — [get one here](https://platform.deepseek.com/api_keys))
-
-#### Step 1 — Install the server
-
-SSH into your Linux server and run:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.sh -o /tmp/install.sh && sed -i 's/\r$//' /tmp/install.sh && bash /tmp/install.sh
 ```
 
 The installer will:
-1. Install Node.js, Caddy (HTTPS), and build tools
+1. Install Node.js, Caddy (automatic HTTPS), and build tools
 2. Ask for your domain name
-3. Ask for your API keys (enter at least one — you can skip the rest)
-4. Build and start the server
-5. **Display an invite token** — copy this, you'll need it for Step 2
+3. Ask for your API keys (at least one — see [API Key Checklist](#server-api-key-checklist))
+4. Build and start the server with auto-restarts
+5. **Print an invite URL** — this is how you connect agents
 
-Your server is now running with HTTPS, a firewall, and auto-restarts.
+> **Minimum to start:** One AI API key. DeepSeek is cheapest — [get one here](https://platform.deepseek.com/api_keys). The server works with a single provider and falls back gracefully.
 
-#### Step 2 — Install the agent on your Windows PC
+### Step 2 — Get an Invite Link
 
-The server installer prints an **invite URL** like `https://your-server.com/invite/dbot-XXXX-...`. Share this with the new user — they'll see a branded page with a one-liner install command:
+The server installer prints an **invite URL** at the end:
+```
+https://your-server.com/invite/dbot-XXXX-XXXX-XXXX-XXXX
+```
+
+This is a **single-use link** that expires in 7 days. Open it in a browser to see a branded page with the install command, or share it directly with the person who needs to connect.
+
+**Need more invite links?**
+```bash
+# On the server:
+cd /opt/.bot && sudo -u dotbot node server/dist/generate-invite.js
+
+# With options:
+node server/dist/generate-invite.js --label "For Alice" --expiry-days 14 --max-uses 3
+```
+
+You can also generate tokens via WebSocket from an admin device (`create_token` action).
+
+### Step 3 — Install the Agent on a Windows PC
+
+Open the invite link in a browser. You'll see a page with a one-liner — copy it, paste it into **PowerShell as Administrator**, and press Enter:
 
 ```powershell
 irm 'https://your-server.com/invite/dbot-XXXX-.../install' | iex
 ```
 
-This downloads the installer and runs it with the server URL and invite token pre-filled. No manual configuration needed. The token is consumed on first connect and the invite link stops working.
+The installer handles everything: Git, Node.js, dependencies, configuration. Takes 2–5 minutes. The invite token is consumed on first connect — the link stops working after that.
 
-**Alternative (manual):** Run the installer directly and enter the server URL and token when prompted:
+**Alternative (manual):** If you have the server URL and token separately:
 ```powershell
 irm https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.ps1 | iex
 ```
+Enter the server URL and invite token when prompted.
 
-#### Step 3 — Use it
+### Step 4 — Use It
 
-Open `http://localhost:3000` in your browser, or talk to DotBot via Discord (set up Discord by asking DotBot: *"set up Discord"*).
+Once installed, DotBot runs as a **background service** that starts automatically on login. You can also launch it manually:
 
-**Useful commands:**
+- **Start Menu** — search "DotBot" to launch with a visible console
+- **Browser** — open `client/index.html` from the install directory for the web UI
+- **Discord** — ask DotBot: *"set up Discord"* to connect your Discord server
+
+**Managing DotBot on Windows:**
 ```powershell
-.\run.ps1                # Start agent + browser client
-.\run.ps1 -Stop          # Stop everything
-.\run.ps1 -Update        # Pull latest + rebuild + run
+# From the install directory (default: C:\Program Files\.bot):
+.\run.ps1                # Start agent + server (dev) or agent-only (production)
+.\run.ps1 -Stop          # Stop all DotBot processes
+.\run.ps1 -Update        # Pull latest code + rebuild + restart
 ```
 
+**Managing the Linux server:**
 ```bash
-# On the Linux server:
-systemctl status dotbot                                       # Check server status
+systemctl status dotbot                                       # Check status
+systemctl restart dotbot                                      # Restart
+journalctl -u dotbot -f                                       # Live logs
 bash /opt/.bot/deploy/update.sh                               # Update server
-cd /opt/.bot && sudo -u dotbot node server/dist/generate-invite.js  # New invite token
+cd /opt/.bot && sudo -u dotbot node server/dist/generate-invite.js  # New invite
 ```
 
 ---
 
-### Option B: Dev Setup (Both on One Machine)
+### Dev Setup (Both on One Machine)
 
-> ⚠️ **Development only.** This runs the server and agent on the same machine. Fine for testing and development, but not recommended for daily use.
-
-**What you'll need:**
-- Node.js 20+ and Git installed
-- At least one AI API key
+> For development and testing only. Runs the server and agent on the same machine.
 
 ```bash
 git clone https://github.com/Druidia-Bot/DotBot.git
@@ -206,58 +214,128 @@ npm install
 ```bash
 bash run-dev.sh              # Starts server + agent
 bash run-dev.sh --stop       # Stop everything
-bash run-dev.sh --update     # Pull + rebuild + run
 ```
 
 ---
 
-### Option C: Client Only
+## Updating
 
-Someone else is running the server — you just need to connect your agent.
+DotBot has three update paths depending on how you're running it.
 
-**What you'll need:**
-- A Windows PC
-- An invite link from whoever runs the server (looks like `https://server.com/invite/dbot-XXXX-...`)
+### Updating the Agent (Windows PC)
 
-Open the invite link in your browser. You'll see a page with a one-liner command — copy it, paste it into PowerShell as Administrator, and press Enter:
+**Option A — Ask DotBot to update itself:**
+Tell DotBot *"update yourself"* via chat or Discord. The agent runs `git pull`, rebuilds, and restarts automatically.
 
+**Option B — Manual update:**
 ```powershell
-irm 'https://server.com/invite/dbot-XXXX-.../install' | iex
+# From the install directory:
+.\run.ps1 -Update        # Pulls latest code, installs deps, rebuilds, restarts
 ```
 
-The installer handles Git, Node.js, and all dependencies automatically. Takes 2–5 minutes. The invite token is consumed on first connect — the link stops working after that.
+**Option C — Via the Start Menu:**
+The DotBot shortcut runs the launcher, which auto-restarts after updates. The agent's built-in update checker polls for new commits periodically.
 
-**Alternative (manual):** If you have the server URL and token separately:
-```powershell
-irm https://raw.githubusercontent.com/Druidia-Bot/DotBot/main/install.ps1 | iex
+> **Note:** The agent only installs dependencies for `shared/` and `local-agent/` — it will not attempt to build server components, even on a full monorepo clone.
+
+### Updating the Server (Linux)
+
+```bash
+bash /opt/.bot/deploy/update.sh
 ```
-Enter the server URL and invite token when prompted.
+
+This pulls the latest code, rebuilds, and restarts the systemd service. For manual control:
+```bash
+cd /opt/.bot
+sudo -u dotbot git pull
+sudo -u dotbot npm install -w shared -w server
+sudo -u dotbot npm run build -w shared -w server
+sudo systemctl restart dotbot
+```
+
+### What Happens During an Update
+
+1. `git pull` fetches the latest code
+2. `npm install` installs new dependencies (scoped to relevant packages only)
+3. `npm run build` compiles TypeScript
+4. The agent restarts (exit code 42 signals the launcher to restart immediately)
+5. On restart, the agent reconnects to the server and re-authenticates
+
+**If an update breaks something:** The launcher (`launch.ps1`) has auto-rollback — if the agent crashes within 10 seconds of starting after an update, it automatically restores the previous build.
 
 ---
 
-### Need More Invite Tokens?
+## Troubleshooting
 
-Invite tokens are single-use and expire in 7 days. Generate more on the server:
+### Agent Won't Connect
+
+**Symptoms:** `[Agent] Connecting to wss://...` but never authenticates, or connection drops immediately.
+
+- **Check the server is running:** `systemctl status dotbot` on the server
+- **Check the URL:** `~/.bot/.env` should have `DOTBOT_SERVER=wss://your-domain/ws` (note the `/ws` suffix for remote servers)
+- **Check firewall:** Port 443 must be open on the server (Caddy handles HTTPS)
+- **Check Caddy:** `systemctl status caddy` — Caddy reverse-proxies `/ws` to the internal WebSocket port
+
+### Authentication Failed
+
+**`fingerprint_mismatch`** — The hardware fingerprint changed since last connection. This can happen after:
+- A code update that changed the fingerprint computation
+- A Windows update or BIOS update
+- Adding/removing hardware
+
+The server now **accepts the new fingerprint automatically** and logs a warning. If the device was previously revoked (older server versions revoked on mismatch), an admin can un-revoke it:
 ```bash
-cd /opt/.bot && sudo -u dotbot node server/dist/generate-invite.js
+# From an admin device, send the unrevoke_device admin action with the device ID
+```
+Or on the client: delete `~/.bot/device.json` and re-register with a new invite token.
+
+**`device_revoked`** — The device was manually revoked by an admin. Get a new invite token and re-register:
+```powershell
+Remove-Item "$env:USERPROFILE\.bot\device.json"
+# Set the new token in ~/.bot/.env as DOTBOT_INVITE_TOKEN=dbot-XXXX-...
+# Then restart the agent
 ```
 
-This prints both the raw token and a **shareable invite URL** that you can send directly to the new user. Options:
-```bash
-# Custom label, 14-day expiry, 3 uses
-node server/dist/generate-invite.js --label "For Alice" --expiry-days 14 --max-uses 3
+**`invalid_credentials`** — The device secret doesn't match. This usually means `~/.bot/device.json` was corrupted or copied from another machine. Delete it and re-register with a new invite token.
+
+**`rate_limited`** — Too many failed auth attempts from this IP. Wait 15 minutes and try again.
+
+### Update Failed on Client-Only PC
+
+**Symptom:** `npm install` or `npm run build` fails with errors about `better-sqlite3` or server packages.
+
+The update process only installs and builds `shared/` and `local-agent/`. If you see server build errors, you may be running an older version of the update tool. Pull the latest code manually:
+```powershell
+cd "C:\Program Files\.bot"
+git pull
+npm install -w shared -w local-agent
+npm run build -w shared -w local-agent
 ```
 
-You can also generate tokens from the admin panel via WebSocket (`create_token` action).
+### Agent Crashes on Startup
 
-### How Authentication Works
+- **Check logs:** `Get-Content "$env:USERPROFILE\.bot\agent.log" -Tail 50`
+- **Auto-rollback:** If the agent crashes within 10 seconds of an update, the launcher restores the previous build automatically
+- **Manual rollback:** Copy `~/.bot/workspace/dist-backup/` back to `local-agent/dist/`
+- **Nuclear option:** Delete the install directory, re-run the installer with a new invite token
+
+### Discord Not Responding
+
+- **Check connection:** Look for `[Discord] Bot online` in the agent console
+- **Re-setup:** Tell DotBot *"set up Discord"* — it walks you through the full configuration
+- **Token expired:** Discord bot tokens don't expire, but if the bot was removed from the server, re-invite it
+
+---
+
+## How Authentication Works
 
 DotBot uses **hardware-bound device credentials** — no passwords or API keys to manage:
 
-1. **First connect** — agent presents invite token → server issues permanent device credentials
-2. **Every connect** — agent sends credentials + a hardware fingerprint (motherboard, CPU, disk, machine GUID, BIOS)
-3. **If someone copies your credentials to another machine** — fingerprint mismatch → device revoked, admin alerted
-4. **Brute force protection** — 3 failed attempts in 15 minutes → IP blocked
+1. **First connect** — agent presents invite token → server issues permanent device credentials (stored in `~/.bot/device.json`)
+2. **Every connect** — agent sends credentials + a hardware fingerprint (motherboard serial, CPU ID, boot disk serial, Windows Machine GUID, BIOS serial)
+3. **If the fingerprint changes** (code update, hardware swap, OS reinstall) — the server accepts the new fingerprint, logs a warning, and notifies admin devices. This is a monitoring signal, not a blocker.
+4. **If someone copies your credentials to another machine** — admin is alerted via the fingerprint change notification and can manually revoke the device
+5. **Brute force protection** — 3 failed attempts in 15 minutes → IP blocked
 
 ---
 
@@ -271,27 +349,29 @@ DotBot uses **hardware-bound device credentials** — no passwords or API keys t
 │  ├── personas/    ← your custom personas     │
 │  │   └── {slug}/knowledge/ ← per-persona KB  │
 │  ├── knowledge/   ← general knowledge base   │
-│  ├── councils/    ← your custom councils     │
 │  ├── skills/      ← learned automations      │
-│  └── memory/      ← threads, mental models   │
+│  ├── memory/      ← threads, mental models   │
+│  └── device.json  ← hardware-bound creds     │
 │                                              │
 │  ┌────────────────────────────────────────┐  │
 │  │         DotBot Local Agent             │  │
-│  │  • Executes PowerShell / commands      │  │
-│  │  • Reads/writes local files            │  │
-│  │  • Manages ~/.bot/ storage             │  │
-│  │  • Bootstraps personas & councils      │  │
+│  │  • 130+ tools (shell, files, browser)  │  │
+│  │  • Manages ~/.bot/ storage & memory    │  │
+│  │  • Discord integration                 │  │
+│  │  • Credential vault (split-knowledge)  │  │
 │  └────────────────────┬───────────────────┘  │
 └───────────────────────┼──────────────────────┘
-                        │ WebSocket
+                        │ WebSocket (encrypted)
 ┌───────────────────────▼──────────────────────┐
 │            DotBot Cloud Server               │
 │                                              │
-│  ┌─── Intake ─────────────────────────────┐  │
-│  │  Receptionist → classifies & routes    │  │
-│  │  Planner → breaks down complex tasks   │  │
-│  │  Chairman → synthesizes multi-step     │  │
-│  │  Updater → writes back to memory       │  │
+│  ┌─── V2 Pipeline ───────────────────────┐  │
+│  │  Receptionist → classifies & routes   │  │
+│  │  Persona Writer → custom prompts/tools│  │
+│  │  Orchestrator → spawns isolated agents│  │
+│  │  Judge → evaluates quality            │  │
+│  │  Reflector → learns skills (async)    │  │
+│  │  Updater → writes back to memory      │  │
 │  └────────────────────────────────────────┘  │
 │                                              │
 │  ┌─── Workers (15 personas) ─────────────┐  │
@@ -301,11 +381,6 @@ DotBot uses **hardware-bound device credentials** — no passwords or API keys t
 │  │  gui-operator • tool-maker            │  │
 │  │  personal-assistant • oracle          │  │
 │  │  code-reviewer • general              │  │
-│  └────────────────────────────────────────┘  │
-│                                              │
-│  ┌─── Councils (optional) ────────────────┐  │
-│  │  User-defined review layers loaded     │  │
-│  │  from ~/.bot/councils/                 │  │
 │  └────────────────────────────────────────┘  │
 │                                              │
 │  ┌─── Model Selection ────────────────────┐  │

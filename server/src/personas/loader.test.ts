@@ -11,8 +11,6 @@ import { describe, it, expect } from "vitest";
 import {
   parseFrontMatter,
   getReceptionist,
-  getPlanner,
-  getChairman,
   getUpdater,
   getPersona,
   getIntakeAgents,
@@ -146,20 +144,6 @@ describe("Persona Loading", () => {
     expect(receptionist!.id).toBe("receptionist");
     expect(receptionist!.type).toBe("intake");
     expect(receptionist!.systemPrompt).toBeTruthy();
-  });
-
-  it("loads planner persona", () => {
-    const planner = getPlanner();
-    expect(planner).toBeDefined();
-    expect(planner!.id).toBe("planner");
-    expect(planner!.type).toBe("intake");
-  });
-
-  it("loads chairman persona", () => {
-    const chairman = getChairman();
-    expect(chairman).toBeDefined();
-    expect(chairman!.id).toBe("chairman");
-    expect(chairman!.type).toBe("intake");
   });
 
   it("loads updater persona", () => {

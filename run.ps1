@@ -74,7 +74,12 @@ if ($Update) {
         if ($LASTEXITCODE -ne 0) { throw "git pull failed" }
         Write-Host "  [OK] Code updated" -ForegroundColor Green
 
-        npm install 2>&1 | Out-Null
+        # Scope npm install to only workspaces we need (server may not be present on client-only machines)
+        $wsFlags = @("-w", "shared")
+        if (-not $Server) { $wsFlags += @("-w", "local-agent") }
+        if (-not $Agent -and (Test-Path "$Root\server\package.json")) { $wsFlags += @("-w", "server") }
+        $installArgs = @("install") + $wsFlags
+        & npm @installArgs 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
         Write-Host "  [OK] Dependencies updated" -ForegroundColor Green
 
@@ -92,7 +97,7 @@ if ($Update) {
             Write-Host "  [OK] local-agent/ built" -ForegroundColor Green
         }
 
-        if (-not $Agent) {
+        if (-not $Agent -and (Test-Path "$Root\server\package.json")) {
             Push-Location "$Root\server"
             $out = npm run build 2>&1
             if ($LASTEXITCODE -ne 0) { $out | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }; throw "server/ build failed" }
