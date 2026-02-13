@@ -180,6 +180,7 @@ const DEVICE_NAME = process.env.DEVICE_NAME || `Windows-${process.env.COMPUTERNA
 
 // Device credentials (loaded from ~/.bot/device.json after registration)
 let deviceCredentials = loadDeviceCredentials();
+let setupServerStarted = false;
 
 // Hardware fingerprint — computed once at startup, held in memory only.
 // NEVER exposed to LLM context or any tool.
@@ -449,37 +450,41 @@ async function handleMessage(message: WSMessage): Promise<void> {
         console.log("[Agent] Authenticated successfully!");
         console.log("[Agent] Ready for commands.");
 
-        // Start local setup server for secure browser authentication
-        // Use message payload (first registration) or saved credentials (reconnect)
-        const setupDeviceId = message.payload.deviceId || deviceCredentials?.deviceId;
-        const setupDeviceSecret = message.payload.deviceSecret || deviceCredentials?.deviceSecret;
-        if (setupDeviceId && setupDeviceSecret) {
-          // Convert WebSocket URL to HTTP base URL for browser redirect
-          // wss://server.getmy.bot/ws → https://server.getmy.bot (strip /ws path)
-          const httpUrl = SERVER_URL
-            .replace(/^wss?:\/\//, (match) => match === 'wss://' ? 'https://' : 'http://')
-            .replace(/\/ws\/?$/, '');
+        // Start local setup server for secure browser authentication (once only)
+        if (!setupServerStarted) {
+          const setupDeviceId = message.payload.deviceId || deviceCredentials?.deviceId;
+          const setupDeviceSecret = message.payload.deviceSecret || deviceCredentials?.deviceSecret;
+          if (setupDeviceId && setupDeviceSecret) {
+            const httpUrl = SERVER_URL
+              .replace(/^wss?:\/\//, (match) => match === 'wss://' ? 'https://' : 'http://')
+              .replace(/\/ws\/?$/, '');
 
-          try {
-            const { port, setupCode } = startSetupServer(
-              setupDeviceId,
-              setupDeviceSecret,
-              httpUrl
-            );
+            try {
+              const { port, setupCode } = startSetupServer(
+                setupDeviceId,
+                setupDeviceSecret,
+                httpUrl
+              );
+              setupServerStarted = true;
 
-            console.log("");
-            console.log("╔════════════════════════════════════════════════════════╗");
-            console.log("║                                                        ║");
-            console.log("║  🌐 Setup Browser Access                               ║");
-            console.log("║                                                        ║");
-            console.log(`║  Open this link to configure credentials:             ║`);
-            console.log(`║  http://localhost:${port}/setup?code=${setupCode}         ║`);
-            console.log("║                                                        ║");
-            console.log("╚════════════════════════════════════════════════════════╝");
-            console.log("");
-          } catch (err) {
-            console.warn("[Agent] Setup server failed to start:", err);
-            // Not critical — user can enter credentials via other means
+              const setupUrl = `http://localhost:${port}/setup?code=${setupCode}`;
+              console.log("");
+              console.log("╔════════════════════════════════════════════════════════╗");
+              console.log("║                                                        ║");
+              console.log("║  🌐 Opening Browser...                                 ║");
+              console.log("║                                                        ║");
+              console.log(`║  ${setupUrl}  ║`);
+              console.log("║                                                        ║");
+              console.log("╚════════════════════════════════════════════════════════╝");
+              console.log("");
+
+              // Auto-open the setup URL in the default browser
+              import('child_process').then(({ exec }) => {
+                exec(`start "" "${setupUrl}"`);
+              }).catch(() => {});
+            } catch (err) {
+              console.warn("[Agent] Setup server failed to start:", err);
+            }
           }
         }
         // Initialize subsystems with server sender
