@@ -221,6 +221,22 @@ Analyze the conversation and provide your routing decision as JSON.`;
       }
 
       decision = parsed as ReceptionistDecision;
+
+      // Sanitize directResponse: if the LLM set it to a raw classification keyword
+      // (e.g. "CONVERSATIONAL", "ACTION"), strip it — the user would see pipeline internals.
+      if (decision.directResponse) {
+        const CLASSIFICATION_KEYWORDS = new Set([
+          "CONVERSATIONAL", "ACTION", "INFO_REQUEST", "CONTINUATION",
+          "CORRECTION", "COMPOUND", "GREETING", "ACKNOWLEDGMENT",
+        ]);
+        if (CLASSIFICATION_KEYWORDS.has(decision.directResponse.trim().toUpperCase())) {
+          log.warn("Receptionist set directResponse to classification keyword — stripping", {
+            directResponse: decision.directResponse,
+            classification: decision.classification,
+          });
+          decision.directResponse = undefined;
+        }
+      }
     } else {
       throw new Error("No JSON found");
     }

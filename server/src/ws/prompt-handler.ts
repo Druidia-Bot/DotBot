@@ -137,13 +137,23 @@ export async function handlePrompt(
           topic: targetAgent.topic,
           promptLength: prompt.length,
         });
-        resolver(prompt);
-        // Don't send a response — the original pipeline's tool loop will stream content
-        tracker.markResponseSent(message.id);
+        // Send brief confirmation so the user knows their response was received
+        sendMessage(responseWs, {
+          type: "response",
+          id: message.id,
+          timestamp: Date.now(),
+          payload: {
+            success: true,
+            response: `Got it — resuming **${targetAgent.topic}**...`,
+            classification: "CONVERSATIONAL" as const,
+            threadIds: [],
+            keyPoints: [],
+          }
+        });
 
-        // Extend the ORIGINAL pipeline's tracker timeout since we know it's still alive
-        // (the first handlePrompt call is still awaiting executeV2Pipeline)
-        tracker.extendTimeout(message.id, 600_000);
+        // Resolve the blocked agent — the original tool loop resumes and streams the next step
+        resolver(prompt);
+        tracker.markResponseSent(message.id);
         return;
       }
     }
@@ -263,13 +273,22 @@ export async function handlePrompt(
     const completedAgents = result.agentResults?.filter(r => r.status === "completed") || [];
     const isMultiAgent = completedAgents.length > 1;
 
+    // For single-agent tasks, onAgentComplete already broadcast the response via
+    // agent_complete — sending it again as type:"response" would duplicate the message
+    // in the client chat. Only send the final response when:
+    //  - It's a multi-agent merge (different from individual agent_complete payloads)
+    //  - There are no completed agents (direct/conversational response, no agent_complete fired)
+    //  - The pipeline returned an error
+    const agentAlreadyDelivered = completedAgents.length === 1 && result.success;
+    const finalResponse = agentAlreadyDelivered ? "" : result.response;
+
     sendMessage(responseWs, {
       type: "response",
       id: message.id,
       timestamp: Date.now(),
       payload: {
         success: result.success,
-        response: result.response,
+        response: finalResponse,
         classification: result.classification,
         threadIds: result.threadIds,
         keyPoints: result.keyPoints,
