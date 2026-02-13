@@ -454,8 +454,11 @@ async function handleMessage(message: WSMessage): Promise<void> {
         const setupDeviceId = message.payload.deviceId || deviceCredentials?.deviceId;
         const setupDeviceSecret = message.payload.deviceSecret || deviceCredentials?.deviceSecret;
         if (setupDeviceId && setupDeviceSecret) {
-          // Convert WebSocket URL to HTTP URL for browser redirect
-          const httpUrl = SERVER_URL.replace(/^wss?:\/\//, (match) => match === 'wss://' ? 'https://' : 'http://');
+          // Convert WebSocket URL to HTTP base URL for browser redirect
+          // wss://server.getmy.bot/ws → https://server.getmy.bot (strip /ws path)
+          const httpUrl = SERVER_URL
+            .replace(/^wss?:\/\//, (match) => match === 'wss://' ? 'https://' : 'http://')
+            .replace(/\/ws\/?$/, '');
 
           try {
             const { port, setupCode } = startSetupServer(
