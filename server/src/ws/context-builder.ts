@@ -9,8 +9,14 @@
  */
 
 import { registerUserPersona } from "../personas/loader.js";
+import { registerLocalPersona } from "../personas/local-loader.js";
+import { registerCouncil } from "../personas/council-loader.js";
 import { createComponentLogger } from "../logging.js";
-import type { EnhancedPromptRequest } from "../types/agent.js";
+import type {
+  EnhancedPromptRequest,
+  LocalPersonaDefinition,
+  CouncilDefinition,
+} from "../types/agent.js";
 import {
   getDeviceForUser,
   getPlatformForUser,
@@ -19,10 +25,42 @@ import {
 import {
   sendMemoryRequest,
   requestPersonas,
+  requestCouncilPaths,
   requestTools,
 } from "./device-bridge.js";
+import RE2 from "re2";
 
 const log = createComponentLogger("ws.context");
+
+// ============================================
+// SAFE REGEX TESTING (ReDoS PROTECTION)
+// ============================================
+
+/**
+ * Test a regex pattern against input using RE2 (Google's safe regex engine).
+ * RE2 guarantees linear-time execution with no catastrophic backtracking,
+ * completely preventing ReDoS attacks.
+ *
+ * @param pattern User-provided regex pattern
+ * @param input String to test against
+ * @returns true if pattern matches, false if no match or error
+ */
+function safeRegexTest(pattern: string, input: string): boolean {
+  try {
+    // Validate pattern length (excessively long patterns are suspicious)
+    if (pattern.length > 500) {
+      log.warn("Regex pattern too long, rejecting", { patternLength: pattern.length });
+      return false;
+    }
+
+    // RE2 guarantees O(n) time complexity - no backtracking
+    const regex = new RE2(pattern, "i");
+    return regex.test(input);
+  } catch (e) {
+    log.warn("Invalid regex pattern in safeRegexTest", { pattern, error: e });
+    return false;
+  }
+}
 
 // ============================================
 // CONTEXT BUILDING
@@ -159,7 +197,7 @@ export async function buildRequestContext(
     }
   }
 
-  // Fetch user-defined personas
+  // Fetch user-defined personas (V2: Register as local personas)
   let userPersonas: { id: string; name: string; description: string }[] = [];
   if (agentDeviceId) {
     try {
@@ -172,6 +210,7 @@ export async function buildRequestContext(
         }));
         for (const p of personas) {
           if (p.id && p.systemPrompt) {
+            // Register as both user persona (backwards compat) AND local persona (V2)
             registerUserPersona({
               id: p.id,
               name: p.name || p.id,
@@ -183,11 +222,74 @@ export async function buildRequestContext(
               modelRole: p.modelRole || undefined,
               councilOnly: p.councilOnly || false,
             });
+
+            // V2: Register as local persona for hybrid persona creation
+            const localPersona: LocalPersonaDefinition = {
+              id: p.id,
+              slug: p.slug || p.id,
+              name: p.name || p.id,
+              type: "client",
+              modelTier: p.modelTier || "smart",
+              description: p.description || "",
+              systemPrompt: p.systemPrompt,
+              tools: Array.isArray(p.tools) ? p.tools : [],
+              modelRole: p.modelRole || undefined,
+              councilOnly: p.councilOnly || false,
+              knowledgeDocumentIds: p.knowledgeDocumentIds || [],
+              lastSyncedAt: new Date().toISOString(),
+            };
+            registerLocalPersona(localPersona);
           }
         }
       }
     } catch (err) {
       log.warn("Failed to fetch user personas from local agent", { error: err });
+    }
+  }
+
+  // Fetch user-defined councils (V2)
+  let matchedCouncils: any[] = [];
+  if (agentDeviceId) {
+    try {
+      const councils = await requestCouncilPaths(agentDeviceId);
+      if (Array.isArray(councils)) {
+        for (const c of councils) {
+          if (c.id && c.name && Array.isArray(c.personas)) {
+            const council: CouncilDefinition = {
+              id: c.id,
+              name: c.name,
+              description: c.description || "",
+              personas: c.personas,
+              triggerPatterns: c.triggerPatterns || [],
+              reviewMode: c.reviewMode || false,
+              protocol: c.protocol,
+              tags: c.tags,
+              createdAt: c.createdAt,
+              updatedAt: c.updatedAt,
+            };
+            registerCouncil(council);
+
+            // Check if council triggers match the current prompt
+            // (This is a simple check; the receptionist will do full pattern matching)
+            if (council.triggerPatterns && council.triggerPatterns.length > 0) {
+              for (const pattern of council.triggerPatterns) {
+                // Use safeRegexTest to prevent ReDoS attacks from malicious patterns
+                if (safeRegexTest(pattern, prompt)) {
+                  matchedCouncils.push({
+                    id: council.id,
+                    name: council.name,
+                    description: council.description,
+                    triggerMatches: [pattern],
+                  });
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      log.warn("Failed to fetch councils from local agent", { error: err });
     }
   }
 
@@ -207,7 +309,7 @@ export async function buildRequestContext(
       }))
     },
     memoryIndex: l0Index.models,
-    matchedCouncils: [],
+    matchedCouncils,
     userPersonas,
     activeTasks,
     agentIdentity,

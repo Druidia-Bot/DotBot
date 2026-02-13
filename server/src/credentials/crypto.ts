@@ -15,6 +15,7 @@
 import { randomBytes, createCipheriv, createDecipheriv, hkdfSync } from "crypto";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
+import { platform } from "os";
 import { getBotPath } from "../init.js";
 
 // ============================================
@@ -56,7 +57,16 @@ export function initMasterKey(): void {
     // First run — generate a new master key
     masterKey = randomBytes(KEY_LENGTH);
     mkdirSync(join(getBotPath("server-data")), { recursive: true });
-    writeFileSync(keyPath, masterKey, { mode: 0o600 }); // owner-only read/write
+
+    // Set restrictive permissions (Unix only — mode is ignored on Windows)
+    writeFileSync(keyPath, masterKey, { mode: 0o600 });
+
+    if (platform() === "win32") {
+      console.warn("[Credentials] WARNING: Running on Windows — Unix file permissions (mode 0o600) are ignored.");
+      console.warn("[Credentials] Master key file may be readable by other users. Consider using icacls to restrict ACLs:");
+      console.warn(`[Credentials]   icacls "${keyPath}" /inheritance:r /grant:r "%USERNAME%:F"`);
+    }
+
     console.log("[Credentials] Generated new master key");
   }
 }

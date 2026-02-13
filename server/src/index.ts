@@ -15,10 +15,10 @@ config({ path: resolve(__dirname, "../../.env") });
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
-import { createWSServer, getConnectedDevices } from "./ws/server.js";
+import { initWSServer, createWSServer, getConnectedDevices } from "./ws/server.js";
 import { createInviteToken } from "./auth/invite-tokens.js";
 import * as memory from "./memory/manager.js";
-import { initBotEnvironment } from "./init.js";
+import { initBotEnvironment, getAdminApiKey } from "./init.js";
 import { initKnowledgeService } from "./knowledge/index.js";
 import { registerApiKeys } from "./llm/providers.js";
 import { probeLocalModel, downloadLocalModel } from "./llm/local-llm.js";
@@ -43,8 +43,10 @@ import {
   pruneOldCancelledTasks,
 } from "./scheduler/index.js";
 import { stopWorkspaceCleanup } from "./agents/workspace.js";
+import { initDatabase } from "./db/index.js";
 
-// Initialize ~/.bot/ environment first
+// Initialize database and ~/.bot/ environment first
+initDatabase();
 initBotEnvironment();
 
 // ============================================
@@ -151,6 +153,40 @@ const app = new Hono();
 // Middleware
 app.use("*", cors());
 
+// Authentication middleware for /api/* routes
+// Validates Bearer token against ADMIN_API_KEY (server-side only)
+app.use("/api/*", async (c, next) => {
+  // Public routes that don't need auth
+  const publicRoutes = [
+    "/api/council/config", // Just returns a message (feature disabled message)
+  ];
+
+  const path = c.req.path;
+  if (publicRoutes.includes(path)) {
+    return next();
+  }
+
+  // If no admin API key is configured, allow access (dev mode)
+  const validToken = getAdminApiKey();
+  if (!validToken) {
+    console.warn("[API Auth] No ADMIN_API_KEY configured - allowing unauthenticated access");
+    return next();
+  }
+
+  // Check for Authorization header
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ error: "Unauthorized - Bearer token required" }, 401);
+  }
+
+  const token = authHeader.substring(7); // Remove "Bearer " prefix
+  if (token !== validToken) {
+    return c.json({ error: "Unauthorized - Invalid token" }, 401);
+  }
+
+  return next();
+});
+
 // Knowledge ingest upload endpoint (multipart file upload — no files touch disk)
 import { registerIngestUploadRoute } from "./knowledge/upload-handler.js";
 registerIngestUploadRoute(app);
@@ -159,12 +195,63 @@ registerIngestUploadRoute(app);
 import { registerScreenshotRoute } from "./gui/screenshot-store.js";
 registerScreenshotRoute(app);
 
+// Device session management (cookie-based browser auth)
+import { createDeviceSession, startSessionCleanup as startDeviceSessionCleanup } from "./auth/device-sessions.js";
+
+// Device authentication endpoint (browser setup flow)
+// POST endpoint - credentials in request body (not logged in access logs)
+app.post("/auth/device-session", async (c) => {
+  const body = await c.req.parseBody();
+  const deviceId = body.deviceId as string;
+  const secret = body.secret as string;
+  const redirectPath = (body.redirect as string) || "/credentials/session";
+
+  if (!deviceId || !secret) {
+    return c.html(`
+      <html>
+        <head><title>Authentication Failed</title></head>
+        <body style="font-family: system-ui; max-width: 600px; margin: 100px auto; text-align: center;">
+          <h1>❌ Authentication Failed</h1>
+          <p>Missing device credentials. Please use the setup link provided by your agent.</p>
+        </body>
+      </html>
+    `, 400);
+  }
+
+  // L-02 fix: Extract client IP for auth logging
+  const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+             c.req.header("x-real-ip") ||
+             "unknown";
+
+  // Validate device credentials and create session
+  const session = await createDeviceSession(deviceId, secret, ip);
+
+  if (!session) {
+    return c.html(`
+      <html>
+        <head><title>Authentication Failed</title></head>
+        <body style="font-family: system-ui; max-width: 600px; margin: 100px auto; text-align: center;">
+          <h1>❌ Invalid Credentials</h1>
+          <p>Device authentication failed. Please check your setup link or restart the agent.</p>
+        </body>
+      </html>
+    `, 403);
+  }
+
+  // Set session cookie
+  c.header("Set-Cookie", `dotbot_device_session=${session.sessionId}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${30 * 24 * 60 * 60}`);
+
+  // Redirect to credential page
+  return c.redirect(redirectPath);
+});
+
 // Credential entry routes (secure page for entering API keys)
 import { registerCredentialRoutes } from "./credentials/routes.js";
 import { initMasterKey } from "./credentials/crypto.js";
 import { startSessionCleanup } from "./credentials/sessions.js";
 initMasterKey();
 startSessionCleanup();
+startDeviceSessionCleanup();
 registerCredentialRoutes(app);
 
 // Invite page (public — serves install instructions for new users)
@@ -189,8 +276,10 @@ app.get("/api/devices", (c) => {
 });
 
 // ============================================
-// ADMIN — via WebSocket only (see ws/admin-handler.ts)
-// HTTP admin endpoints removed — all admin ops require authenticated WS connection.
+// AUTHENTICATED API ENDPOINTS
+// All /api/* routes (except public ones listed above) require Bearer token.
+// Token is generated on first startup and saved to ~/.bot/server-data/web-auth-token
+// Usage: Authorization: Bearer <token>
 // ============================================
 
 // Get user memory (threads + mental models)
@@ -207,10 +296,15 @@ app.delete("/api/memory/:userId", (c) => {
 });
 
 // Test prompt (HTTP endpoint for debugging) — uses AgentRunner with tool loop
+// DEVELOPMENT ONLY: Bypasses auth and uses incomplete options
 app.post("/api/test/prompt", async (c) => {
+  if (process.env.NODE_ENV !== "development") {
+    return c.json({ error: "This endpoint is only available in development mode" }, 403);
+  }
+
   const body = await c.req.json();
   const { prompt, userId = "user_test" } = body;
-  
+
   if (!prompt) {
     return c.json({ error: "prompt is required" }, 400);
   }
@@ -258,7 +352,12 @@ app.post("/api/test/prompt", async (c) => {
 });
 
 // Test knowledge loading for a persona
+// DEVELOPMENT ONLY: Bypasses auth and uses hardcoded userId
 app.get("/api/test/knowledge/:personaSlug", async (c) => {
+  if (process.env.NODE_ENV !== "development") {
+    return c.json({ error: "This endpoint is only available in development mode" }, 403);
+  }
+
   const personaSlug = c.req.param("personaSlug");
   const query = c.req.query("q") || "";
 
@@ -314,9 +413,9 @@ app.get("/api/test/knowledge/:personaSlug", async (c) => {
       }))
     });
   } catch (error) {
-    return c.json({ 
+    return c.json({
       error: error instanceof Error ? error.message : "Unknown error",
-      personaSlug 
+      personaSlug
     }, 500);
   }
 });
@@ -448,6 +547,9 @@ serve({ fetch: app.fetch, port: PORT }, () => {
   console.log(`📡 HTTP API running on http://localhost:${PORT}`);
 });
 
+// Initialize WebSocket server components (personas, database)
+initWSServer();
+
 // Start WebSocket server
 createWSServer({ port: WS_PORT, apiKey: LLM_API_KEY, provider: LLM_PROVIDER, httpBaseUrl: PUBLIC_URL });
 console.log(`🔌 WebSocket server running on ws://localhost:${WS_PORT}`);
@@ -463,6 +565,10 @@ onSchedulerEvent((event) => {
 
 // Start recurring task scheduler
 startRecurringScheduler();
+
+// Start memory cache cleanup (LRU + TTL eviction)
+memory.startMemoryCleanup();
+console.log("🧹 Memory cleanup started (LRU: 100 threads/user, TTL: 7 days)");
 
 // NOTE: Recurring task execution callback is wired in ws/server.ts via setRecurringExecuteCallback()
 // It routes through the V2 pipeline (handlePrompt → receptionist → persona writer → orchestrator → judge)

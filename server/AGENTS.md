@@ -8,7 +8,7 @@ The server handles ALL reasoning — LLM calls, persona routing, planning, crede
 
 | Directory | Purpose |
 |-----------|---------|
-| `src/agents/` | Pipeline, execution, tool loop, planner, agent tasks |
+| `src/agents/` | Pipeline, execution, tool loop, persona writer, orchestrator, spawned agents |
 | `src/credentials/` | Split-knowledge credential system (crypto, sessions, routes, proxy, handlers) |
 | `src/llm/` | LLM provider clients, model selector, resilient client wrapper |
 | `src/personas/` | Persona loader + all persona `.md` files (intake + internal workers) |
@@ -34,7 +34,7 @@ The server handles ALL reasoning — LLM calls, persona routing, planning, crede
 ## Persona Files
 
 - Internal personas: `src/personas/internal/*.md` with YAML frontmatter
-- Intake personas: `src/personas/intake/*.md` (receptionist, planner, chairman, updater)
+- Intake personas: `src/personas/intake/*.md` (receptionist, updater)
 - Frontmatter fields: `id`, `name`, `type`, `modelTier`, `description`, `tools` (array of categories)
 - Load via `getPersona(id)` from `src/personas/loader.ts` — never read `.md` files directly
 
@@ -49,11 +49,14 @@ The server handles ALL reasoning — LLM calls, persona routing, planning, crede
 
 ## Pipeline Flow (src/agents/)
 
-1. `prompt-handler.ts` receives WS message → classifies via receptionist
-2. `pipeline.ts` routes: all actionable types → planner
-3. `execution.ts` — `executePlan()` dispatches tasks to personas with tool loops
-4. `tool-loop.ts` — iterative tool calling: LLM → tool call → execute → result → LLM
-5. Tool execution requests go back to client via `device-bridge.ts` (`sendExecutionCommand`)
+1. `prompt-handler.ts` receives WS message → `pipeline.ts:executeV2Pipeline()`
+2. Short path check (greetings/acks) → follow-up routing (conversation isolation)
+3. `intake.ts:runReceptionist()` classifies request, picks persona hint
+4. `persona-writer.ts:writePersonas()` generates custom system prompts + selects tool IDs per task
+5. `orchestrator.ts:executeWithSpawnedAgents()` spawns isolated agents with curated tools
+6. `execution.ts:executeWithPersona()` runs each agent through `tool-loop.ts`
+7. Council review runs post-execution if `councilNeeded` (optional)
+8. Tool execution requests go to client via `device-bridge.ts` (`sendExecutionCommand`)
 
 ## Testing
 
@@ -61,7 +64,7 @@ The server handles ALL reasoning — LLM calls, persona routing, planning, crede
 - Tests use `vi.mock()` for external deps, `vi.fn()` for stubs
 - Credential tests use `_setMasterKeyForTesting()` / `_clearMasterKey()`
 - Rate limit tests use `_clearRateLimits()`
-- Current count: ~388 tests across 18 test files
+- Current count: ~346 tests across 16 test files
 
 ## Common Mistakes to Avoid
 

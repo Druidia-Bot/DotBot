@@ -29,6 +29,7 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 Desktop.ini
+nul
 
 # Runtime data
 *.pid
@@ -44,6 +45,12 @@ tmp/
 temp/
 *.tmp
 
+# Backup files
+*.backup
+*.broken
+*.bak
+*.old
+
 # Test output
 test-output.txt
 
@@ -54,3 +61,6 @@ test-output.txt
 
 # DotBot local data (lives on user's machine, not in repo)
 .dotbot/
+
+# Claude Code artifacts (worktrees, local settings)
+.claude/

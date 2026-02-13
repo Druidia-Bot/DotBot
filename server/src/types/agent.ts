@@ -196,13 +196,13 @@ export interface ReceptionistDecision {
   // Task duration estimation (for user acknowledgment before long tasks)
   estimatedDurationMs?: number;
   acknowledgmentMessage?: string;
-  
+
   requestMoreInfo?: {
     type: "thread_summaries" | "thread_packets" | "personas" | "assets";
     threadIds?: string[];
     assetIds?: string[];
   };
-  
+
   // Memory routing
   memoryAction: "none" | "session_only" | "model_update" | "model_create";
   memoryTargets?: {
@@ -212,16 +212,29 @@ export interface ReceptionistDecision {
     existingModelId?: string;
     reasoning: string;
   }[];
-  
+
   // Model selection hint — receptionist can suggest escalation to a specific model role
   // when it detects the task needs architect-level reasoning or massive context
   modelRole?: "workhorse" | "deep_context" | "architect";
-  
+
   // For CONVERSATIONAL - can respond directly
   directResponse?: string;
-  
+
   // For CONTINUATION - resume a tracked task instead of creating a new one
   resumeTaskId?: string;
+
+  // ============================================
+  // V2 LOCAL PERSONAS & COUNCILS
+  // ============================================
+
+  /** Persona mode — "council" triggers post-execution council review */
+  personaMode?: "council";
+
+  /** Slug of the local persona to use (e.g., "alex-hormozi") */
+  localPersonaSlug?: string;
+
+  /** Primary task extracted from request (for hybrid persona creation) */
+  primaryTask?: string;
 }
 
 // ============================================
@@ -456,6 +469,43 @@ export interface TaskProgressUpdate {
   eventType?: "tool_call" | "tool_result" | "thinking" | "status";
   /** Whether the tool call succeeded */
   success?: boolean;
+  /** Actual character count of the tool result (for execution journal) */
+  resultLength?: number;
+}
+
+/** Council turn streaming update — sent in real-time as each persona speaks */
+export interface CouncilTurnUpdate {
+  type: "council_turn";
+  councilId: string;
+  councilName: string;
+  round: number;
+  maxRounds: number;
+  personaId: string;
+  personaName: string;
+  message: string;
+  model: string;
+  provider: string;
+  timestamp: number;
+  /** Total personas in council */
+  totalPersonas: number;
+  /** Which persona in the round (1-indexed) */
+  personaIndex: number;
+}
+
+/** Council consensus check update */
+export interface CouncilConsensusUpdate {
+  type: "council_consensus";
+  councilId: string;
+  round: number;
+  consensusReached: boolean;
+  reasoning: string;
+}
+
+/** Council synthesis update — final response being generated */
+export interface CouncilSynthesisUpdate {
+  type: "council_synthesis";
+  councilId: string;
+  status: "started" | "completed";
 }
 
 // ============================================
@@ -477,6 +527,62 @@ export interface PersonaDefinition {
   /** When true, this persona is only used by councils — the receptionist
    *  will NOT see it in the routing table and cannot assign tasks to it. */
   councilOnly?: boolean;
+}
+
+/**
+ * Extended persona definition for user-defined personas from ~/.bot/personas/.
+ * Includes knowledge file references and sync metadata.
+ */
+export interface LocalPersonaDefinition extends PersonaDefinition {
+  type: "client";
+  /** Slug identifier (directory name) */
+  slug: string;
+  /** Knowledge document IDs available for this persona */
+  knowledgeDocumentIds?: string[];
+  /** Last sync timestamp from local agent */
+  lastSyncedAt?: string;
+}
+
+/**
+ * Council configuration for multi-persona collaboration.
+ * Stored in ~/.bot/councils/ on the local agent.
+ */
+export interface CouncilDefinition {
+  id: string;
+  name: string;
+  description: string;
+  /** Persona IDs or slugs (can mix server and local personas) */
+  personas: string[];
+  /** Regex patterns that auto-trigger this council */
+  triggerPatterns?: string[];
+  /** If true, this council reviews/polishes existing output (reprocess mode) */
+  reviewMode?: boolean;
+  /** Custom protocol override (defaults to standard research protocol) */
+  protocol?: {
+    rounds: number;
+    judgeAfterEachRound?: boolean;
+    finalSynthesis?: boolean;
+  };
+  /** User-defined metadata */
+  tags?: string[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * Resolved council with actual PersonaDefinition objects.
+ */
+export interface ResolvedCouncil {
+  id: string;
+  name: string;
+  description: string;
+  personas: PersonaDefinition[];
+  reviewMode: boolean;
+  protocol: {
+    rounds: number;
+    judgeAfterEachRound: boolean;
+    finalSynthesis: boolean;
+  };
 }
 
 // ============================================

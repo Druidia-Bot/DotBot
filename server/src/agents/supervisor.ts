@@ -23,10 +23,25 @@ const log = createComponentLogger("supervisor");
 // CONFIG
 // ============================================
 
-const CHECK_INTERVAL_MS = 60_000;       // Check every 60s
-const STUCK_THRESHOLD_MS = 180_000;     // 3min with no progress = stuck warning
-const ABORT_THRESHOLD_MS = 300_000;     // 5min with no progress = abort
+const CHECK_INTERVAL_MS = 30_000;       // Check every 30s
+const ZERO_PROGRESS_ABORT_MS = 60_000;  // 1min with zero conversation messages = pre-tool-loop hang
 const MAX_STATUS_REQUESTS = 3;          // Max status injections before giving up
+
+// Model-aware thresholds — slow models (architect/Claude Opus) get more time
+const STUCK_THRESHOLD_MS: Record<string, number> = {
+  architect: 300_000,    // 5min — Opus can take 60-120s per response
+  deep_context: 240_000, // 4min — Gemini pro with large context
+  workhorse: 120_000,    // 2min — fast models (DeepSeek V3)
+  gui_fast: 90_000,      // 1.5min — quick UI tasks
+  default: 120_000,
+};
+const ABORT_THRESHOLD_MS: Record<string, number> = {
+  architect: 480_000,    // 8min
+  deep_context: 360_000, // 6min
+  workhorse: 240_000,    // 4min
+  gui_fast: 150_000,     // 2.5min
+  default: 240_000,
+};
 
 // ============================================
 // TYPES
@@ -55,6 +70,9 @@ interface AgentMonitorState {
   statusRequestCount: number;
   lastKnownStatus: string;
   sameStatusCount: number;
+  lastKnownConversationLength: number;
+  lastKnownToolCallCount: number;
+  lastKnownToolActivityAt: number;
 }
 
 // ============================================
@@ -80,6 +98,9 @@ export class AgentSupervisor {
           statusRequestCount: 0,
           lastKnownStatus: agent.status,
           sameStatusCount: 0,
+          lastKnownConversationLength: 0,
+          lastKnownToolCallCount: 0,
+          lastKnownToolActivityAt: 0,
         });
       }
     }
@@ -128,16 +149,67 @@ export class AgentSupervisor {
 
       const elapsed = now - agent.createdAt.getTime();
 
+      // Track progress via BOTH conversation growth AND tool loop activity.
+      // The tool loop doesn't write to agent.conversation — it maintains its own
+      // internal messages array. So we also check agent.lastToolActivityAt and
+      // agent.toolCallCount which the tool loop updates on each iteration/tool call.
+      const conversationLength = agent.getConversation().length;
+      const conversationGrew = conversationLength > monitor.lastKnownConversationLength;
+      monitor.lastKnownConversationLength = conversationLength;
+
+      const toolCallCount = agent.toolCallCount;
+      const toolCallsGrew = toolCallCount > monitor.lastKnownToolCallCount;
+      monitor.lastKnownToolCallCount = toolCallCount;
+
+      const toolActivityChanged = agent.lastToolActivityAt > monitor.lastKnownToolActivityAt;
+      monitor.lastKnownToolActivityAt = agent.lastToolActivityAt;
+
+      // Progress = conversation grew OR tool calls increased OR tool loop had recent activity
+      const progressMade = conversationGrew || toolCallsGrew || toolActivityChanged;
+
       // Track status changes
-      if (agent.status === monitor.lastKnownStatus) {
+      if (agent.status === monitor.lastKnownStatus && !progressMade) {
         monitor.sameStatusCount++;
       } else {
         monitor.sameStatusCount = 0;
+        monitor.statusRequestCount = 0; // Reset status requests when progress resumes
         monitor.lastKnownStatus = agent.status;
       }
 
-      // Stuck detection: same status for too many checks
-      if (monitor.sameStatusCount >= 3 && elapsed > STUCK_THRESHOLD_MS) {
+      // Fast abort: agent has zero conversation messages after 1 min AND tool loop hasn't started
+      // = pre-tool-loop hang (workspace setup deadlock, LLM connection failure, etc.)
+      if (conversationLength === 0 && !agent.toolLoopStarted && elapsed > ZERO_PROGRESS_ABORT_MS) {
+        log.warn("Supervisor: aborting agent with zero progress (pre-tool-loop hang)", {
+          agentId: agent.id,
+          topic: agent.topic,
+          elapsed,
+        });
+
+        this.options.onAbortAgent?.(agent.id, "Zero progress — agent never started tool loop");
+        this.options.onStatusReport?.({
+          agentId: agent.id,
+          topic: agent.topic,
+          status: "aborted",
+          message: `Agent "${agent.topic}" was stopped — failed to start after ${Math.round(elapsed / 1000)}s.`,
+          elapsedMs: elapsed,
+        });
+
+        this.unwatch(agentId);
+        continue;
+      }
+
+      // Model-aware thresholds — slow models get more time
+      const modelRole = agent.modelRole || "default";
+      const stuckThreshold = STUCK_THRESHOLD_MS[modelRole] ?? STUCK_THRESHOLD_MS.default;
+      const abortThreshold = ABORT_THRESHOLD_MS[modelRole] ?? ABORT_THRESHOLD_MS.default;
+
+      // Also check time since last tool activity (more accurate than total elapsed)
+      const timeSinceActivity = agent.lastToolActivityAt > 0
+        ? now - agent.lastToolActivityAt
+        : elapsed; // If no activity yet, use total elapsed
+
+      // Stuck detection: no progress for too many checks AND exceeded model-specific threshold
+      if (monitor.sameStatusCount >= 3 && timeSinceActivity > stuckThreshold) {
         if (monitor.statusRequestCount < MAX_STATUS_REQUESTS) {
           // Inject status request
           monitor.statusRequestCount++;
@@ -145,11 +217,14 @@ export class AgentSupervisor {
             agentId: agent.id,
             topic: agent.topic,
             sameStatusCount: monitor.sameStatusCount,
+            modelRole,
+            timeSinceActivity: Math.round(timeSinceActivity / 1000),
           });
 
           this.options.onInjectMessage?.(
             agent.id,
-            `⚠️ SUPERVISOR CHECK-IN: You've been running for ${Math.round(elapsed / 1000)}s. ` +
+            `⚠️ SUPERVISOR CHECK-IN: You've been running for ${Math.round(elapsed / 1000)}s ` +
+            `(${Math.round(timeSinceActivity / 1000)}s since last activity). ` +
             `Report your current progress: what have you done, what's blocking you, and what remains? ` +
             `If you're stuck, try a different approach or call agent.escalate.`
           );
@@ -158,15 +233,17 @@ export class AgentSupervisor {
             agentId: agent.id,
             topic: agent.topic,
             status: "stuck",
-            message: `Agent "${agent.topic}" appears stuck (${Math.round(elapsed / 1000)}s elapsed, no progress). Requesting status.`,
+            message: `Agent "${agent.topic}" appears stuck (${Math.round(timeSinceActivity / 1000)}s since last activity). Requesting status.`,
             elapsedMs: elapsed,
           });
-        } else if (elapsed > ABORT_THRESHOLD_MS) {
+        } else if (timeSinceActivity > abortThreshold) {
           // Too many status requests with no change — abort
           log.warn("Supervisor: aborting stuck agent", {
             agentId: agent.id,
             topic: agent.topic,
             elapsed,
+            timeSinceActivity: Math.round(timeSinceActivity / 1000),
+            modelRole,
           });
 
           this.options.onAbortAgent?.(agent.id, "No progress after multiple check-ins");
@@ -174,7 +251,7 @@ export class AgentSupervisor {
             agentId: agent.id,
             topic: agent.topic,
             status: "aborted",
-            message: `Agent "${agent.topic}" was stopped — no progress after ${Math.round(elapsed / 60_000)} minutes.`,
+            message: `Agent "${agent.topic}" was stopped — no progress after ${Math.round(timeSinceActivity / 60_000)} minutes.`,
             elapsedMs: elapsed,
           });
 

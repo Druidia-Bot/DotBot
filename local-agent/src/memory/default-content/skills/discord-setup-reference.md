@@ -140,7 +140,10 @@ DISCORD_GUILD_ID=your_guild_id_here
 DISCORD_CHANNEL_CONVERSATION=channel_id_for_conversation
 DISCORD_CHANNEL_UPDATES=channel_id_for_updates
 DISCORD_CHANNEL_LOGS=channel_id_for_logs
+DISCORD_LOG_VERBOSITY=summary
 ```
+
+**Log verbosity options:** `full` (every tool call + stream chunk), `summary` (agent start/complete only, default), `off` (nothing to #logs).
 
 **NOTE:** The bot token should NOT go in .env. It belongs in the encrypted vault.
 

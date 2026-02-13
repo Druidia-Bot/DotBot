@@ -12,6 +12,7 @@
  */
 
 import { createHash } from "crypto";
+import { createComponentLogger } from "../logging.js";
 import type {
   KnowledgeDocument,
   KnowledgeDocumentRef,
@@ -25,6 +26,8 @@ import type {
   KnowledgeCacheEntry,
   KnowledgeCacheStats,
 } from "./types.js";
+
+const log = createComponentLogger("knowledge");
 
 // ============================================
 // CONFIGURATION
@@ -195,9 +198,7 @@ export async function loadKnowledgeBase(
 
   // Request from local-agent
   if (!knowledgeRequestCallback) {
-    console.warn(
-      `[Knowledge] No callback set, returning empty knowledge base for ${personaSlug}`
-    );
+    log.warn(`No callback set, returning empty knowledge base for ${personaSlug}`);
     return createEmptyKnowledgeBase(personaSlug, personaName);
   }
 
@@ -209,12 +210,10 @@ export async function loadKnowledgeBase(
       documents
     );
     setCache(knowledgeBase);
-    console.log(
-      `[Knowledge] Loaded ${documents.length} documents for ${personaSlug}`
-    );
+    log.info(`Loaded ${documents.length} documents for ${personaSlug}`);
     return knowledgeBase;
   } catch (error) {
-    console.error(`[Knowledge] Failed to load knowledge for ${personaSlug}:`, error);
+    log.error(`Failed to load knowledge for ${personaSlug}`, { error });
     return createEmptyKnowledgeBase(personaSlug, personaName);
   }
 }
@@ -653,7 +652,7 @@ export async function injectRelevantKnowledge(
         summary: `Found ${includedDocuments.length} relevant documents (${totalCharacters} chars) from ${documentsSearched} searched`,
       };
     } catch (error) {
-      console.warn(`[Knowledge] Pre-scored query failed, falling back to server scoring:`, error);
+      log.warn(`Pre-scored query failed, falling back to server scoring`, { error });
     }
   }
 
@@ -702,5 +701,109 @@ export async function injectRelevantKnowledge(
     includedDocuments,
     excludedDocuments,
     summary: `Found ${includedDocuments.length} relevant documents (${totalCharacters} chars) in ${queryResult.executionTimeMs}ms`,
+  };
+}
+
+/**
+ * Inject relevant knowledge with persona priority.
+ *
+ * When a local persona is executing, search their knowledge directory first.
+ * If persona-specific results don't fill the character budget, fall back to
+ * general knowledge to supplement.
+ *
+ * This gives local personas access to their curated knowledge base while still
+ * allowing access to system-wide knowledge when needed.
+ */
+export async function injectRelevantKnowledgeWithPersonaPriority(
+  priorityPersonaSlug: string,
+  fallbackPersonaSlug: string | null,
+  queryText: string,
+  options?: Partial<KnowledgeInjectionOptions>
+): Promise<KnowledgeInjection> {
+  const opts: KnowledgeInjectionOptions = {
+    maxCharacters: options?.maxCharacters || CONFIG.DEFAULT_INJECTION_LIMIT,
+    includeMetadata: options?.includeMetadata ?? true,
+    format: options?.format || "markdown",
+    priority: options?.priority || "relevance",
+  };
+
+  const formattedParts: string[] = [];
+  const includedDocuments: string[] = [];
+  let totalCharacters = 0;
+  let priorityDocs = 0;
+  let fallbackDocs = 0;
+
+  // Step 1: Search priority persona's knowledge first
+  try {
+    const priorityResult = await injectRelevantKnowledge(
+      priorityPersonaSlug,
+      queryText,
+      { ...opts, maxCharacters: opts.maxCharacters }
+    );
+
+    if (priorityResult.characterCount > 0) {
+      formattedParts.push(priorityResult.content);
+      includedDocuments.push(...priorityResult.includedDocuments);
+      totalCharacters += priorityResult.characterCount;
+      priorityDocs = priorityResult.includedDocuments.length;
+
+      log.info(`Priority search found ${priorityDocs} documents (${priorityResult.characterCount} chars) for ${priorityPersonaSlug}`);
+    }
+  } catch (error) {
+    log.warn(`Priority persona search failed for ${priorityPersonaSlug}`, { error });
+  }
+
+  // Step 2: If we have room left, supplement with general/fallback knowledge
+  const remainingCharacters = opts.maxCharacters - totalCharacters;
+  if (remainingCharacters > 500 && fallbackPersonaSlug) {
+    try {
+      const fallbackResult = await injectRelevantKnowledge(
+        fallbackPersonaSlug,
+        queryText,
+        { ...opts, maxCharacters: remainingCharacters }
+      );
+
+      if (fallbackResult.characterCount > 0) {
+        // Filter out documents we already included from priority search
+        const newDocs = fallbackResult.includedDocuments.filter(
+          doc => !includedDocuments.includes(doc)
+        );
+
+        if (newDocs.length > 0) {
+          formattedParts.push(`\n---\n\n### Supplementary Knowledge\n\n${fallbackResult.content}`);
+          includedDocuments.push(...newDocs);
+          totalCharacters += fallbackResult.characterCount;
+          fallbackDocs = newDocs.length;
+
+          log.info(`Fallback search added ${fallbackDocs} documents (${fallbackResult.characterCount} chars) from ${fallbackPersonaSlug}`);
+        }
+      }
+    } catch (error) {
+      log.warn(`Fallback persona search failed for ${fallbackPersonaSlug}`, { error });
+    }
+  }
+
+  // Step 3: Build final content
+  if (formattedParts.length === 0) {
+    return {
+      content: "",
+      characterCount: 0,
+      includedDocuments: [],
+      excludedDocuments: [],
+      summary: `No relevant knowledge found for query: "${queryText}" in ${priorityPersonaSlug} or fallback sources`,
+    };
+  }
+
+  const content = formattedParts.join("\n\n");
+  const summary = fallbackDocs > 0
+    ? `Found ${priorityDocs} priority documents + ${fallbackDocs} fallback documents (${totalCharacters} chars total)`
+    : `Found ${priorityDocs} priority documents (${totalCharacters} chars)`;
+
+  return {
+    content,
+    characterCount: content.length,
+    includedDocuments,
+    excludedDocuments: [],
+    summary,
   };
 }

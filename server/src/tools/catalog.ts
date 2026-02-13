@@ -105,6 +105,21 @@ export function sliceManifest(
 }
 
 /**
+ * Resolve persona tool categories (e.g., ["filesystem", "shell"]) to actual tool IDs
+ * from the manifest. "all" returns all IDs. "none" returns empty.
+ * Used internally for category-to-ID resolution.
+ */
+export function resolveCategoriesToToolIds(
+  categories: string[],
+  manifest: ToolManifestEntry[]
+): string[] {
+  if (!categories.length || categories.includes("none")) return [];
+  if (categories.includes("all")) return manifest.map(t => t.id);
+  const catSet = new Set(categories);
+  return manifest.filter(t => catSet.has(t.category)).map(t => t.id);
+}
+
+/**
  * Truncate a tool description to its first sentence.
  * Keeps the catalog compact without losing the key information.
  */

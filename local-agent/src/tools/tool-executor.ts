@@ -21,10 +21,12 @@ import { handleAdmin } from "./tool-handlers-admin.js";
 import { handleEmail } from "./tool-handlers-email.js";
 import { handleMarket } from "./tool-handlers-market.js";
 import { handleOnboarding } from "../onboarding/tool-handlers.js";
+import { handleConfig } from "./tool-handlers-config.js";
 import { getTool } from "./registry.js";
 import { vaultHas } from "../credential-vault.js";
 import { credentialProxyFetch } from "../credential-proxy.js";
 import type { DotBotTool } from "../memory/types.js";
+import RE2 from "re2";
 
 // Pre-restart hook — called before process.exit(42) to let server cancel tasks
 let _preRestartHook: (() => Promise<void>) | null = null;
@@ -81,6 +83,15 @@ export interface RuntimeInfo {
 const detectedRuntimes = new Map<string, RuntimeInfo>();
 let lastCodegenFailAt = 0;
 
+/** Returns true if 'claude' resolves to the Claude Desktop GUI app (not Claude Code CLI) */
+function isClaudeDesktopApp(): boolean {
+  try {
+    const wherePath = execSync("where claude", { encoding: "utf-8", timeout: 3000, stdio: ["pipe", "pipe", "pipe"] })
+      .trim().split(/\r?\n/)[0];
+    return wherePath.includes("WindowsApps");
+  } catch { return false; }
+}
+
 function probeRuntime(name: string, versionCmd: string, versionArgs: string[], installHint: string): RuntimeInfo {
   try {
     const result = execSync(`${versionCmd} ${versionArgs.join(" ")}`, {
@@ -116,6 +127,12 @@ function detectRuntimes(): void {
   ];
 
   for (const rt of runtimes) {
+    // Skip probing claude if it resolves to the Desktop GUI app (WindowsApps)
+    // Running 'claude --version' against the GUI app opens it as a side effect
+    if (rt.name === "claude" && isClaudeDesktopApp()) {
+      detectedRuntimes.set(rt.name, { name: rt.name, available: false, installHint: rt.hint });
+      continue;
+    }
     const info = probeRuntime(rt.name, rt.cmd, rt.args, rt.hint);
     detectedRuntimes.set(rt.name, info);
   }
@@ -179,10 +196,15 @@ function getProtectedPids(): Set<number> {
 /** Check if a shell command attempts to kill a protected PID. */
 function commandTargetsProtectedProcess(command: string): boolean {
   const protectedPids = getProtectedPids();
-  // Match Stop-Process -Id <pid> or taskkill /PID <pid> patterns
+
+  // PowerShell/Windows patterns: Stop-Process -Id <pid> or taskkill /PID <pid>
   const stopProcessPattern = /Stop-Process\s[^|]*?-Id\s+(\d[\d,\s]*)/gi;
   const taskkillPattern = /taskkill\s[^|]*?\/PID\s+(\d+)/gi;
-  for (const pattern of [stopProcessPattern, taskkillPattern]) {
+
+  // Bash/Unix patterns: kill <pid> or killall <name>
+  const killPattern = /\bkill\s+(?:-\d+\s+)?(\d+(?:\s+\d+)*)/gi;
+
+  for (const pattern of [stopProcessPattern, taskkillPattern, killPattern]) {
     let match;
     while ((match = pattern.exec(command)) !== null) {
       // Parse comma/space separated PIDs
@@ -586,6 +608,7 @@ export async function executeTool(toolId: string, args: Record<string, any>): Pr
       case "email":      return await handleEmail(toolId, args);
       case "market":     return await handleMarket(toolId, args);
       case "onboarding": return await handleOnboarding(toolId, args);
+      case "config":     return await handleConfig(toolId, args);
       default:
         // Catch-all: check if this is a registered non-core tool (API or custom script)
         return await executeRegisteredTool(toolId, args);
@@ -628,6 +651,10 @@ async function handleFilesystem(toolId: string, args: Record<string, any>): Prom
       if (!isAllowedRead(path)) return { success: false, output: "", error: `Read access denied: ${path}` };
       const uploadUrl = args.uploadUrl as string;
       if (!uploadUrl) return { success: false, output: "", error: "Missing required 'uploadUrl' parameter" };
+      // SECURITY: Validate URL to prevent SSRF and data exfiltration (cloud metadata, localhost, private IPs)
+      if (!isAllowedUrl(uploadUrl)) {
+        return { success: false, output: "", error: "Upload URL blocked: only public HTTP(S) URLs allowed (no localhost, private IPs, or cloud metadata endpoints)" };
+      }
       const statUp = await fs.stat(path);
       if (statUp.size > 100 * 1024 * 1024) return { success: false, output: "", error: `File too large: ${(statUp.size / 1024 / 1024).toFixed(1)} MB (limit 100 MB)` };
       const uploadBuffer = await fs.readFile(path);
@@ -836,6 +863,10 @@ async function handleFilesystem(toolId: string, args: Record<string, any>): Prom
     case "filesystem.download": {
       const url = args.url;
       if (!url) return { success: false, output: "", error: "url is required" };
+      // SECURITY: Validate URL to prevent SSRF attacks (cloud metadata, localhost, private IPs)
+      if (!isAllowedUrl(url)) {
+        return { success: false, output: "", error: "URL blocked: only public HTTP(S) URLs allowed (no localhost, private IPs, or cloud metadata endpoints)" };
+      }
       const destPath = args.path ? resolvePath(args.path) : "";
       if (!destPath) return { success: false, output: "", error: "path is required" };
       if (!isAllowedWrite(destPath)) return { success: false, output: "", error: `Write access denied: ${destPath}` };
@@ -852,9 +883,15 @@ async function handleFilesystem(toolId: string, args: Record<string, any>): Prom
           if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
             clearTimeout(timer);
             req.destroy();
+            // SECURITY: Validate redirect URL to prevent SSRF via redirect chain
+            const redirectUrl = res.headers.location;
+            if (!isAllowedUrl(redirectUrl)) {
+              resolve({ success: false, output: "", error: `Redirect blocked: ${redirectUrl} (SSRF protection)` });
+              return;
+            }
             // Retry with redirect URL
-            const redirectFetcher = res.headers.location.startsWith("https") ? https : http;
-            const req2 = redirectFetcher.get(res.headers.location, async (res2: any) => {
+            const redirectFetcher = redirectUrl.startsWith("https") ? https : http;
+            const req2 = redirectFetcher.get(redirectUrl, async (res2: any) => {
               if (res2.statusCode !== 200) { clearTimeout(timer); resolve({ success: false, output: "", error: `HTTP ${res2.statusCode}` }); return; }
               const chunks: Buffer[] = [];
               res2.on("data", (c: Buffer) => chunks.push(c));
@@ -1010,8 +1047,16 @@ Show-Tree -Path "${safePath}"`.trim());
               const content = await fs.readFile(fullPath, "utf-8");
               const lines = content.split(/\r?\n/);
               const flags = caseSensitive ? "" : "i";
-              let regex: RegExp;
-              try { regex = new RegExp(pattern, flags); } catch { regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), flags); }
+
+              // L-05 fix: Use RE2 for ReDoS protection (guarantees linear time execution)
+              let regex: RE2 | RegExp;
+              try {
+                regex = new RE2(pattern, flags);
+              } catch {
+                // RE2 compilation failed (invalid pattern or unsupported syntax like backreferences)
+                // Fall back to escaped literal search with native RegExp
+                regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), flags);
+              }
               for (let i = 0; i < lines.length && results.length < maxResults; i++) {
                 if (regex.test(lines[i])) {
                   const relPath = fullPath.substring(path.length).replace(/\\/g, "/").replace(/^\//, "");
@@ -1065,9 +1110,38 @@ const DANGEROUS_PS_PATTERNS: Array<[RegExp, string]> = [
   [/\bSet-ExecutionPolicy\s+Unrestricted/i, "disabling script execution policy"],
 ];
 
+/**
+ * SEC-04B: Dangerous Bash/Unix patterns that LLM-generated bash must never run.
+ * Each entry: [regex, human-readable reason].
+ * Matched against the full command string.
+ */
+const DANGEROUS_BASH_PATTERNS: Array<[RegExp, string]> = [
+  [/\brm\s+-rf\s+\/(?!\S)/, "recursive deletion of root directory"],
+  [/\brm\s+-rf\s+\/(?:bin|boot|dev|etc|lib|lib64|proc|root|sbin|sys|usr)\b/, "recursive deletion of system directories"],
+  [/\bmkfs\b/, "filesystem formatting"],
+  [/\bdd\s+if=/, "direct disk write (can overwrite filesystems)"],
+  [/:\(\)\s*\{\s*:\|:&\s*\};:/, "fork bomb"],
+  [/\bshutdown\b/, "system shutdown"],
+  [/\breboot\b/, "system reboot"],
+  [/\bpoweroff\b/, "system poweroff"],
+  [/\binit\s+[06]\b/, "system halt/reboot via init"],
+  [/\bsudo\s+rm\s+-rf\s+\//, "sudo recursive deletion of root"],
+  [/\bchmod\s+-R\s+000/, "recursive permission removal"],
+  [/>\s*\/dev\/sd[a-z]\b/, "direct write to disk device"],
+  [/\bmv\s+\/(?:bin|sbin|usr\/bin|usr\/sbin)\b/, "moving system binaries"],
+];
+
 /** Check if a PowerShell command matches any dangerous pattern. Returns reason or null. */
 function matchesDangerousPattern(command: string): string | null {
   for (const [pattern, reason] of DANGEROUS_PS_PATTERNS) {
+    if (pattern.test(command)) return reason;
+  }
+  return null;
+}
+
+/** Check if a Bash command matches any dangerous pattern. Returns reason or null. */
+function matchesDangerousBashPattern(command: string): string | null {
+  for (const [pattern, reason] of DANGEROUS_BASH_PATTERNS) {
     if (pattern.test(command)) return reason;
   }
   return null;
@@ -1087,11 +1161,24 @@ async function handleShell(toolId: string, args: Record<string, any>): Promise<T
       return runPowershell(args.command, timeoutMs);
     }
     case "shell.node":
+      // SECURITY NOTE: Node.js scripts can call require('child_process').exec() to bypass all command checks.
+      // This tool should only be used for trusted computation, not arbitrary LLM-generated code.
+      // Consider limiting this tool's availability in high-risk scenarios.
       if (!isRuntimeAvailable("node")) {
         return { success: false, output: "", error: `Node.js is not available. ${getRuntimeInstallHint("node")}` };
       }
       return runProcess("node", ["-e", args.script], 30_000);
     case "shell.bash": {
+      // SECURITY: Check for protected process targeting
+      if (commandTargetsProtectedProcess(args.command)) {
+        return { success: false, output: "", error: "Blocked: this command would kill DotBot's own process. The local agent and server must not be terminated by tool calls." };
+      }
+      // SECURITY: Check for dangerous bash patterns
+      const dangerousBashReason = matchesDangerousBashPattern(args.command);
+      if (dangerousBashReason) {
+        return { success: false, output: "", error: `Blocked: command rejected for safety (${dangerousBashReason}). This operation is too destructive to run via tool call.` };
+      }
+
       // Auto-detect: prefer WSL, fall back to Git Bash
       const bashTimeout = args.timeout_seconds ? Math.min(safeInt(args.timeout_seconds, 30), 600) * 1000 : 30_000;
       const wslAvailable = isRuntimeAvailable("wsl");
@@ -1106,6 +1193,9 @@ async function handleShell(toolId: string, args: Record<string, any>): Promise<T
       return runProcess("C:\\Program Files\\Git\\bin\\bash.exe", ["-c", args.command], bashTimeout);
     }
     case "shell.python":
+      // SECURITY NOTE: Python scripts can call os.system() or subprocess to bypass all command checks.
+      // This tool should only be used for trusted computation, not arbitrary LLM-generated code.
+      // Consider limiting this tool's availability in high-risk scenarios.
       if (!isRuntimeAvailable("python")) {
         return { success: false, output: "", error: `Python is not installed. ${getRuntimeInstallHint("python")}. Consider using shell.node or shell.powershell as alternatives.` };
       }
@@ -1347,10 +1437,22 @@ if ($tasks.Count -eq 0) { "No tasks found in ${folder}" } else {
         if (!taskCommand) return { success: false, output: "", error: "command is required for create" };
         if (!trigger) return { success: false, output: "", error: "trigger is required for create (e.g., 'daily 03:00', 'onlogon', 'hourly')" };
 
+        // SECURITY: Check for dangerous PowerShell patterns in scheduled task commands
+        const dangerMatch = matchesDangerousPattern(taskCommand);
+        if (dangerMatch) {
+          console.error(`[SECURITY] Blocked scheduled task with dangerous PowerShell pattern: ${dangerMatch}`);
+          return { success: false, output: "", error: `Command blocked: contains dangerous pattern (${dangerMatch}). Scheduled tasks are persistence mechanisms and require extra scrutiny.` };
+        }
+
         // Parse trigger into PowerShell trigger object
         const safeName = sanitizeForPS(taskName);
         const safeCmd = taskCommand.replace(/'/g, "''");
         const safeFolder = sanitizeForPS(folder);
+
+        // SECURITY: Log all scheduled task creations prominently
+        console.warn(`[SCHEDULED TASK] Creating persistent task: "${taskName}" in folder "${folder}"`);
+        console.warn(`[SCHEDULED TASK] Command: ${taskCommand}`);
+        console.warn(`[SCHEDULED TASK] Trigger: ${trigger}`);
         let triggerPS = "";
 
         if (trigger === "onlogon") {
@@ -1376,7 +1478,7 @@ if ($tasks.Count -eq 0) { "No tasks found in ${folder}" } else {
 
         return runPowershell(`
 ${triggerPS}
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -WindowStyle Hidden -Command "${safeCmd}"'
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -WindowStyle Hidden -Command ''${safeCmd}'''
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
 Register-ScheduledTask -TaskName '${safeName}' -TaskPath '${safeFolder}' -Trigger $trigger -Action $action -Settings $settings -Force | Select-Object TaskName, State | Format-Table | Out-String`, 30_000);
       }
@@ -1387,8 +1489,17 @@ Register-ScheduledTask -TaskName '${safeName}' -TaskPath '${safeFolder}' -Trigge
       const title = args.title || "DotBot";
       const message = args.message || "";
       if (!message) return { success: false, output: "", error: "message is required" };
-      const safeTitle = title.replace(/'/g, "''");
-      const safeMsg = message.replace(/'/g, "''");
+
+      // M-07 fix: Escape XML special characters first, then PowerShell quotes
+      const xmlEscape = (str: string) => str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+
+      const safeTitle = xmlEscape(title);
+      const safeMsg = xmlEscape(message);
       return runPowershell(`
 [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
 [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
@@ -1560,6 +1671,11 @@ async function handleRuntime(toolId: string, args: Record<string, any>): Promise
           { name: "wsl", cmd: "wsl", args: ["--status"] },
         ];
         for (const p of probes) {
+          // Skip claude probe if it resolves to the Desktop GUI app
+          if (p.name === "claude" && isClaudeDesktopApp()) {
+            lines.push(`${p.name.padEnd(12)} ✗ not installed (found Claude Desktop app, not Claude Code CLI)`);
+            continue;
+          }
           const info = probeRuntime(p.name, p.cmd, p.args, "");
           const status = info.available ? `✓ ${info.version || "available"}` : `✗ not installed`;
           lines.push(`${p.name.padEnd(12)} ${status}`);
@@ -1586,6 +1702,10 @@ async function handleRuntime(toolId: string, args: Record<string, any>): Promise
         return { success: false, output: "", error: `Unknown runtime: ${name}. Available: ${Object.keys(probeMap).join(", ")}` };
       }
 
+      // Skip claude probe if it resolves to the Desktop GUI app
+      if (name === "claude" && isClaudeDesktopApp()) {
+        return { success: true, output: `✗ claude: Claude Desktop app found, but Claude Code CLI is not installed. ${INSTALL_RECIPES.claude?.fallback || ""}` };
+      }
       const info = probeRuntime(name, probe.cmd, probe.args, "");
       if (info.available) {
         // Update the cached detection too

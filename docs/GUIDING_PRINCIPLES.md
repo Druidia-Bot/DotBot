@@ -136,10 +136,9 @@ Self-improvement follows strict rules: branch, change, test, verify, merge or ro
 ┌─────────────────────▼────────────────────────────┐
 │              DotBot Cloud Server                  │
 │                                                   │
-│  Intake: receptionist → classify + route          │
-│          planner → break down complex tasks       │
-│          chairman → synthesize multi-worker       │
-│          updater → write memory deltas            │
+│  Intake: receptionist → classify + route           │
+│          persona writer → generate agent prompts   │
+│          updater → write memory deltas             │
 │                                                   │
 │  Workers: senior-dev, junior-dev, writer,         │
 │           researcher, code-reviewer, comedian,    │

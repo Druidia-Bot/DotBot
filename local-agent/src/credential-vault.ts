@@ -15,6 +15,7 @@
 
 import { promises as fs } from "fs";
 import { resolve, dirname } from "path";
+import { platform } from "os";
 
 // ============================================
 // TYPES
@@ -56,7 +57,19 @@ async function readVaultFile(): Promise<VaultFile> {
 async function writeVaultFile(vault: VaultFile): Promise<void> {
   const vaultPath = getVaultPath();
   await fs.mkdir(dirname(vaultPath), { recursive: true });
-  await fs.writeFile(vaultPath, JSON.stringify(vault, null, 2), "utf-8");
+
+  // M-08 fix: Set restrictive permissions (Unix only — mode is ignored on Windows)
+  // Note: While encrypted blobs can't be decrypted by the client, credential names
+  // and existence are visible if the file is world-readable.
+  await fs.writeFile(vaultPath, JSON.stringify(vault, null, 2), {
+    encoding: "utf-8",
+    mode: 0o600, // Owner read/write only
+  });
+
+  // Windows limitation: Unix permissions are ignored. The file may be readable by other users.
+  // This is documented but not warned on every write (unlike master.key) since vault.json
+  // changes frequently. To lock down on Windows, run:
+  //   icacls "%USERPROFILE%\.bot\vault.json" /inheritance:r /grant:r "%USERNAME%:F"
 }
 
 // ============================================

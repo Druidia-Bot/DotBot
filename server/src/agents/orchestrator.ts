@@ -1,21 +1,18 @@
 /**
- * V2 Orchestrator — Spawned Agent Pipeline
+ * Orchestrator — Spawned Agent Pipeline
  *
- * The V2 entry point for request execution. Replaces the V1 pipeline
- * for requests that need conversation isolation and per-agent tool slicing.
+ * Executes tasks produced by the persona writer as isolated spawned agents.
+ * Each agent gets its own conversation, workspace, tool set, and supervisor.
  *
  * Flow:
- * 1. Short path check (greetings, acks — skip everything)
- * 2. Receptionist classifies request (reuses existing runReceptionist)
- * 3. Persona writer creates dynamic personas + tool selections
- * 4. For each task: spawn an agent with isolated conversation + curated tools
+ * 1. Create spawned agents from AgentTask[] (from persona writer)
+ * 2. Wire message routing for conversation isolation
+ * 3. Set up per-agent workspaces (or reuse continuation workspace)
+ * 4. Execute each agent via tool loop
  * 5. Supervisor monitors active agents
  * 6. Enhanced judge evaluates each result
  * 7. Reflector runs post-task analysis (background)
- * 8. Merge responses into main feed with agent labels
- *
- * This runs ALONGSIDE the V1 pipeline — not replacing it. The pipeline
- * dispatcher decides which path to use based on feature flags or request type.
+ * 8. Merge responses and return
  */
 
 import { createComponentLogger } from "../logging.js";
@@ -29,13 +26,18 @@ import { handleEscalation } from "./architect.js";
 import {
   createWorkspace,
   saveTaskJson,
+  saveResearchOutput,
   completeTask,
   appendToolCallLog,
+  appendExecutionJournal,
+  saveConversationLog,
   scheduleWorkspaceCleanup,
   type AgentWorkspace,
   type TaskJson,
+  type ExecutionJournalEntry,
 } from "./workspace.js";
 import type { ILLMClient } from "../llm/providers.js";
+import { createLLMClient, getApiKeyForProvider } from "../llm/providers.js";
 import type { AgentRunnerOptions } from "./runner-types.js";
 import type { EnhancedPromptRequest } from "../types/agent.js";
 
@@ -61,6 +63,22 @@ export interface AgentTask {
   relevantMessageIndices?: number[];
 }
 
+/**
+ * Context from a previous agent's completed work.
+ * Passed when a follow-up message matches a completed agent — the new agent
+ * reuses the same workspace so it has access to research files, downloads, etc.
+ */
+export interface ContinuationContext {
+  /** Previous agent's workspace (reused instead of creating a new one) */
+  workspace: AgentWorkspace;
+  /** Previous agent's task state (conversation, progress, status) */
+  taskJson: TaskJson;
+  /** Previous agent's final response */
+  previousResponse: string;
+  /** Previous agent's ID (for logging) */
+  previousAgentId: string;
+}
+
 export interface OrchestratorResult {
   success: boolean;
   /** Combined response from all agents */
@@ -75,6 +93,12 @@ export interface OrchestratorResult {
   }>;
   /** The message router for this session (can be reused for follow-ups) */
   router: MessageRouter;
+  /** Injection queues for each agent (enables mid-execution message injection) */
+  injectionQueues: Map<string, string[]>;
+  /** Workspaces for each agent (enables real-time task.json updates) */
+  workspaces: Map<string, import("./workspace.js").AgentWorkspace>;
+  /** TaskJson state for each agent (enables real-time updates without re-reading from client) */
+  taskJsonState: Map<string, import("./workspace.js").TaskJson>;
 }
 
 // ============================================
@@ -92,7 +116,10 @@ export async function executeWithSpawnedAgents(
   options: AgentRunnerOptions,
   request: EnhancedPromptRequest,
   tasks: AgentTask[],
-  router?: MessageRouter
+  router?: MessageRouter,
+  conversationSnapshot?: string[],
+  onOrchestratorReady?: (result: OrchestratorResult) => void,
+  continuationContext?: ContinuationContext
 ): Promise<OrchestratorResult> {
   const messageRouter = router || new MessageRouter();
 
@@ -137,15 +164,23 @@ export async function executeWithSpawnedAgents(
     }
   }
 
-  // Per-agent injection queues and abort controllers for supervisor intervention
+  // Per-agent injection queues, workspaces, task state, and abort controllers for supervisor intervention
   const agentInjectionQueues = new Map<string, string[]>();
+  const agentWorkspaces = new Map<string, AgentWorkspace>();
+  const agentTaskJsonState = new Map<string, TaskJson>();
   const agentAbortControllers = new Map<string, AbortController>();
   for (const agent of agents) {
     agentInjectionQueues.set(agent.id, []);
     agentAbortControllers.set(agent.id, new AbortController());
   }
 
-  // Start supervisor — fully wired with injection + abort + status reporting
+  // Per-agent execution journals (collected during execution, written to workspace on completion)
+  const agentJournals = new Map<string, ExecutionJournalEntry[]>();
+  for (const agent of agents) {
+    agentJournals.set(agent.id, []);
+  }
+
+  // Start supervisor — fully wired with injection + abort + status reporting + journal
   const supervisor = new AgentSupervisor({
     onInjectMessage: (agentId, message) => {
       const queue = agentInjectionQueues.get(agentId);
@@ -160,15 +195,41 @@ export async function executeWithSpawnedAgents(
         controller.abort();
         log.info("Supervisor aborted agent", { agentId, reason });
       }
+      // Journal: supervisor abort
+      agentJournals.get(agentId)?.push({
+        ts: new Date().toISOString(), agentId, type: "supervisor",
+        supervisor: { status: "aborted", action: "abort", message: reason },
+      });
     },
     onStatusReport: (report) => {
       log.info("Supervisor report", { agentId: report.agentId, status: report.status, message: report.message });
       if (options.onStream) {
         options.onStream("supervisor", `[${report.topic}] ${report.message}\n`, false);
       }
+      // Journal: supervisor status event
+      agentJournals.get(report.agentId)?.push({
+        ts: new Date().toISOString(), agentId: report.agentId, type: "supervisor",
+        supervisor: { status: report.status, action: report.status === "stuck" ? "inject_message" : "watch", message: report.message, timeSinceActivityMs: report.elapsedMs },
+      });
     },
   });
   supervisor.watch(agents);
+
+  // Build the result object early — the Maps are live references, so concurrent
+  // callers can use them for injection even while agents are still executing.
+  const earlyResult: OrchestratorResult = {
+    success: false, // Updated on completion
+    response: "",   // Updated on completion
+    agentResults: [], // Populated during execution
+    router: messageRouter,
+    injectionQueues: agentInjectionQueues,
+    workspaces: agentWorkspaces,
+    taskJsonState: agentTaskJsonState,
+  };
+
+  // Notify the caller that agents are spawned and injection infrastructure is live.
+  // This allows concurrent pipeline calls to find running agents and inject messages.
+  onOrchestratorReady?.(earlyResult);
 
   // Execute all agents
   // Sequential execution — parallel agents would interleave streaming chunks
@@ -190,22 +251,73 @@ export async function executeWithSpawnedAgents(
       toolCount: task.selectedToolIds.length,
     });
 
-    // Create workspace on client (fire-and-forget — don't block agent on dir creation)
+    // Create workspace on client — await directory creation before writing files
+    // If this is the first agent and we have continuation context, reuse the previous workspace
+    const isContinuation = i === 0 && continuationContext;
     let workspace: AgentWorkspace | null = null;
     let taskJson: TaskJson | null = null;
     if (options.onExecuteCommand) {
       try {
-        const { workspace: ws, setupCommands } = createWorkspace(agent.id);
-        workspace = ws;
-        for (const cmd of setupCommands) {
-          options.onExecuteCommand({
-            id: `ws_${agent.id}_${cmd.toolId}`,
-            type: "tool_execute",
-            payload: { toolId: cmd.toolId, toolArgs: cmd.args },
-            dryRun: false, timeout: 10000, sandboxed: false, requiresApproval: false,
-          }).catch((err) => {
-            log.warn("Workspace setup command failed", { agentId: agent.id, cmd: cmd.toolId, error: err });
-          }); // non-blocking but logged
+        if (isContinuation) {
+          // Reuse the previous agent's workspace — directories + research files already exist
+          workspace = continuationContext.workspace;
+          agentWorkspaces.set(agent.id, workspace);
+          log.info("Reusing previous workspace for continuation", {
+            agentId: agent.id,
+            previousAgentId: continuationContext.previousAgentId,
+            workspacePath: workspace.basePath,
+          });
+
+          // Inject previous work context into the agent's conversation so it knows what was already done
+          const prevTaskJson = continuationContext.taskJson;
+          const prevConversation = prevTaskJson.conversation || [];
+          const prevSteps = prevTaskJson.progress?.stepsCompleted || [];
+          const contextSummary = [
+            `## Continuation from previous agent (${continuationContext.previousAgentId})`,
+            `**Topic:** ${prevTaskJson.topic}`,
+            `**Status:** ${prevTaskJson.status}`,
+            prevSteps.length > 0 ? `**Steps completed:** ${prevSteps.join(", ")}` : "",
+            `**Workspace:** ${workspace.basePath} (research files, downloads, and artifacts from previous work are here)`,
+            `**Previous conversation:** ${prevConversation.length} exchanges`,
+            prevConversation.length > 0
+              ? prevConversation.slice(-6).map(c => `[${c.role}]: ${c.content.substring(0, 500)}${c.content.length > 500 ? "..." : ""}`).join("\n")
+              : "",
+            "",
+            "You are continuing this agent's work. The workspace already contains research files, downloads, and other artifacts from previous work.",
+            "Check the workspace before re-doing any research. Use `directory.list` or `directory.tree` on the workspace path to see what's already there.",
+          ].filter(Boolean).join("\n");
+
+          agent.addMessage({ role: "system", content: contextSummary });
+        } else {
+          // Normal path: create fresh workspace
+          const { workspace: ws, setupCommands } = createWorkspace(agent.id);
+          workspace = ws;
+          agentWorkspaces.set(agent.id, ws);
+
+          const WORKSPACE_SETUP_TIMEOUT_MS = 15_000;
+          const setupPromises = setupCommands.map((cmd, cmdIdx) =>
+            options.onExecuteCommand!({
+              id: `ws_${agent.id}_${cmd.toolId}_${cmdIdx}`,
+              type: "tool_execute",
+              payload: { toolId: cmd.toolId, toolArgs: cmd.args },
+              dryRun: false, timeout: 10000, sandboxed: false, requiresApproval: false,
+            }).catch((err) => {
+              log.warn("Workspace setup command failed", { agentId: agent.id, cmd: cmd.toolId, error: err });
+              throw err;
+            })
+          );
+          const abortCtrl = agentAbortControllers.get(agent.id);
+          await Promise.race([
+            Promise.all(setupPromises),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("Workspace setup timed out")), WORKSPACE_SETUP_TIMEOUT_MS)
+            ),
+            new Promise<never>((_, reject) => {
+              if (abortCtrl?.signal.aborted) return reject(new Error("Agent aborted by supervisor"));
+              abortCtrl?.signal.addEventListener("abort", () =>
+                reject(new Error("Agent aborted by supervisor during workspace setup")), { once: true });
+            }),
+          ]);
         }
 
         // Save initial task.json
@@ -216,17 +328,24 @@ export async function executeWithSpawnedAgents(
           status: "running",
           lastActiveAt: new Date().toISOString(),
           persona: {
-            systemPrompt: agent.systemPrompt.substring(0, 500),
+            systemPrompt: agent.systemPrompt,
             role: task.topic,
             temperature: 0.5,
             maxIterations: 50,
             modelTier: task.modelRole || "workhorse",
           },
           selectedToolIds: task.selectedToolIds,
-          conversation: [],
-          progress: { stepsCompleted: [], currentStep: "Starting" },
+          conversation: isContinuation
+            ? [...(continuationContext.taskJson.conversation || [])]
+            : [],
+          progress: isContinuation
+            ? { ...continuationContext.taskJson.progress, currentStep: "Continuing from previous work" }
+            : { stepsCompleted: [], currentStep: "Starting" },
           originalMessageIndices: task.relevantMessageIndices || [],
+          originalConversationSnapshot: conversationSnapshot,
+          parentAgentId: isContinuation ? continuationContext.previousAgentId : undefined,
         };
+        agentTaskJsonState.set(agent.id, taskJson);
         const saveCmd = saveTaskJson(workspace, taskJson);
         options.onExecuteCommand({
           id: `ws_${agent.id}_task_json`,
@@ -244,7 +363,7 @@ export async function executeWithSpawnedAgents(
     try {
       const injectionQueue = agentInjectionQueues.get(agent.id);
       const abortController = agentAbortControllers.get(agent.id)!;
-      let result = await executeAgent(llm, options, request, agent, injectionQueue, abortController);
+      let result = await executeAgent(llm, options, request, agent, injectionQueue, abortController, workspace, agentJournals.get(agent.id));
 
       // Handle escalation — agent realized it needs different tools/approach
       if (result.escalated) {
@@ -371,6 +490,40 @@ export async function executeWithSpawnedAgents(
         }
       }
 
+      // Write execution journal to workspace (logs/execution.jsonl)
+      const agentJournal = agentJournals.get(agent.id);
+      if (workspace && options.onExecuteCommand && agentJournal?.length) {
+        // Push lifecycle "completed" entry before writing
+        agentJournal.push({
+          ts: new Date().toISOString(), agentId: agent.id, type: "lifecycle",
+          lifecycle: { event: "completed", detail: `response=${finalResponse.length} chars` },
+        });
+        for (const entry of agentJournal) {
+          const logCmd = appendExecutionJournal(workspace, entry);
+          options.onExecuteCommand({
+            id: `ws_${agent.id}_journal_${entry.type}_${Date.now()}`,
+            type: "tool_execute",
+            payload: { toolId: logCmd.toolId, toolArgs: logCmd.args },
+            dryRun: false, timeout: 5000, sandboxed: false, requiresApproval: false,
+          }).catch((err) => {
+            log.warn("Failed to write execution journal entry", { agentId: agent.id, type: entry.type, error: err });
+          }); // fire-and-forget
+        }
+      }
+
+      // Write conversation log to workspace (logs/conversation.json)
+      if (workspace && options.onExecuteCommand && result.conversationLog?.length) {
+        const convCmd = saveConversationLog(workspace, result.conversationLog);
+        options.onExecuteCommand({
+          id: `ws_${agent.id}_conversation`,
+          type: "tool_execute",
+          payload: { toolId: convCmd.toolId, toolArgs: convCmd.args },
+          dryRun: false, timeout: 10000, sandboxed: false, requiresApproval: false,
+        }).catch((err) => {
+          log.warn("Failed to write conversation log", { agentId: agent.id, error: err });
+        }); // fire-and-forget
+      }
+
       // Delete task.json to mark completion (workspace folder stays for cleanup later)
       if (workspace && options.onExecuteCommand) {
         const delCmd = completeTask(workspace);
@@ -387,7 +540,7 @@ export async function executeWithSpawnedAgents(
         scheduleWorkspaceCleanup(agent.id);
       }
 
-      // Run reflector in background (non-blocking)
+      // Run reflector in background (non-blocking) — pass execution journal for self-reflection
       runReflectorAsync(llm, options, {
         originalPrompt: request.prompt,
         finalResponse,
@@ -396,10 +549,15 @@ export async function executeWithSpawnedAgents(
         iterations: 0,
         executionTimeMs: Date.now() - startTime,
         judgeVerdict: judgeResult.verdict.verdict,
+        executionJournal: agentJournal,
       });
 
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = error instanceof Error
+        ? error.message
+        : (typeof error === "object" && error !== null
+          ? JSON.stringify(error)
+          : String(error));
       agent.fail(errMsg);
       log.error("Agent execution failed", { agentId: agent.id, topic: agent.topic, error: errMsg });
       agentResults.push({
@@ -417,6 +575,24 @@ export async function executeWithSpawnedAgents(
         success: false,
         response: errMsg,
       });
+
+      // Write execution journal on failure
+      const failJournal = agentJournals.get(agent.id);
+      if (workspace && options.onExecuteCommand && failJournal?.length) {
+        failJournal.push({
+          ts: new Date().toISOString(), agentId: agent.id, type: "lifecycle",
+          lifecycle: { event: "failed", detail: errMsg.substring(0, 500) },
+        });
+        for (const entry of failJournal) {
+          const logCmd = appendExecutionJournal(workspace, entry);
+          options.onExecuteCommand({
+            id: `ws_${agent.id}_journal_${entry.type}_${Date.now()}`,
+            type: "tool_execute",
+            payload: { toolId: logCmd.toolId, toolArgs: logCmd.args },
+            dryRun: false, timeout: 5000, sandboxed: false, requiresApproval: false,
+          }).catch(() => {}); // fire-and-forget, already in error path
+        }
+      }
 
       // Update task.json with failure status (don't delete — allows resumption)
       if (workspace && taskJson && options.onExecuteCommand) {
@@ -438,15 +614,14 @@ export async function executeWithSpawnedAgents(
   // Stop supervisor
   supervisor.stop();
 
-  // Merge responses
-  const response = mergeAgentResponses(agentResults);
+  // Merge responses and finalize the early result object
+  earlyResult.success = agentResults.some(r => r.status === "completed");
+  earlyResult.response = mergeAgentResponses(agentResults);
+  // agentResults was populated by reference during execution via earlyResult.agentResults pushes above
+  // but the local array was used — sync it back
+  earlyResult.agentResults = agentResults;
 
-  return {
-    success: agentResults.some(r => r.status === "completed"),
-    response,
-    agentResults,
-    router: messageRouter,
-  };
+  return earlyResult;
 }
 
 // ============================================
@@ -464,8 +639,10 @@ async function executeAgent(
   request: EnhancedPromptRequest,
   agent: SpawnedAgent,
   injectionQueue?: string[],
-  abortController?: AbortController
-): Promise<{ response: string; workLog: string; escalated?: boolean; escalationReason?: string; neededToolCategories?: string[]; toolCallsMade?: { tool: string; args: Record<string, any>; result: string; success: boolean }[] }> {
+  abortController?: AbortController,
+  workspace?: AgentWorkspace | null,
+  journal?: ExecutionJournalEntry[]
+): Promise<{ response: string; workLog: string; escalated?: boolean; escalationReason?: string; neededToolCategories?: string[]; toolCallsMade?: { tool: string; args: Record<string, any>; result: string; success: boolean }[]; conversationLog?: Array<{ role: string; content: string; toolCalls?: any[] }> }> {
   // Build an ad-hoc persona from the agent's dynamic config
   const persona = {
     id: agent.id,
@@ -496,12 +673,46 @@ async function executeAgent(
     })),
   };
 
+  // Execution journal — collects structured events for per-agent self-reflection
+  // Uses the shared journal array (also receives supervisor events from parent scope)
+  const agentJournal = journal || [];
+  const journalPush = (entry: Omit<ExecutionJournalEntry, "ts" | "agentId">) => {
+    agentJournal.push({ ts: new Date().toISOString(), agentId: agent.id, ...entry } as ExecutionJournalEntry);
+  };
+
+  // Track tool call start times for duration calculation
+  const toolCallStartTimes = new Map<string, number>();
+
   // Wire synthetic tool callbacks in augmented options
   const augmentedOptions: AgentRunnerOptions & {
     onRequestTools?: (categories: string[]) => string[];
     onRequestResearch?: (query: string, depth: string, format: string) => Promise<string>;
   } = {
     ...options,
+
+    // Tandem pipeline: persist large tool results to workspace research/ folder
+    saveToWorkspace: workspace && options.onExecuteCommand
+      ? (filename: string, content: string) => {
+          const cmd = saveResearchOutput(workspace, filename, content);
+          options.onExecuteCommand!({
+            id: `ws_${agent.id}_research_${Date.now()}`,
+            type: "tool_execute",
+            payload: { toolId: cmd.toolId, toolArgs: cmd.args },
+            dryRun: false, timeout: 10_000, sandboxed: false, requiresApproval: false,
+          }).catch((err) => {
+            log.warn("Failed to save research output to workspace", { agentId: agent.id, filename, error: err });
+          });
+        }
+      : undefined,
+
+    // Tandem pipeline: summarize large tool results via cheap/fast model (with journal)
+    summarizeLargeResult: buildSummarizeCallback(agent.id, journalPush),
+
+    // Execution journal: record model selection decisions
+    onModelSelected: (info) => {
+      journalPush({ type: "model_selected", model: info });
+    },
+
     onRequestTools: (categories: string[]): string[] => {
       log.info("Agent requesting additional tools", { agentId: agent.id, categories });
 
@@ -538,7 +749,7 @@ async function executeAgent(
       return addedTools;
     },
     onRequestResearch: async (query: string, depth: string, format: string): Promise<string> => {
-      log.info("Agent requesting research", { agentId: agent.id, query, depth, format });
+      log.info("Agent requesting research", { agentId: agent.id, queryLength: query.length, depth, format });
 
       // Import research protocol
       const { createResearchTask, parseResearchRequest } = await import("./research-protocol.js");
@@ -567,7 +778,7 @@ async function executeAgent(
       log.info("Research sub-agent spawned", {
         parentAgent: agent.id,
         researchAgent: researchAgent.id,
-        query: query.substring(0, 100),
+        queryLength: query.length,
       });
 
       // Execute research agent
@@ -637,17 +848,75 @@ async function executeAgent(
   };
 
   const onWaitForUser = async (reason: string, resumeHint?: string, timeoutMs?: number): Promise<string> => {
-    log.warn("Agent requested user input (not yet implemented)", {
+    log.info("Agent waiting for user input", {
       agentId: agent.id,
       reason,
       resumeHint,
       timeoutMs
     });
+
+    // Mark agent as blocked — it will auto-resume when user sends a relevant message
     agent.block();
 
-    // Future: Send user_input_request via WS, wait for user_input_response
-    // For now, agents should use agent.escalate instead of waiting for input
-    return `[User input blocking not yet supported. Please rephrase your request or use agent.escalate to get help from a supervisor agent.]`;
+    // Return success message to LLM, instructing it to inform the user
+    return `[TASK PAUSED] You have successfully paused this task. Now respond to the user explaining what you need from them: "${reason}". The task will automatically resume when they send a message matching: "${resumeHint || reason}". Do not call any more tools — just send your response to the user and exit.`;
+  };
+
+  // Mark that the tool loop is about to start — supervisor uses this to avoid false-positive aborts
+  agent.toolLoopStarted = true;
+
+  // Wire agent activity tracking for the supervisor.
+  // The tool loop fires onToolCall/onToolResult → execution.ts fires onTaskProgress.
+  // The tool loop also fires onLLMResponse after each LLM call.
+  // By intercepting both, we keep the supervisor informed of real progress
+  // without coupling the tool loop to the SpawnedAgent class.
+  // Lifecycle: agent started
+  journalPush({ type: "lifecycle", lifecycle: { event: "started", detail: `topic="${agent.topic}", tools=${agent.selectedToolIds.length}` } });
+
+  const originalOnTaskProgress = augmentedOptions.onTaskProgress;
+  augmentedOptions.onTaskProgress = (update) => {
+    if (update.eventType === "tool_call" || update.eventType === "tool_result") {
+      agent.lastToolActivityAt = Date.now();
+      if (update.eventType === "tool_call") {
+        agent.toolCallCount++;
+        // Record tool call start time for duration calculation
+        if (update.tool) toolCallStartTimes.set(update.tool, Date.now());
+      }
+      if (update.eventType === "tool_result" && update.tool) {
+        // Journal: tool call with actual duration
+        const startTime = toolCallStartTimes.get(update.tool);
+        const durationMs = startTime ? Date.now() - startTime : 0;
+        toolCallStartTimes.delete(update.tool);
+        journalPush({
+          type: "tool_call",
+          tool: {
+            toolId: update.tool,
+            durationMs,
+            resultChars: update.resultLength || 0,
+            success: update.success !== false,
+          },
+        });
+      }
+    }
+    originalOnTaskProgress?.(update);
+  };
+
+  // Also update activity after each LLM response (covers slow model calls)
+  const originalOnLLMResponse = augmentedOptions.onLLMResponse;
+  augmentedOptions.onLLMResponse = (info) => {
+    agent.lastToolActivityAt = Date.now();
+    // Journal: LLM call with model, tokens, duration
+    journalPush({
+      type: "llm_call",
+      llm: {
+        provider: info.provider || "unknown",
+        model: info.model || "unknown",
+        inputTokens: info.inputTokens,
+        outputTokens: info.outputTokens,
+        durationMs: info.duration,
+      },
+    });
+    originalOnLLMResponse?.(info);
   };
 
   // Execute with persona, passing selectedToolIds for V2 manifest slicing
@@ -695,4 +964,97 @@ function mergeAgentResponses(
   return completed
     .map(r => `**${r.topic}:**\n${r.response}`)
     .join("\n\n---\n\n");
+}
+
+// ============================================
+// TANDEM RESEARCH PIPELINE
+// ============================================
+
+/** Max chars for the summarized extraction (the summary itself should be compact). */
+const MAX_SUMMARY_CHARS = 3_000;
+
+/**
+ * Lazily-initialized cheap LLM client for inline summarization.
+ * Created on first use so we don't pay startup cost if no large results appear.
+ */
+let summarizationClient: import("../llm/types.js").ILLMClient | null = null;
+
+function getSummarizationClient(): import("../llm/types.js").ILLMClient | null {
+  if (summarizationClient) return summarizationClient;
+
+  // Try xAI Grok first (fast, 131K context, cheap at $0.001/1K input), then DeepSeek, then OpenAI
+  for (const provider of ["xai", "deepseek", "openai", "gemini"] as const) {
+    const apiKey = getApiKeyForProvider(provider);
+    if (apiKey) {
+      try {
+        summarizationClient = createLLMClient({ provider, apiKey });
+        log.info("Summarization client initialized", { provider });
+        return summarizationClient;
+      } catch (err) {
+        log.warn("Failed to create summarization client", { provider, error: err });
+      }
+    }
+  }
+
+  log.warn("No API key available for inline summarization — will fall back to truncation");
+  return null;
+}
+
+/**
+ * Build a summarizeLargeResult callback for an agent.
+ * Uses a cheap/fast model to extract key facts from large tool results
+ * so expensive models don't have to process raw data.
+ */
+function buildSummarizeCallback(
+  agentId: string,
+  journalPush?: (entry: Omit<ExecutionJournalEntry, "ts" | "agentId">) => void,
+) {
+  return async (toolId: string, rawResult: string): Promise<string> => {
+    const client = getSummarizationClient();
+    if (!client) throw new Error("No summarization client available");
+
+    const startTime = Date.now();
+    log.info("Summarizing large tool result via cheap model", {
+      agentId, toolId, rawChars: rawResult.length,
+    });
+
+    const response = await client.chat(
+      [
+        {
+          role: "system",
+          content: "You are a data extraction assistant. Extract the key facts, data points, and relevant information from the tool result below. Be concise — use bullet points. Preserve exact numbers, names, URLs, and quotes. Output ONLY the extracted information, no commentary or preamble.",
+        },
+        {
+          role: "user",
+          content: `Tool: ${toolId}\n\nResult:\n${rawResult}`,
+        },
+      ],
+      { maxTokens: 1024 },
+    );
+
+    const summary = (response.content || "").substring(0, MAX_SUMMARY_CHARS);
+    const durationMs = Date.now() - startTime;
+    log.info("Summarization complete", {
+      agentId, toolId,
+      originalChars: rawResult.length,
+      summaryChars: summary.length,
+      durationMs,
+      provider: response.provider,
+      model: response.model,
+    });
+
+    // Journal: summarization event
+    journalPush?.({
+      type: "summarization",
+      summarization: {
+        toolId,
+        originalChars: rawResult.length,
+        summaryChars: summary.length,
+        provider: response.provider || "unknown",
+        durationMs,
+      },
+    });
+
+    return summary;
+  };
 }

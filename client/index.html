@@ -6,6 +6,7 @@
   <title>DotBot</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -182,11 +183,11 @@
         onkeydown="if(event.key==='Enter')saveServerSettings()"
         class="w-full px-3 py-2 bg-dot-bg border border-dot-border rounded text-gray-200 text-sm font-mono focus:outline-none focus:border-dot-cyan mb-4" />
       <p class="text-xs text-gray-500 mb-4">Enter the WebSocket URL of your DotBot server.<br/>Use <span class="text-gray-400">ws://</span> for local or <span class="text-gray-400">wss://</span> for remote.</p>
-      <label class="block text-sm text-gray-400 mb-1">Auth Token</label>
-      <input id="webAuthTokenInput" type="password" placeholder="Paste your web auth token"
-        onkeydown="if(event.key==='Enter')saveServerSettings()"
-        class="w-full px-3 py-2 bg-dot-bg border border-dot-border rounded text-gray-200 text-sm font-mono focus:outline-none focus:border-dot-cyan mb-4" />
-      <p class="text-xs text-gray-500 mb-4">Required. Get this from your server admin or <span class="text-gray-400">~/.bot/server-data/web-auth-token</span></p>
+      <div class="text-xs text-gray-500 mb-4 p-3 bg-yellow-900/20 border border-yellow-700/30 rounded">
+        ⚠️ <strong>Device credentials required:</strong> Web clients now use device credentials instead of a global auth token.<br/>
+        To connect, include <span class="text-gray-400">deviceId</span> and <span class="text-gray-400">secret</span> in the URL hash (e.g., <span class="text-gray-400">#deviceId=...&secret=...</span>),<br/>
+        or use the setup link provided by your local agent.
+      </div>
       <div class="flex gap-2 justify-end">
         <button onclick="closeServerSettings()" class="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition">Cancel</button>
         <button onclick="saveServerSettings()" class="px-4 py-2 bg-dot-cyan text-black text-sm font-semibold rounded hover:bg-cyan-400 transition">Connect</button>
@@ -206,35 +207,41 @@
   </div>
 
   <script>
-    // Resolve server URL and auth token from hash fragment, query params, localStorage, or defaults.
-    // Hash fragments (#ws=...&token=...) are preferred for file:// protocol because
+    // Resolve server URL and device credentials from hash fragment or query params.
+    // Hash fragments (#ws=...&deviceId=...&secret=...) are preferred for file:// protocol because
     // Windows Start-Process/ShellExecute strips query params (?) from file:// URLs.
+    // Device credentials are NOT stored in localStorage to prevent XSS exfiltration.
     function resolveConfig() {
       // Check hash fragment first (works with file:// protocol)
       const hashParams = new URLSearchParams(window.location.hash.slice(1));
       // Fall back to query params (works with http:// protocol)
       const queryParams = new URLSearchParams(window.location.search);
+
       const paramUrl = hashParams.get('ws') || queryParams.get('ws');
-      const paramToken = hashParams.get('token') || queryParams.get('token');
-      // CLIENT-02: Store params immediately and scrub URL (token should not linger in address bar or history)
+      const paramDeviceId = hashParams.get('deviceId') || queryParams.get('deviceId');
+      const paramSecret = hashParams.get('secret') || queryParams.get('secret');
+
+      // Store only the WebSocket URL (not credentials)
       if (paramUrl) localStorage.setItem('dotbot_ws_url', paramUrl);
-      if (paramToken) localStorage.setItem('dotbot_web_auth_token', paramToken);
-      if (paramUrl || paramToken) {
+
+      // Clear URL to remove credentials from address bar and browser history
+      if (paramUrl || paramDeviceId || paramSecret) {
         try {
-          // Clear both hash and query to remove token from URL bar and browser history
           window.history.replaceState({}, '', window.location.pathname);
           if (window.location.hash) window.location.hash = '';
         } catch(e) {}
       }
+
       return {
-        url: localStorage.getItem('dotbot_ws_url') || 'ws://localhost:3001',
-        token: localStorage.getItem('dotbot_web_auth_token') || '',
+        url: paramUrl || localStorage.getItem('dotbot_ws_url') || 'ws://localhost:3001',
+        deviceId: paramDeviceId || '',
+        deviceSecret: paramSecret || '',
       };
     }
     const config = resolveConfig();
     let WS_URL = config.url;
-    let WEB_AUTH_TOKEN = config.token;
-    const DEVICE_ID = 'web-client-' + Math.random().toString(36).substr(2, 9);
+    let DEVICE_ID = config.deviceId;
+    let DEVICE_SECRET = config.deviceSecret;
     
     let ws = null;
     let isConnected = false;
@@ -679,10 +686,11 @@
           timestamp: Date.now(),
           payload: {
             deviceToken: 'web-client-token',
-            deviceId: DEVICE_ID,
+            deviceId: DEVICE_ID || `web_${Math.random().toString(36).substr(2, 9)}`,
+            deviceSecret: DEVICE_SECRET || 'missing',
             deviceName: 'Web Browser',
             capabilities: ['prompt'],
-            webAuthToken: WEB_AUTH_TOKEN
+            hwFingerprint: 'browser'
           }
         };
         log('Sending auth request', 'client-send', authMsg);
@@ -950,7 +958,8 @@
     function renderMarkdown(el, raw) {
       try {
         const html = marked.parse(raw, { breaks: true, gfm: true });
-        el.innerHTML = html;
+        // Sanitize HTML to prevent XSS (M-04 fix)
+        el.innerHTML = DOMPurify.sanitize(html);
         el.classList.add('md-content');
       } catch (e) {
         console.error('[MD] renderMarkdown FAILED:', e, 'raw length:', raw?.length, 'raw type:', typeof raw, 'first 200 chars:', String(raw).substring(0, 200));
@@ -1062,13 +1071,8 @@
     // Server settings
     function showServerSettings() {
       document.getElementById('serverUrlInput').value = WS_URL;
-      document.getElementById('webAuthTokenInput').value = WEB_AUTH_TOKEN;
       document.getElementById('serverSettingsModal').classList.remove('hidden');
-      if (!WEB_AUTH_TOKEN) {
-        document.getElementById('webAuthTokenInput').focus();
-      } else {
-        document.getElementById('serverUrlInput').focus();
-      }
+      document.getElementById('serverUrlInput').focus();
     }
     
     function closeServerSettings() {
@@ -1077,12 +1081,9 @@
     
     function saveServerSettings() {
       const newUrl = document.getElementById('serverUrlInput').value.trim();
-      const newToken = document.getElementById('webAuthTokenInput').value.trim();
       if (!newUrl) return;
       localStorage.setItem('dotbot_ws_url', newUrl);
-      if (newToken) localStorage.setItem('dotbot_web_auth_token', newToken);
       WS_URL = newUrl;
-      WEB_AUTH_TOKEN = newToken;
       closeServerSettings();
       authErrorReason = '';
       if (ws) { ws.onclose = null; ws.close(); }
@@ -1100,8 +1101,9 @@
     
     log('Server: ' + WS_URL, 'info');
     log('Device ID: ' + DEVICE_ID, 'info');
-    if (!WEB_AUTH_TOKEN) {
-      log('No web auth token set — opening settings', 'info');
+    if (!DEVICE_ID || !DEVICE_SECRET) {
+      log('No device credentials provided — opening settings', 'info');
+      log('Tip: Include deviceId and secret in URL hash to connect automatically', 'info');
       showServerSettings();
     } else {
       connect();

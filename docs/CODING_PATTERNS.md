@@ -155,8 +155,8 @@ Special values: `[all]` gives access to every tool category. `[none]` skips the 
 
 ### Intake vs. Worker personas
 
-- **Intake personas** (receptionist, planner, chairman, updater) manage the pipeline — they route, plan, synthesize, and write memory. They don't use tools.
-- **Worker personas** (junior-dev, senior-dev, researcher, writer, etc.) execute tasks with tool loops. They have tool access and domain-specific prompts.
+- **Intake personas** (receptionist, updater) manage the pipeline — they classify, route, and maintain memory. They don't use tools.
+- **Worker personas** (junior-dev, senior-dev, researcher, writer, etc.) serve as style references for the persona writer. They have tool access and domain-specific prompts.
 
 This separation means routing logic never leaks into execution logic.
 

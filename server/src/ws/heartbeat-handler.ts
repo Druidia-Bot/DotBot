@@ -1,11 +1,11 @@
 /**
  * Heartbeat Request Handler
- * 
+ *
  * Handles heartbeat_request messages from the local agent.
  * The user's ~/.bot/HEARTBEAT.md is a prompt — its contents are injected
  * verbatim into the LLM call. The personal-assistant persona executes
  * those instructions with tool access (search, http, shell, filesystem).
- * 
+ *
  * If the persona determines nothing is urgent, it replies HEARTBEAT_OK.
  * Otherwise it returns a concise notification for the user.
  */
@@ -35,7 +35,9 @@ export async function handleHeartbeatRequest(
   const startTime = Date.now();
 
   try {
-    const { selectModel, createClientForSelection } = await import("../llm/providers.js");
+    const { selectModel, createClientForSelection } = await import(
+      "../llm/providers.js"
+    );
     const { getPersona } = await import("../personas/loader.js");
     const { runToolLoop } = await import("../agents/tool-loop.js");
 
@@ -48,23 +50,29 @@ export async function handleHeartbeatRequest(
 
     // Build context-enriched prompt (#6: context injection)
     const idleInfo = message.payload.idleDurationMs
-      ? `\nSystem idle for: ${Math.round(message.payload.idleDurationMs / 60000)} minutes`
+      ? `\nSystem idle for: ${Math.round(
+          message.payload.idleDurationMs / 60000
+        )} minutes`
       : "";
-    const failureInfo = message.payload.consecutiveFailures > 0
-      ? `\nNote: ${message.payload.consecutiveFailures} previous heartbeat(s) failed — this is a recovery check.`
-      : "";
+    const failureInfo =
+      message.payload.consecutiveFailures > 0
+        ? `\nNote: ${message.payload.consecutiveFailures} previous heartbeat(s) failed — this is a recovery check.`
+        : "";
 
     // #5: Scheduler integration — inject due/upcoming scheduled tasks
     const userId = device.session.userId;
     const { dueTasks, scheduledTasks } = fetchSchedulerData(userId);
-    const scheduledTaskInfo = buildScheduledTaskSummary(dueTasks, scheduledTasks);
+    const scheduledTaskInfo = buildScheduledTaskSummary(
+      dueTasks,
+      scheduledTasks
+    );
 
     const userMessage = `## Heartbeat Check — ${message.payload.currentTime}
 Timezone: ${message.payload.timezone}${idleInfo}${failureInfo}
 ${scheduledTaskInfo}
 ${message.payload.checklist}
 
-Run the checklist above. Reply HEARTBEAT_OK if nothing needs the user's attention right now.`;
+Run the checklist above. If nothing needs the user's attention, reply with exactly HEARTBEAT_OK.`;
 
     // Try to get tools for the persona (email, calendar, search access)
     let toolManifest: any[] = [];
@@ -72,13 +80,22 @@ Run the checklist above. Reply HEARTBEAT_OK if nothing needs the user's attentio
       const toolResult = await requestTools(deviceId);
       if (toolResult?.tools?.length) {
         // Filter to tool categories the persona declares
-        const allowedCategories = persona?.tools || ["search", "http", "shell", "filesystem"];
+        const allowedCategories = persona?.tools || [
+          "search",
+          "http",
+          "shell",
+          "filesystem",
+        ];
         toolManifest = toolResult.tools.filter(
-          (t: any) => allowedCategories.includes("all") || allowedCategories.includes(t.category)
+          (t: any) =>
+            allowedCategories.includes("all") ||
+            allowedCategories.includes(t.category)
         );
       }
     } catch {
-      log.debug("Could not fetch tools for heartbeat, falling back to LLM-only");
+      log.debug(
+        "Could not fetch tools for heartbeat, falling back to LLM-only"
+      );
     }
 
     let responseContent: string;
@@ -124,7 +141,8 @@ Run the checklist above. Reply HEARTBEAT_OK if nothing needs the user's attentio
     const result: HeartbeatResult = {
       status: isOk ? "ok" : "alert",
       content: isOk
-        ? responseContent.replace("HEARTBEAT_OK", "").trim() || "nothing to report"
+        ? responseContent.replace("HEARTBEAT_OK", "").trim() ||
+          "nothing to report"
         : responseContent,
       checkedAt: new Date().toISOString(),
       durationMs: Date.now() - startTime,
@@ -185,9 +203,12 @@ export interface ScheduledTaskCounts {
 /**
  * Fetch scheduler data once per heartbeat (avoids duplicate DB queries).
  */
-function fetchSchedulerData(userId: string): { dueTasks: any[]; scheduledTasks: any[] } {
+function fetchSchedulerData(userId: string): {
+  dueTasks: any[];
+  scheduledTasks: any[];
+} {
   try {
-    const dueTasks = getDueTasks().filter(t => t.userId === userId);
+    const dueTasks = getDueTasks().filter((t) => t.userId === userId);
     const scheduledTasks = getUserTasks(userId, "scheduled");
     return { dueTasks, scheduledTasks };
   } catch (error) {
@@ -200,7 +221,10 @@ function fetchSchedulerData(userId: string): { dueTasks: any[]; scheduledTasks: 
  * Build a text summary of the user's scheduled tasks for injection into the LLM prompt.
  * Returns an empty string if no tasks exist (keeps prompt clean).
  */
-function buildScheduledTaskSummary(dueTasks: any[], scheduledTasks: any[]): string {
+function buildScheduledTaskSummary(
+  dueTasks: any[],
+  scheduledTasks: any[]
+): string {
   // Nothing to report
   if (dueTasks.length === 0 && scheduledTasks.length === 0) return "";
 
@@ -209,8 +233,14 @@ function buildScheduledTaskSummary(dueTasks: any[], scheduledTasks: any[]): stri
   if (dueTasks.length > 0) {
     lines.push(`**${dueTasks.length} task(s) are NOW DUE:**`);
     for (const task of dueTasks.slice(0, 5)) {
-      const age = Math.round((Date.now() - task.scheduledFor.getTime()) / 60000);
-      lines.push(`- [${task.priority}] "${task.originalPrompt.substring(0, 80)}" — due ${age > 0 ? `${age}m ago` : "now"} (by ${task.deferredBy})`);
+      const age = Math.round(
+        (Date.now() - task.scheduledFor.getTime()) / 60000
+      );
+      lines.push(
+        `- [${task.priority}] "${task.originalPrompt.substring(0, 80)}" — due ${
+          age > 0 ? `${age}m ago` : "now"
+        } (by ${task.deferredBy})`
+      );
     }
     if (dueTasks.length > 5) {
       lines.push(`  ...and ${dueTasks.length - 5} more`);
@@ -220,13 +250,20 @@ function buildScheduledTaskSummary(dueTasks: any[], scheduledTasks: any[]): stri
   // Show upcoming tasks within the next hour (not yet due)
   const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000);
   const upcoming = scheduledTasks.filter(
-    t => t.scheduledFor > new Date() && t.scheduledFor <= oneHourFromNow
+    (t) => t.scheduledFor > new Date() && t.scheduledFor <= oneHourFromNow
   );
   if (upcoming.length > 0) {
     lines.push(`\n**${upcoming.length} task(s) coming up in the next hour:**`);
     for (const task of upcoming.slice(0, 3)) {
-      const minsUntil = Math.round((task.scheduledFor.getTime() - Date.now()) / 60000);
-      lines.push(`- [${task.priority}] "${task.originalPrompt.substring(0, 80)}" — in ${minsUntil}m`);
+      const minsUntil = Math.round(
+        (task.scheduledFor.getTime() - Date.now()) / 60000
+      );
+      lines.push(
+        `- [${task.priority}] "${task.originalPrompt.substring(
+          0,
+          80
+        )}" — in ${minsUntil}m`
+      );
     }
   }
 
@@ -237,7 +274,10 @@ function buildScheduledTaskSummary(dueTasks: any[], scheduledTasks: any[]): stri
 /**
  * Get task counts for the HeartbeatResult payload.
  */
-function getScheduledTaskCounts(dueTasks: any[], scheduledTasks: any[]): ScheduledTaskCounts {
+function getScheduledTaskCounts(
+  dueTasks: any[],
+  scheduledTasks: any[]
+): ScheduledTaskCounts {
   return {
     due: dueTasks.length,
     upcoming: scheduledTasks.length - dueTasks.length,

@@ -32,6 +32,7 @@ import {
   getDeviceForUser,
   broadcastToUser,
   notifyAdminDevices,
+  hasAnyConnectedDevices,
 } from "./devices.js";
 import {
   handleExecutionResult,
@@ -53,7 +54,7 @@ import {
 import { handleHeartbeatRequest } from "./heartbeat-handler.js";
 import { handleAdminRequest } from "./admin-handler.js";
 import { handleCredentialSessionRequest, handleCredentialProxyRequest, handleCredentialResolveRequest, cleanupResolveTracking } from "../credentials/handlers.js";
-import { handlePrompt } from "./prompt-handler.js";
+import { handlePrompt, cleanupUserSession } from "./prompt-handler.js";
 import { sendExecutionCommand } from "./device-bridge.js";
 import {
   listWorkspaceFolders,
@@ -72,7 +73,6 @@ import {
 import type { RecurringTask } from "../scheduler/index.js";
 import { validateAndConsumeToken } from "../auth/invite-tokens.js";
 import { registerDevice, authenticateDevice, getRecentFailures, logAuthEvent, listDevices } from "../auth/device-store.js";
-import { getWebAuthToken } from "../init.js";
 
 // Re-export for backwards compatibility
 export {
@@ -99,9 +99,20 @@ const log = createComponentLogger("ws");
 let serverProvider: string = "unknown";
 let serverModel: string = "unknown";
 
-// Initialize server-side components
-initServerPersonas();
-initDatabase();
+// ============================================
+// SERVER INITIALIZATION
+// ============================================
+
+/**
+ * Initialize server-side components (personas, database).
+ * MUST be called explicitly before creating the WebSocket server.
+ * Moved from module-level side effects to enable proper test isolation.
+ */
+export function initWSServer(): void {
+  initServerPersonas();
+  initDatabase();
+  log.info("WebSocket server components initialized");
+}
 
 // ============================================
 // WEBSOCKET SERVER
@@ -132,15 +143,13 @@ export function createWSServer(options: {
     }
 
     // Build a synthetic prompt message that carries the deferred task context
-    const syntheticMessage = {
+    const syntheticMessage: WSPromptMessage = {
       type: "prompt" as const,
       id: `sched_${task.id}`,
       timestamp: Date.now(),
       payload: {
         prompt: `[Scheduled Task — ${task.deferReason}] ${task.originalPrompt}`,
-        threadId: task.threadIds?.[0],
         source: "scheduler",
-        taskId: task.id,
       },
     };
 
@@ -151,7 +160,7 @@ export function createWSServer(options: {
       prompt: task.originalPrompt.substring(0, 80),
     });
 
-    await handlePrompt(deviceId, syntheticMessage as any, options.apiKey, serverProvider);
+    await handlePrompt(deviceId, syntheticMessage, options.apiKey, serverProvider);
     return `Deferred task ${task.id} executed via prompt pipeline`;
   });
 
@@ -162,15 +171,14 @@ export function createWSServer(options: {
     const deviceId = getDeviceForUser(task.userId);
 
     // Build a synthetic prompt message
-    const syntheticMessage = {
+    const syntheticMessage: WSPromptMessage = {
       type: "prompt" as const,
       id: `rsched_${task.id}`,
       timestamp: Date.now(),
       payload: {
         prompt: task.prompt,
         source: "scheduled_task",
-        taskId: task.id,
-        personaHint: task.personaHint || undefined,
+        hints: task.personaHint ? { personaHint: task.personaHint } : undefined,
       },
     };
 
@@ -195,7 +203,7 @@ export function createWSServer(options: {
       flow: "handlePrompt → receptionist → persona writer → orchestrator → judge",
     });
 
-    await handlePrompt(deviceId, syntheticMessage as any, options.apiKey, serverProvider);
+    await handlePrompt(deviceId, syntheticMessage, options.apiKey, serverProvider);
     return `Recurring task "${task.name}" executed successfully via V2 pipeline`;
   });
 
@@ -359,6 +367,7 @@ export function createWSServer(options: {
         // If the agent reconnected, devices.get(deviceId) returns the NEW connection
         // and we must NOT mark it disconnected or cancel its tasks.
         if (device && device.ws === ws) {
+          const userId = device.session.userId;
           device.session.status = "disconnected";
           log.info(`Device disconnected: ${device.session.deviceName}`);
           // Only cancel running tasks when a LOCAL AGENT disconnects (tools become unavailable).
@@ -369,6 +378,12 @@ export function createWSServer(options: {
             log.info("Local-agent disconnect: V2 uses session-based agents, no cancellation needed", { deviceId });
           }
           cleanupResolveTracking(deviceId);
+
+          // Clean up V2 orchestrator state if this was the user's last device
+          if (!hasAnyConnectedDevices(userId)) {
+            log.info("User's last device disconnected — cleaning up V2 session state", { userId });
+            cleanupUserSession(userId);
+          }
         } else if (device) {
           log.debug(`Stale WS closed for ${deviceId} — device already reconnected, ignoring`);
         }
@@ -456,7 +471,6 @@ function handleRegisterDevice(ws: WebSocket, message: WSRegisterDeviceMessage): 
       sessionId: session.id,
       provider: serverProvider,
       model: serverModel,
-      webAuthToken: getWebAuthToken() || undefined,
     },
   });
 
@@ -475,90 +489,19 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
   // Web clients authenticate with a web auth token (no device credentials).
   // These get capabilities: ['prompt'] only — no tool execution.
   // CRITICAL: Web clients must share the same userId as the local agent
-  // so that getDeviceForUser() can find the local agent for tool execution.
+  // Web clients without device credentials are rejected
   if (!deviceSecret || !hwFingerprint) {
-    const expectedToken = getWebAuthToken();
-    const providedToken = message.payload.webAuthToken;
-
-    if (!expectedToken) {
-      log.error("Web auth token not initialized — rejecting web client");
-      sendMessage(ws, {
-        type: "auth_failed",
-        id: nanoid(),
-        timestamp: Date.now(),
-        payload: { reason: "server_misconfigured", message: "Server web auth token not configured" },
-      });
-      return null;
-    }
-
-    if (!providedToken || providedToken !== expectedToken) {
-      log.warn("Web client auth failed: invalid web auth token", { ip });
-      sendMessage(ws, {
-        type: "auth_failed",
-        id: nanoid(),
-        timestamp: Date.now(),
-        payload: { reason: "invalid_web_token", message: "Invalid web auth token. Check your server admin for the correct token." },
-      });
-      return null;
-    }
-
-    const webDeviceId = `web_${nanoid(8)}`;
-
-    // Look up the primary registered device so browser shares its userId.
-    // Without this, browser gets userId "user_web_<random>" which never
-    // matches the local agent's "user_<deviceId>", making tools/memory
-    // permanently unavailable from the browser.
-    let userId = `user_${webDeviceId}`;
-    try {
-      const registeredDevices = listDevices().filter(d => d.status === "active");
-      if (registeredDevices.length > 0) {
-        userId = `user_${registeredDevices[0].deviceId}`;
-        log.info(`Web client linked to registered device`, { webDeviceId, linkedTo: registeredDevices[0].deviceId });
-      }
-    } catch {
-      log.warn("Could not look up registered devices for web client userId linkage");
-    }
-
-    const session: DeviceSession = {
-      id: nanoid(),
-      userId,
-      deviceId: webDeviceId,
-      deviceName: deviceName || "Web Browser",
-      capabilities: capabilities || ["prompt"],
-      tempDir,
-      platform: "web",
-      connectedAt: new Date(),
-      lastActiveAt: new Date(),
-      status: "connected",
-    };
-
-    devices.set(webDeviceId, {
-      ws,
-      session,
-      pendingCommands: new Map(),
-      pendingMemoryRequests: new Map(),
-      pendingSkillRequests: new Map(),
-      pendingPersonaRequests: new Map(),
-      pendingCouncilRequests: new Map(),
-      pendingThreadRequests: new Map(),
-      pendingKnowledgeRequests: new Map(),
-      pendingToolRequests: new Map(),
-    });
-
-    log.info(`Web client connected`, { webDeviceId, ip });
-
+    log.warn("Web client auth failed: missing device credentials", { ip, deviceId, hasSecret: !!deviceSecret, hasFingerprint: !!hwFingerprint });
     sendMessage(ws, {
-      type: "auth",
+      type: "auth_failed",
       id: nanoid(),
       timestamp: Date.now(),
       payload: {
-        success: true,
-        sessionId: session.id,
-        provider: serverProvider,
-        model: serverModel,
+        reason: "missing_credentials",
+        message: "Web clients must provide device credentials. Use the setup link provided by your local agent or an invite token."
       },
     });
-    return webDeviceId;
+    return null;
   }
 
   if (!deviceId || !deviceSecret || !hwFingerprint) {
@@ -657,7 +600,6 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
       sessionId: session.id,
       provider: serverProvider,
       model: serverModel,
-      webAuthToken: getWebAuthToken() || undefined,
     },
   });
 

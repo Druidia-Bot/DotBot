@@ -54,9 +54,10 @@ DotBot is a hybrid AI assistant: **cloud server** handles reasoning (LLM calls, 
 ## Persona System
 
 - **Server internal personas**: `.md` files in `server/src/personas/internal/` with YAML frontmatter (`id`, `modelTier`, `tools`)
-- **Intake personas** (receptionist, planner, chairman, updater): route/plan/synthesize. No tool access.
-- **Worker personas** (junior-dev, senior-dev, researcher, etc.): execute tasks with tool loops.
-- Each persona declares `tools: [categories]` — the tool loop filters the manifest to match.
+- **Intake personas** (receptionist, updater): classify/route and maintain memory. No tool access.
+- **Worker personas** (junior-dev, senior-dev, researcher, etc.): used as style references by the persona writer.
+- **Local user-defined personas**: `~/.bot/personas/{slug}/` — loaded by persona writer via `decision.localPersonaSlug`.
+- The **persona writer** generates custom system prompts + selects specific tool IDs per task. Internal personas serve as templates.
 
 ## Model Selection
 

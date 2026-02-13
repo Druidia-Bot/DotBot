@@ -10,11 +10,12 @@
 
 import type { Hono } from "hono";
 import QRCode from "qrcode";
-import { getSession, consumeSession } from "./sessions.js";
+import { getSession, getAndConsumeSession } from "./sessions.js";
 import { encryptCredential } from "./crypto.js";
 import { devices, sendMessage } from "../ws/devices.js";
 import { nanoid } from "nanoid";
 import { createComponentLogger } from "../logging.js";
+import { validateDeviceSession } from "../auth/device-sessions.js";
 
 const log = createComponentLogger("credentials.routes");
 
@@ -61,6 +62,32 @@ export function _clearRateLimits(): void {
 // ============================================
 
 export function registerCredentialRoutes(app: Hono): void {
+
+  // ----------------------------------------
+  // GET /credentials/session
+  // Device session landing page (cookie-based auth)
+  // ----------------------------------------
+  app.get("/credentials/session", (c) => {
+    const cookieHeader = c.req.header("cookie") || "";
+    const cookies = Object.fromEntries(
+      cookieHeader.split(";").map((c) => {
+        const [key, ...val] = c.trim().split("=");
+        return [key, val.join("=")];
+      })
+    );
+
+    const sessionId = cookies["dotbot_device_session"];
+    if (!sessionId) {
+      return c.html(sessionLandingPage(null), 200, cspHeaders());
+    }
+
+    const session = validateDeviceSession(sessionId);
+    if (!session.valid) {
+      return c.html(sessionLandingPage(null), 200, cspHeaders());
+    }
+
+    return c.html(sessionLandingPage(session), 200, cspHeaders());
+  });
 
   // ----------------------------------------
   // GET /credentials/enter/:token
@@ -121,13 +148,11 @@ export function registerCredentialRoutes(app: Hono): void {
       return c.html(errorPage("Missing token or value."), 400, cspHeaders());
     }
 
-    const session = getSession(token);
+    // Atomically get and consume the session (M-06 fix: prevents TOCTOU race)
+    const session = getAndConsumeSession(token);
     if (!session) {
       return c.html(expiredPage(), 410, cspHeaders());
     }
-
-    // Consume the session immediately (one-time use)
-    consumeSession(token);
 
     // Encrypt the credential with the server key for this user
     // Domain is baked into the key derivation — credential is cryptographically bound to it
@@ -511,6 +536,180 @@ function errorPage(message: string): string {
   <div class="card">
     <h2>Error</h2>
     <p>${esc(message)}</p>
+  </div>
+</body>
+</html>`;
+}
+
+function sessionLandingPage(session: { valid: boolean; deviceId?: string; userId?: string } | null): string {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  if (!session || !session.valid) {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DotBot - Authentication Required</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f23;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .card {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 12px;
+      padding: 40px;
+      max-width: 520px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .logo { font-size: 32px; margin-bottom: 16px; }
+    h2 { color: #f87171; margin-bottom: 12px; }
+    p { color: #999; font-size: 14px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🤖</div>
+    <h2>Authentication Required</h2>
+    <p>Please use the setup link provided by your DotBot agent to access this page.</p>
+  </div>
+</body>
+</html>`;
+  }
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DotBot - Browser Access</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f23;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .card {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 12px;
+      padding: 40px;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .logo span {
+      font-size: 28px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .badge {
+      display: inline-block;
+      background: #1e3a2f;
+      color: #4ade80;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-top: 8px;
+      letter-spacing: 0.5px;
+    }
+    .success {
+      text-align: center;
+      margin: 20px 0;
+    }
+    .success .icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    .success h2 {
+      color: #4ade80;
+      margin-bottom: 12px;
+    }
+    .info {
+      background: #16162b;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 20px 0;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      margin: 8px 0;
+      padding: 4px 0;
+      border-bottom: 1px solid #2a2a4a;
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: #999; }
+    .info-value {
+      color: #a78bfa;
+      font-family: 'Consolas', 'Fira Code', monospace;
+      font-size: 12px;
+    }
+    .note {
+      margin-top: 20px;
+      padding: 12px;
+      background: #1e1e3a;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #777;
+      line-height: 1.5;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <span>DotBot</span><br>
+      <span class="badge">BROWSER ACCESS ACTIVE</span>
+    </div>
+
+    <div class="success">
+      <div class="icon">✓</div>
+      <h2>Browser Authenticated</h2>
+      <p style="color: #999;">Your browser is now connected to your DotBot instance.</p>
+    </div>
+
+    <div class="info">
+      <div class="info-row">
+        <span class="info-label">Device ID:</span>
+        <span class="info-value">${esc(session.deviceId || "unknown")}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">User ID:</span>
+        <span class="info-value">${esc(session.userId || "unknown")}</span>
+      </div>
+    </div>
+
+    <div class="note">
+      🔒 This browser session is scoped to your device and will expire after 30 days of inactivity.
+      You can now close this tab and return to using your DotBot agent.
+    </div>
   </div>
 </body>
 </html>`;

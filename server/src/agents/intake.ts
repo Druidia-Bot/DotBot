@@ -25,6 +25,7 @@ import * as memory from "../memory/manager.js";
 import { createComponentLogger } from "../logging.js";
 import { getSystemContext, generateToolCapabilitiesSummary } from "./tools.js";
 import { generateCompactCatalog } from "../tools/catalog.js";
+import { validateReceptionistDecision } from "./validation.js";
 import type { AgentRunnerOptions } from "./runner.js";
 import type {
   EnhancedPromptRequest,
@@ -145,6 +146,18 @@ ${request.agentIdentity ? `\nAGENT IDENTITY:\n${request.agentIdentity}\n\nUse th
 
 Analyze the conversation and provide your routing decision as JSON.`;
 
+  // Debug logging: check if critical context is present
+  log.debug("Receptionist context check", {
+    hasSystemContext: systemContext.length > 0,
+    hasAgentIdentity: !!request.agentIdentity,
+    hasRuntimeInfo: !!(options.runtimeInfo && options.runtimeInfo.length > 0),
+    systemContextLength: systemContext.length,
+    systemPromptLength: systemPrompt.length,
+    threadCount: request.threadIndex.threads.length,
+    memoryCount: request.memoryIndex?.length || 0,
+    councilCount: request.matchedCouncils.length,
+  });
+
   // Build messages array with proper conversation history
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
     { role: "system", content: systemPrompt }
@@ -196,36 +209,84 @@ Analyze the conversation and provide your routing decision as JSON.`;
   try {
     const jsonMatch = response.content.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      decision = JSON.parse(jsonMatch[0]) as ReceptionistDecision;
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // VALIDATION GATE: Ensure the parsed object is a valid ReceptionistDecision
+      if (!validateReceptionistDecision(parsed)) {
+        log.error("Receptionist returned malformed JSON — treating as invalid", {
+          responseLength: response.content.length,
+          parsedKeys: Object.keys(parsed),
+        });
+        throw new Error("Invalid ReceptionistDecision structure");
+      }
+
+      decision = parsed as ReceptionistDecision;
     } else {
       throw new Error("No JSON found");
     }
   } catch (e) {
-    // The receptionist returned text instead of JSON. This usually means it
-    // answered the user's question directly. Use that text as a directResponse
-    // rather than triggering the expensive planner pipeline.
-    log.warn("Receptionist returned text instead of JSON — using as direct response", {
-      responseLength: response.content.length,
+    // The receptionist returned text instead of JSON OR returned malformed JSON.
+    // This usually means it answered the user's question directly.
+    // Use that text as a directResponse rather than triggering the expensive planner pipeline.
+
+    // However, if the response is extremely long (>2000 chars), it's likely garbage
+    // from a model failure. In that case, send a clean error message instead.
+    if (response.content.length > 2000) {
+      log.error("Receptionist returned garbage output (very long non-JSON response)", {
+        responseLength: response.content.length,
+      });
+
+      decision = {
+        classification: "CONVERSATIONAL",
+        priority: "BLOCKING",
+        confidence: 0.3,
+        threadIds: [],
+        createNewThread: false,
+        personaId: "general",
+        councilNeeded: false,
+        reasoning: "Receptionist encountered an error processing your request",
+        directResponse: "I apologize, but I'm having trouble processing your request right now. Could you please try rephrasing it?",
+        memoryAction: "none",
+      };
+    } else {
+      log.warn("Receptionist returned text instead of JSON — using as direct response", {
+        responseLength: response.content.length,
+      });
+
+      // Strip any markdown code fences or JSON fragments the LLM may have mixed in
+      const cleanedResponse = response.content
+        .replace(/```json[\s\S]*?```/g, "")
+        .replace(/```[\s\S]*?```/g, "")
+        .trim();
+
+      decision = {
+        classification: "CONVERSATIONAL",
+        priority: "BLOCKING",
+        confidence: 0.6,
+        threadIds: [],
+        createNewThread: false,
+        personaId: "general",
+        councilNeeded: false,
+        reasoning: "Receptionist answered directly (JSON parse failed, using text as response)",
+        directResponse: cleanedResponse || undefined,
+        memoryAction: "session_only",
+      };
+    }
+  }
+
+  // Log when time estimation is missing for tasks that should have it
+  const shouldHaveTimeEstimate =
+    (decision.classification === "ACTION" || decision.classification === "COMPOUND") &&
+    !decision.directResponse; // Direct responses are instant, no estimate needed
+
+  if (shouldHaveTimeEstimate && (!decision.estimatedDurationMs || !decision.acknowledgmentMessage)) {
+    log.warn("Receptionist omitted time estimation for long-running task", {
+      classification: decision.classification,
+      personaId: decision.personaId,
+      hasEstimate: !!decision.estimatedDurationMs,
+      hasAcknowledgment: !!decision.acknowledgmentMessage,
+      promptLength: request.prompt.length,
     });
-
-    // Strip any markdown code fences or JSON fragments the LLM may have mixed in
-    const cleanedResponse = response.content
-      .replace(/```json[\s\S]*?```/g, "")
-      .replace(/```[\s\S]*?```/g, "")
-      .trim();
-
-    decision = {
-      classification: "CONVERSATIONAL",
-      priority: "BLOCKING",
-      confidence: 0.6,
-      threadIds: [],
-      createNewThread: false,
-      personaId: "general",
-      councilNeeded: false,
-      reasoning: "Receptionist answered directly (JSON parse failed, using text as response)",
-      directResponse: cleanedResponse || undefined,
-      memoryAction: "session_only",
-    };
   }
 
   return decision;
@@ -517,7 +578,7 @@ Respond with valid JSON containing "deltas" array and "sessionAction" string.`;
           }
         }
       } catch (e) {
-        log.error("Failed to parse Updater response", { error: e, raw: response.content.substring(0, 200) });
+        log.error("Failed to parse Updater response", { error: e, responseLength: response.content.length });
       }
 
     } catch (error) {

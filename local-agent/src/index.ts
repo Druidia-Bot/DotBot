@@ -28,6 +28,7 @@ import {
   notifyActivity,
   type PeriodicTaskDef,
 } from "./periodic/index.js";
+import { startSetupServer } from "./setup-server.js";
 import { initServerLLM, handleServerLLMResponse } from "./server-llm.js";
 import {
   initCredentialProxy,
@@ -412,42 +413,67 @@ function authenticate(): void {
 
 async function handleMessage(message: WSMessage): Promise<void> {
   // Reset idle clock on any server-initiated request (indicates active conversation)
-  if (message.type !== "auth") {
+  // Don't reset on keepalive messages — ping/pong are connection health, not user activity
+  if (message.type !== "auth" && message.type !== "ping" && message.type !== "pong") {
     notifyActivity();
   }
 
   switch (message.type) {
-    case "device_registered": {
-      // First-time registration succeeded — save credentials and proceed as authenticated
-      const { deviceId, deviceSecret } = message.payload;
-      console.log(`[Agent] Device registered successfully! ID: ${deviceId}`);
-      deviceCredentials = {
-        deviceId,
-        deviceSecret,
-        serverUrl: SERVER_URL,
-        registeredAt: new Date().toISOString(),
-        label: DEVICE_NAME,
-      };
-      saveDeviceCredentials(deviceCredentials);
-      console.log("[Agent] Credentials saved to ~/.bot/device.json");
-      // Clean consumed invite token from .env (it's used up, no reason to keep it)
-      cleanConsumedInviteToken();
-      // Fall through to auth success initialization (same code path)
-    }
-    // falls through
-    case "auth":
-      if (message.type === "device_registered" || message.payload.success) {
+    case "device_registered":
+    case "auth": {
+      // Handle both device_registered (first-time) and auth (reconnect) with shared logic
+      if (message.type === "device_registered") {
+        // First-time registration — save credentials
+        const { deviceId, deviceSecret } = message.payload;
+        console.log(`[Agent] Device registered successfully! ID: ${deviceId}`);
+        deviceCredentials = {
+          deviceId,
+          deviceSecret,
+          serverUrl: SERVER_URL,
+          registeredAt: new Date().toISOString(),
+          label: DEVICE_NAME,
+        };
+        saveDeviceCredentials(deviceCredentials);
+        console.log("[Agent] Credentials saved to ~/.bot/device.json");
+        // Clean consumed invite token from .env (it's used up, no reason to keep it)
+        cleanConsumedInviteToken();
+        // Continue to shared initialization below
+      } else if (!message.payload.success) {
+        // Auth message with success=false (shouldn't happen, but defensive)
+        console.error("[Agent] Authentication failed");
+        break;
+      }
+
+      // Shared initialization for both registration and auth success
+      {
         console.log("[Agent] Authenticated successfully!");
         console.log("[Agent] Ready for commands.");
 
-        // Save web auth token so the browser client can auto-connect
-        if (message.payload.webAuthToken) {
-          const tokenPath = path.resolve(process.env.USERPROFILE || process.env.HOME || "", ".bot", "web-auth-token");
+        // Start local setup server for secure browser authentication
+        if (message.payload.deviceId && message.payload.deviceSecret) {
+          // Convert WebSocket URL to HTTP URL for browser redirect
+          const httpUrl = SERVER_URL.replace(/^wss?:\/\//, (match) => match === 'wss://' ? 'https://' : 'http://');
+
           try {
-            writeFileSync(tokenPath, message.payload.webAuthToken, "utf-8");
-            console.log("[Agent] Web auth token saved to ~/.bot/web-auth-token");
-          } catch {
-            // Not critical — browser user can enter it manually
+            const { port, setupCode } = startSetupServer(
+              message.payload.deviceId,
+              message.payload.deviceSecret,
+              httpUrl
+            );
+
+            console.log("");
+            console.log("╔════════════════════════════════════════════════════════╗");
+            console.log("║                                                        ║");
+            console.log("║  🌐 Setup Browser Access                               ║");
+            console.log("║                                                        ║");
+            console.log(`║  Open this link to configure credentials:             ║`);
+            console.log(`║  http://localhost:${port}/setup?code=${setupCode}         ║`);
+            console.log("║                                                        ║");
+            console.log("╚════════════════════════════════════════════════════════╝");
+            console.log("");
+          } catch (err) {
+            console.warn("[Agent] Setup server failed to start:", err);
+            // Not critical — user can enter credentials via other means
           }
         }
         // Initialize subsystems with server sender
@@ -577,6 +603,7 @@ async function handleMessage(message: WSMessage): Promise<void> {
             intervalMs: 15_000, // Check every 15s (instant — just reads a JSON file)
             initialDelayMs: 10_000, // 10 seconds after startup
             enabled: true,
+            bypassIdleCheck: true, // Reminders must fire on schedule, not wait for idle
             run: () => checkReminders(),
             canRun: canCheckReminders,
           },
@@ -648,10 +675,9 @@ async function handleMessage(message: WSMessage): Promise<void> {
         }).catch(err => {
           console.error("[Agent] Onboarding check failed:", err);
         });
-      } else {
-        console.error("[Agent] Authentication failed");
       }
       break;
+    }
 
     case "auth_failed": {
       const { reason, message: msg } = message.payload;
@@ -740,10 +766,10 @@ async function handleMessage(message: WSMessage): Promise<void> {
       await handleDiscordResponse(message);
       const { status, message: msg, persona, eventType } = message.payload;
       if (msg) console.log(`[Task] ${status}: ${msg}`);
-      // Forward tool activity to Discord #updates channel
+      // Forward tool activity to Discord #logs channel (internal activity stream)
       if (msg && eventType) {
         const icon = eventType === "tool_call" ? "🔧" : eventType === "tool_result" ? (message.payload.success ? "✅" : "❌") : "💭";
-        sendToUpdatesChannel(`${icon} ${persona ? `[${persona}] ` : ""}${msg}`);
+        sendToLogsChannel(`${icon} ${persona ? `[${persona}] ` : ""}${msg}`, "detail");
       }
       break;
     }
@@ -755,6 +781,13 @@ async function handleMessage(message: WSMessage): Promise<void> {
       }
       if (message.payload.done) {
         console.log("\n");
+      }
+      // Forward agent reasoning/dialog to Discord #logs channel
+      if (message.payload.content && !message.payload.done) {
+        const trimmed = message.payload.content.trim();
+        if (trimmed) {
+          sendToLogsChannel(`💭 ${trimmed.substring(0, 1900)}`, "detail");
+        }
       }
       break;
 
@@ -814,6 +847,18 @@ async function handleMessage(message: WSMessage): Promise<void> {
       if (message.payload?.message && message.payload?.source !== "sleep_cycle") {
         sendToConversationChannel(`🔔 **${message.payload.title || "Notification"}**\n${message.payload.message}`);
         sendToUpdatesChannel(`🔔 **${message.payload.title || "Notification"}**\n${message.payload.message}`);
+      }
+      break;
+
+    case "task_acknowledged":
+      // Server classified the prompt and is about to start agent execution.
+      // Notify the user immediately via Discord #conversation so they know we're working on it.
+      if (message.payload?.acknowledgment) {
+        const prompt = message.payload.prompt || "your request";
+        const eta = message.payload.estimatedLabel || "a moment";
+        console.log(`[Task] Acknowledged: ${prompt} (est. ${eta})`);
+        sendToConversationChannel(`⏳ ${message.payload.acknowledgment}`);
+        sendToLogsChannel(`📋 **Task acknowledged:** ${prompt.substring(0, 100)} — est. ~${eta}`);
       }
       break;
 

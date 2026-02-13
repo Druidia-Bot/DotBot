@@ -29,6 +29,9 @@ const log = createComponentLogger("tool-loop");
 /** Max characters per tool result before truncation. */
 const MAX_TOOL_RESULT_CHARS = 8_000;
 
+/** Tool categories whose results should be persisted to workspace research/ folder. */
+const RESEARCH_TOOL_CATEGORIES = new Set(["search", "http", "market", "research"]);
+
 /**
  * Defensive sanitizer: ensures every assistant message with tool_calls is
  * immediately followed by matching tool result messages. DeepSeek and OpenAI
@@ -44,12 +47,18 @@ function sanitizeMessages(messages: LLMMessage[]): void {
     const expectedIds = new Set(msg.tool_calls.map(tc => tc.id));
     const foundIds = new Set<string>();
 
-    // Scan the messages immediately following this assistant message
-    for (let j = i + 1; j < messages.length && j <= i + msg.tool_calls.length; j++) {
+    // Scan forward to find all tool results, skipping injected user messages
+    // Stop when we've found all results, hit another assistant message, or reach the end
+    for (let j = i + 1; j < messages.length; j++) {
+      // Stop if we hit another assistant message (start of next turn)
+      if (messages[j].role === "assistant") break;
+
+      // Collect tool results, skip other message types (user injections)
       if (messages[j].role === "tool" && messages[j].tool_call_id) {
         foundIds.add(messages[j].tool_call_id!);
-      } else {
-        break; // Non-tool message breaks the sequence
+
+        // Early exit if we've found all expected results
+        if (foundIds.size === expectedIds.size) break;
       }
     }
 
@@ -79,6 +88,79 @@ function truncateResult(result: string): string {
     result.substring(0, MAX_TOOL_RESULT_CHARS) +
     `\n\n...[truncated — original was ${result.length} chars. Summarize what you have.]`
   );
+}
+
+/**
+ * Check if a tool belongs to a research-heavy category whose results should
+ * be persisted to workspace and summarized rather than dumped into context.
+ */
+function isResearchHeavyTool(toolId: string, manifest?: ToolManifestEntry[]): boolean {
+  // Check by category from manifest
+  if (manifest) {
+    const entry = manifest.find(t => t.id === toolId || t.name === toolId);
+    if (entry?.category && RESEARCH_TOOL_CATEGORIES.has(entry.category)) return true;
+  }
+  // Fallback: check by tool ID prefix (search.brave, http.render, market.*)
+  const prefix = toolId.split(".")[0];
+  return RESEARCH_TOOL_CATEGORIES.has(prefix);
+}
+
+/**
+ * Handle a result from a research-heavy tool (search, http, market, research):
+ * 1. ALWAYS save full result to workspace research/ folder — preserves data for
+ *    follow-up questions without re-fetching (fire-and-forget, doesn't block tool loop)
+ * 2. If result exceeds MAX_TOOL_RESULT_CHARS: summarize via cheap/fast model
+ * 3. If result is small enough: pass through directly (no summarization overhead)
+ * 4. Fall back to truncation if summarization fails or isn't available
+ */
+async function handleResearchResult(
+  toolId: string,
+  rawResult: string,
+  options: ToolLoopOptions,
+  personaId: string,
+): Promise<string> {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const safeToolId = toolId.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const filename = `${safeToolId}-${timestamp}.txt`;
+
+  // Step 1: ALWAYS persist full result to workspace (fire-and-forget)
+  // This preserves fetched data so follow-up questions can reference it
+  // without re-fetching from the source.
+  if (options.saveToWorkspace) {
+    try {
+      options.saveToWorkspace(filename, rawResult);
+      log.info(`Saved research result to workspace`, { personaId, toolId, filename, chars: rawResult.length });
+    } catch (err) {
+      log.warn(`Failed to save research result to workspace`, { personaId, toolId, error: err });
+    }
+  }
+
+  // Step 2: If result is small enough, pass through directly — no summarization needed
+  if (rawResult.length <= MAX_TOOL_RESULT_CHARS) {
+    const note = options.saveToWorkspace
+      ? `\n\n[Full result also saved to workspace/research/${filename}]`
+      : "";
+    return rawResult + note;
+  }
+
+  // Step 3: Result is large — summarize via cheap model if callback provided
+  if (options.summarizeLargeResult) {
+    try {
+      const summary = await options.summarizeLargeResult(toolId, rawResult);
+      if (summary && summary.length > 0) {
+        const note = options.saveToWorkspace
+          ? `\n\n[Full result (${rawResult.length} chars) saved to workspace/research/${filename}]`
+          : "";
+        log.info(`Summarized large research result`, { personaId, toolId, originalChars: rawResult.length, summaryChars: summary.length });
+        return summary + note;
+      }
+    } catch (err) {
+      log.warn(`Summarization failed, falling back to truncation`, { personaId, toolId, error: err });
+    }
+  }
+
+  // Step 4: Fallback — dumb truncation (still saved to workspace above)
+  return truncateResult(rawResult);
 }
 
 /**
@@ -195,6 +277,12 @@ export interface ToolLoopOptions {
   onRequestTools?: (toolCategories: string[]) => string[];
   /** Called when agent requests research delegation */
   onRequestResearch?: (query: string, depth: string, format: string) => Promise<string>;
+
+  // V2: Tandem research pipeline — save raw results, summarize for context
+  /** Persist a file to the agent's workspace research/ folder (fire-and-forget) */
+  saveToWorkspace?: (filename: string, content: string) => void;
+  /** Summarize a large tool result using a cheap/fast model. Returns condensed extraction. */
+  summarizeLargeResult?: (toolId: string, rawResult: string) => Promise<string>;
 }
 
 export interface ToolLoopResult {
@@ -214,6 +302,8 @@ export interface ToolLoopResult {
   escalationReason?: string;
   /** V2: Whether research was requested during execution */
   researchRequested?: boolean;
+  /** V2: Full conversation history (system + user + assistant + tool messages) for workspace logging */
+  conversationLog?: Array<{ role: string; content: string; toolCalls?: any[] }>;
 }
 
 // ============================================
@@ -235,7 +325,6 @@ export async function runToolLoop(
   options: ToolLoopOptions
 ): Promise<ToolLoopResult> {
   const systemContextBlock = getSystemContext(options.runtimeInfo);
-  const usePluginRouting = !!(options.toolManifest && options.toolManifest.length > 0);
 
   // Behavioral guidance goes in system prompt; tool definitions go structurally
   const toolGuidance = generateToolPrompt();
@@ -547,23 +636,50 @@ export async function runToolLoop(
         toolArgs = JSON.parse(call.function.arguments);
       } catch {
         toolArgs = {};
-        log.warn(`Failed to parse tool arguments for ${toolId}`, { personaId, raw: call.function.arguments });
+        log.warn(`Failed to parse tool arguments for ${toolId}`, { personaId, rawLength: call.function.arguments.length });
       }
 
-      log.info(`Executing tool: ${toolId}`, { personaId, args: toolArgs });
+      log.info(`Executing tool: ${toolId}`, { personaId, argKeys: Object.keys(toolArgs) });
       options.onToolCall?.(toolId, toolArgs);
 
       // ── escalate: persona realizes it doesn't have the right tools ──
+      // Before truly escalating, try to resolve the need via request_tools.
+      // If the agent asked for specific categories and we can add them, do so
+      // and let the agent continue instead of terminating the loop.
       if (toolId === "agent.escalate") {
         const reason = toolArgs.reason || "Persona needs different tools";
         const neededStr = toolArgs.needed_tools || "";
+        const neededCategories = neededStr
+          ? neededStr.split(",").map((s: string) => s.trim()).filter(Boolean)
+          : [];
+
+        // Auto-resolve: try adding the requested tool categories first
+        if (neededCategories.length > 0 && options.onRequestTools) {
+          log.info("Escalation intercepted — attempting auto-resolve via request_tools", {
+            personaId, categories: neededCategories,
+          });
+          const addedTools = options.onRequestTools(neededCategories);
+          if (addedTools.length > 0) {
+            // Tools were added — tell the agent and let the loop continue
+            const resolveMsg = `✅ Escalation resolved — added ${addedTools.length} tools from categories: ${neededCategories.join(", ")}. ` +
+              `They're now available. Continue with the task instead of escalating.`;
+            messages.push({ role: "tool", content: resolveMsg, tool_call_id: call.id });
+            toolCallsMade.push({ tool: toolId, args: toolArgs, result: resolveMsg, success: true });
+            log.info("Escalation auto-resolved", { personaId, addedToolCount: addedTools.length });
+            continue; // Resume tool loop — do NOT escalate
+          }
+        }
+
+        // Could not auto-resolve — proceed with full escalation
         log.info(`Tool loop escalating — agent.escalate called`, { personaId, reason, neededTools: neededStr });
         escalated = true;
         escalationReason = reason;
-        neededToolCategories = neededStr
-          ? neededStr.split(",").map((s: string) => s.trim()).filter(Boolean)
-          : undefined;
-        finalResponse = `I don't have the right tools for this task. ${reason} Let me get this re-routed to a better-equipped persona.`;
+        neededToolCategories = neededCategories.length > 0 ? neededCategories : undefined;
+        // Don't set a canned finalResponse — let the architect decide the user-facing message.
+        // If finalResponse is still empty (agent never produced text), set a minimal placeholder.
+        if (!finalResponse) {
+          finalResponse = `Task escalated: ${reason}`;
+        }
 
         // Push tool result so API message sequence stays valid
         messages.push({
@@ -708,8 +824,7 @@ export async function runToolLoop(
         } else {
           const command = buildExecutionCommand(
             { tool: toolId, args: toolArgs },
-            usePluginRouting,
-            options.toolManifest
+            options.toolManifest!
           );
           result = await abortableCall(
             () => options.executeCommand(command),
@@ -724,6 +839,10 @@ export async function runToolLoop(
           resultContent = imageExtraction.textContent;
           resultImages = [imageExtraction.image];
           log.info(`Tool ${toolId} returned image (${imageExtraction.image.media_type})`, { personaId });
+        } else if (isResearchHeavyTool(toolId, options.toolManifest)) {
+          // Tandem pipeline: ALWAYS save research results to workspace (preserves data for follow-up questions).
+          // Only summarize via cheap model when the result exceeds context-friendly size.
+          resultContent = await handleResearchResult(toolId, result, options, personaId);
         } else {
           resultContent = truncateResult(result);
         }
@@ -821,6 +940,23 @@ export async function runToolLoop(
     }
   }
 
+  // Build compact conversation log for workspace persistence.
+  // Strips tool_call_id and other API-level noise, keeps role + content + toolCalls.
+  const conversationLog = messages.map(m => {
+    const entry: { role: string; content: string; toolCalls?: any[] } = {
+      role: m.role,
+      content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+    };
+    if ((m as any).tool_calls?.length) {
+      entry.toolCalls = (m as any).tool_calls.map((tc: any) => ({
+        id: tc.id,
+        name: tc.function?.name,
+        arguments: tc.function?.arguments,
+      }));
+    }
+    return entry;
+  });
+
   return {
     response: finalResponse,
     toolCallsMade,
@@ -829,6 +965,7 @@ export async function runToolLoop(
     escalated: escalated || undefined,
     neededToolCategories,
     escalationReason,
+    conversationLog,
   };
 }
 
@@ -859,121 +996,48 @@ function findToolEntry(toolName: string, manifest?: ToolManifestEntry[]): ToolMa
 
 /**
  * Convert a parsed tool call into an ExecutionCommand for the local agent.
- * 
- * When usePluginRouting is true, ALL tools route through tool_execute,
- * letting the local agent's tool executor handle dispatch.
- * Legacy routing is kept as fallback for when no manifest is available.
+ * All tools route through tool_execute, letting the local agent's tool executor handle dispatch.
  */
 function buildExecutionCommand(
   call: { tool: string; args: Record<string, any> },
-  usePluginRouting: boolean,
-  manifest?: ToolManifestEntry[]
+  manifest: ToolManifestEntry[]
 ): ExecutionCommand {
   const id = `cmd_${nanoid(12)}`;
 
-  // Plugin routing: resolve tool name → tool ID, send as tool_execute
-  if (usePluginRouting && manifest) {
-    const toolEntry = findToolEntry(call.tool, manifest);
-    if (!toolEntry) {
-      log.warn(`Tool "${call.tool}" not found in manifest — LLM may have hallucinated a tool name`);
-    }
-    const toolId = toolEntry?.id || call.tool;
-    const isDestructive = toolEntry?.annotations?.destructiveHint ?? false;
-    const category = toolEntry?.category || toolId.split(".")[0] || "";
-
-    // Category-aware timeouts: codegen needs 10min, shell needs 5min, others get 30s
-    const timeoutByCategory: Record<string, number> = {
-      codegen: 660_000,  // 11 min (codegen's internal timeout is 10 min)
-      secrets: 960_000,  // 16 min (credential entry blocks up to 15 min)
-      shell: 300_000,    // 5 min
-      market: 180_000,   // 3 min (xai_sentiment uses serverLLMCall which has 2min timeout)
-      browser: 60_000,   // 1 min
-      gui: 60_000,       // 1 min (page loads, waits, screenshots)
-    };
-    const timeout = timeoutByCategory[category] || 30_000;
-
-    return {
-      id,
-      type: "tool_execute",
-      payload: {
-        toolId,
-        toolArgs: call.args,
-      },
-      dryRun: false,
-      timeout,
-      sandboxed: isDestructive,
-      requiresApproval: toolEntry?.annotations?.requiresConfirmation ?? false,
-    };
+  // Resolve tool name → tool ID from manifest
+  const toolEntry = findToolEntry(call.tool, manifest);
+  if (!toolEntry) {
+    log.warn(`Tool "${call.tool}" not found in manifest — LLM may have hallucinated a tool name`);
   }
+  const toolId = toolEntry?.id || call.tool;
+  const isDestructive = toolEntry?.annotations?.destructiveHint ?? false;
+  const category = toolEntry?.category || toolId.split(".")[0] || "";
 
-  // Legacy routing: hardcoded tool name → execution type mapping
-  switch (call.tool) {
-    case "create_file":
-      return {
-        id,
-        type: "file_write",
-        payload: {
-          path: expandHomePath(call.args.path),
-          content: call.args.content || "",
-        },
-        dryRun: false,
-        timeout: 10_000,
-        sandboxed: false,
-        requiresApproval: false,
-      };
+  // Category-aware timeouts: codegen needs 10min, shell needs 5min, others get 30s
+  const timeoutByCategory: Record<string, number> = {
+    codegen: 660_000,  // 11 min (codegen's internal timeout is 10 min)
+    secrets: 960_000,  // 16 min (credential entry blocks up to 15 min)
+    shell: 300_000,    // 5 min
+    market: 180_000,   // 3 min (xai_sentiment uses serverLLMCall which has 2min timeout)
+    browser: 60_000,   // 1 min
+    gui: 60_000,       // 1 min (page loads, waits, screenshots)
+  };
+  const timeout = timeoutByCategory[category] || 30_000;
 
-    case "read_file":
-      return {
-        id,
-        type: "file_read",
-        payload: {
-          path: expandHomePath(call.args.path),
-        },
-        dryRun: false,
-        timeout: 10_000,
-        sandboxed: false,
-        requiresApproval: false,
-      };
-
-    case "run_command":
-      return {
-        id,
-        type: "powershell",
-        payload: {
-          script: call.args.command,
-        },
-        dryRun: false,
-        timeout: 30_000,
-        sandboxed: true,
-        requiresApproval: false,
-      };
-
-    case "list_directory":
-      return {
-        id,
-        type: "powershell",
-        payload: {
-          script: `Get-ChildItem -Path "${expandHomePath(call.args.path)}" | ForEach-Object { $type = if($_.PSIsContainer){'[DIR]'}else{'[FILE]'}; "$type $($_.Name)$(if(!$_.PSIsContainer){' ('+$_.Length+' bytes)'})" }`,
-        },
-        dryRun: false,
-        timeout: 10_000,
-        sandboxed: false,
-        requiresApproval: false,
-      };
-
-    default:
-      throw new Error(`Unknown tool: ${call.tool}`);
-  }
+  return {
+    id,
+    type: "tool_execute",
+    payload: {
+      toolId,
+      toolArgs: call.args,
+    },
+    dryRun: false,
+    timeout,
+    sandboxed: isDestructive,
+    requiresApproval: toolEntry?.annotations?.requiresConfirmation ?? false,
+  };
 }
 
-/**
- * Minimal path normalization — pass ~/paths through for the local-agent to resolve,
- * since only the local machine knows the actual folder locations (Dropbox, OneDrive, etc.)
- */
-function expandHomePath(filePath: string): string {
-  // Normalize forward slashes to backslashes for Windows
-  return filePath.replace(/\//g, "\\");
-}
 
 /**
  * Race an async operation against an AbortSignal.

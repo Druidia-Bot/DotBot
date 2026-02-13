@@ -23,7 +23,7 @@ import type {
   ModelSelectionCriteria,
   LLMProvider,
 } from "./types.js";
-import { MODEL_ROLE_CONFIGS, TIER_TO_ROLE } from "./types.js";
+import { MODEL_ROLE_CONFIGS, TIER_TO_ROLE, PROVIDER_CONFIGS } from "./types.js";
 
 const log = createComponentLogger("model-selector");
 
@@ -90,6 +90,62 @@ export function getApiKeyForProvider(provider: LLMProvider): string {
  * Every LLM call in the system should go through this selector.
  */
 export function selectModel(criteria: ModelSelectionCriteria): ModelSelection {
+  // 0. Persona model override (NEW - highest priority for local personas)
+  if (criteria.personaModelOverride) {
+    const override = criteria.personaModelOverride;
+
+    // Specific model + provider requested
+    if (override.model && override.provider) {
+      if (isProviderAvailable(override.provider)) {
+        const config = PROVIDER_CONFIGS[override.provider];
+        const modelConfig = config.models[override.model];
+
+        if (modelConfig) {
+          log.info(`Model selected: persona override (specific)`, {
+            provider: override.provider,
+            model: override.model,
+            reason: `local persona override: ${override.provider}/${override.model}`,
+          });
+
+          return {
+            role: "workhorse", // Use workhorse role by default for overrides
+            provider: override.provider,
+            model: override.model,
+            temperature: 0.3,
+            maxTokens: 4096,
+            reason: `local persona override: ${override.provider}/${override.model}`,
+          };
+        }
+      }
+      // Fall through to tier/provider if specific model unavailable
+    }
+
+    // Provider requested (use default model for that provider)
+    if (override.provider && isProviderAvailable(override.provider)) {
+      const config = PROVIDER_CONFIGS[override.provider];
+      log.info(`Model selected: persona override (provider)`, {
+        provider: override.provider,
+        model: config.defaultModel,
+        reason: `local persona override: ${override.provider} (default model)`,
+      });
+
+      return {
+        role: "workhorse",
+        provider: override.provider,
+        model: config.defaultModel,
+        temperature: 0.3,
+        maxTokens: 4096,
+        reason: `local persona override: ${override.provider} (default model)`,
+      };
+    }
+
+    // Tier requested (use tier mapping)
+    if (override.tier) {
+      const role = TIER_TO_ROLE[override.tier];
+      return resolveRole(role, `local persona tier override: ${override.tier} → ${role}`);
+    }
+  }
+
   // 1. Explicit role override (e.g. receptionist says "use architect")
   if (criteria.explicitRole) {
     return resolveRole(criteria.explicitRole, `explicit override: ${criteria.explicitRole}`);

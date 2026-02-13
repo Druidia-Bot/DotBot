@@ -89,6 +89,15 @@ export function createRunner(
         payload: { threadId, updates }
       });
     },
+    onCouncilStream: (event: { type: string; data: any }) => {
+      // Stream council turns, consensus checks, and synthesis status in real-time
+      broadcastToUser(userId, {
+        type: event.type as "council_turn" | "council_consensus" | "council_synthesis",
+        id: nanoid(),
+        timestamp: Date.now(),
+        payload: event.data
+      });
+    },
     onLLMRequest: (info) => {
       broadcastToUser(userId, {
         type: "llm_request", id: nanoid(), timestamp: Date.now(), payload: info

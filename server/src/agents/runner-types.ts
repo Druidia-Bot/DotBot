@@ -24,6 +24,8 @@ export interface AgentRunnerOptions {
   onTaskProgress?: (update: TaskProgressUpdate) => void;
   onStream?: (personaId: string, chunk: string, done: boolean) => void;
   onThreadUpdate?: (threadId: string, updates: UpdaterRecommendations) => void;
+  /** Stream council turns in real-time (V2 feature) */
+  onCouncilStream?: (event: { type: string; data: any }) => void;
 
   // Tool execution callback — sends commands to local-agent via WebSocket
   onExecuteCommand?: (command: ExecutionCommand) => Promise<string>;
@@ -79,6 +81,16 @@ export interface AgentRunnerOptions {
     /** Output tokens consumed (from LLM response usage) */
     outputTokens?: number;
   }) => void;
+
+  // V2: Tandem research pipeline — save raw results, summarize for context
+  /** Persist a file to the agent's workspace research/ folder (fire-and-forget) */
+  saveToWorkspace?: (filename: string, content: string) => void;
+  /** Summarize a large tool result using a cheap/fast model. Returns condensed extraction. */
+  summarizeLargeResult?: (toolId: string, rawResult: string) => Promise<string>;
+
+  // V2: Execution journal — model selection visibility for per-agent logging
+  /** Fired after model selection in executeWithPersona so orchestrator can record the decision */
+  onModelSelected?: (info: { role: string; provider: string; model: string; reason: string }) => void;
 
   // V2: Per-agent lifecycle notifications (orchestrator → client)
   onAgentStarted?: (info: {

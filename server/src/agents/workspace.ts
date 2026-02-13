@@ -42,6 +42,9 @@ const CLEANUP_CHECK_INTERVAL_MS = 10 * 60 * 1000;
 /** Delete workspace 24 hours after task completion */
 const CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000;
 
+/** Auto-fail blocked tasks after 7 days of inactivity */
+const STALE_BLOCKED_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
+
 // ============================================
 // TYPES
 // ============================================
@@ -120,6 +123,9 @@ export interface TaskJson {
   parentAgentId?: string;
   childAgentIds?: string[];
   originalMessageIndices: number[];
+
+  // Original conversation snapshot (what the persona-writer saw when spawning this agent)
+  originalConversationSnapshot?: string[];
 }
 
 /** Single entry in tool-calls.jsonl */
@@ -129,6 +135,31 @@ export interface ToolCallLogEntry {
   input: Record<string, unknown>;
   result: string;
   durationMs: number;
+}
+
+/** Single entry in execution.jsonl — per-agent execution intelligence */
+export interface ExecutionJournalEntry {
+  ts: string;
+  type: "model_selected" | "llm_call" | "tool_call" | "supervisor" | "summarization" | "lifecycle";
+  agentId: string;
+
+  /** Model selection decision */
+  model?: { role: string; provider: string; model: string; reason: string };
+
+  /** LLM call metadata */
+  llm?: { provider: string; model: string; inputTokens?: number; outputTokens?: number; durationMs: number };
+
+  /** Tool execution metadata */
+  tool?: { toolId: string; durationMs: number; resultChars: number; success: boolean; summarized?: boolean };
+
+  /** Supervisor event */
+  supervisor?: { status: string; action: string; message: string; timeSinceActivityMs?: number };
+
+  /** Tandem pipeline summarization event */
+  summarization?: { toolId: string; originalChars: number; summaryChars: number; provider: string; durationMs: number };
+
+  /** Agent lifecycle event */
+  lifecycle?: { event: "started" | "completed" | "failed" | "escalated" | "blocked"; detail?: string };
 }
 
 // ============================================
@@ -225,6 +256,27 @@ export function updateTaskJson(
 }
 
 /**
+ * Generate a command to append a conversation entry to task.json.
+ * Since the server can't read client files directly, this requires
+ * the full TaskJson to be passed in with the new entry appended.
+ */
+export function appendConversationEntry(
+  workspace: AgentWorkspace,
+  task: TaskJson,
+  entry: TaskJson["conversation"][number]
+): WorkspaceCommand {
+  task.conversation.push(entry);
+  task.lastActiveAt = new Date().toISOString();
+  return {
+    toolId: "filesystem.create_file",
+    args: {
+      path: `${workspace.basePath}/task.json`,
+      content: JSON.stringify(task, null, 2),
+    },
+  };
+}
+
+/**
  * Generate a command to delete task.json — marks the task as complete.
  * The workspace folder stays for cleanup later.
  */
@@ -252,6 +304,44 @@ export function appendToolCallLog(
     toolId: "filesystem.append_file",
     args: {
       path: `${workspace.logsPath}/tool-calls.jsonl`,
+      content: line + "\n",
+    },
+  };
+}
+
+/**
+ * Generate a command to write the full conversation log to logs/conversation.json.
+ * Single write (not append) — overwrites any previous conversation log.
+ * Contains the complete system → user → assistant → tool message sequence.
+ */
+export function saveConversationLog(
+  workspace: AgentWorkspace,
+  messages: Array<{ role: string; content: string; toolCalls?: any[] }>
+): WorkspaceCommand {
+  return {
+    toolId: "filesystem.create_file",
+    args: {
+      path: `${workspace.logsPath}/conversation.json`,
+      content: JSON.stringify(messages, null, 2),
+    },
+  };
+}
+
+/**
+ * Generate a command to append an execution journal entry to logs/execution.jsonl.
+ * One JSON object per line, append-only. Contains model selection, LLM call timing,
+ * tool execution timing, supervisor events, and lifecycle events — everything
+ * the agent needs for self-reflection and the user needs for debugging.
+ */
+export function appendExecutionJournal(
+  workspace: AgentWorkspace,
+  entry: ExecutionJournalEntry
+): WorkspaceCommand {
+  const line = JSON.stringify(entry);
+  return {
+    toolId: "filesystem.append_file",
+    args: {
+      path: `${workspace.logsPath}/execution.jsonl`,
       content: line + "\n",
     },
   };
@@ -506,4 +596,46 @@ export function getPendingCleanups(): Array<{ agentId: string; completedAt: Date
     completedAt: w.completedAt,
     remainingMs: Math.max(0, CLEANUP_DELAY_MS - (now - w.completedAt.getTime())),
   }));
+}
+
+// ============================================
+// STALE BLOCKED TASK CLEANUP
+// ============================================
+
+/**
+ * Check if a blocked task is stale (inactive for > 7 days).
+ * A task is considered active if:
+ * - The agent is running (not blocked)
+ * - The agent received a user message (lastActiveAt updated)
+ */
+export function isTaskStale(task: TaskJson): boolean {
+  if (task.status !== "blocked") return false;
+
+  const lastActive = new Date(task.lastActiveAt);
+  const now = Date.now();
+  const inactiveMs = now - lastActive.getTime();
+
+  return inactiveMs >= STALE_BLOCKED_TIMEOUT_MS;
+}
+
+/**
+ * Generate a command to mark a task as failed due to staleness.
+ * This updates the task.json with failure reason and failed status,
+ * then schedules it for deletion after 24 hours.
+ */
+export function failStaleTask(
+  workspace: AgentWorkspace,
+  task: TaskJson
+): WorkspaceCommand {
+  task.status = "failed";
+  task.failureReason = "Task blocked for over 7 days with no activity. Auto-failed.";
+  task.lastActiveAt = new Date().toISOString();
+
+  return {
+    toolId: "filesystem.create_file",
+    args: {
+      path: `${workspace.basePath}/task.json`,
+      content: JSON.stringify(task, null, 2),
+    },
+  };
 }

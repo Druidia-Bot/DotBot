@@ -70,6 +70,7 @@ export type WSMessageType =
   | "auth_failed"
   | "admin_request"
   | "admin_response"
+  | "task_acknowledged"
   | "error"
   | "ping"
   | "pong";

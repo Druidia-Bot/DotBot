@@ -58,6 +58,15 @@ export class SpawnedAgent {
   response: string = "";
   error?: string;
 
+  /** Set to true when the tool loop begins its first iteration */
+  toolLoopStarted = false;
+
+  /** Updated by the tool loop on every iteration/tool call — lets supervisor track real progress */
+  lastToolActivityAt: number = 0;
+
+  /** Count of tool calls made so far (updated by tool loop) */
+  toolCallCount: number = 0;
+
   /** Isolated conversation history for this agent */
   private conversation: AgentMessage[] = [];
 
@@ -97,6 +106,14 @@ export class SpawnedAgent {
   /** Add a message to this agent's isolated conversation. */
   addMessage(msg: AgentMessage): void {
     this.conversation.push(msg);
+  }
+
+  /** Add a user message to this agent's conversation (convenience wrapper). */
+  addUserMessage(content: string): void {
+    this.conversation.push({
+      role: "user",
+      content,
+    });
   }
 
   /** Get this agent's full isolated conversation. */

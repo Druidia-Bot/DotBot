@@ -376,6 +376,9 @@ export type WSMessageType =
   | "persona_result"
   | "council_request"
   | "council_result"
+  | "council_turn"
+  | "council_consensus"
+  | "council_synthesis"
   | "knowledge_request"
   | "knowledge_result"
   | "knowledge_query"
@@ -431,7 +434,8 @@ export type WSMessageType =
   | "device_registered"
   | "auth_failed"
   | "admin_request"
-  | "admin_response";
+  | "admin_response"
+  | "task_acknowledged";
 
 export interface WSMessage {
   type: WSMessageType;
@@ -450,7 +454,6 @@ export interface WSAuthMessage extends WSMessage {
     capabilities: string[];
     tempDir?: string;
     hwFingerprint: string;
-    webAuthToken?: string;
     /** Client platform for V2 tool filtering. */
     platform?: "windows" | "linux" | "macos";
   };

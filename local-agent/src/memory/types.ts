@@ -151,6 +151,12 @@ export interface OpenLoop {
   status: "open" | "investigating" | "blocked" | "resolved";
   /** If resolved, what was the resolution */
   resolution?: string;
+  /** When the sleep cycle last attempted to resolve this loop */
+  lastAttemptedAt?: string;
+  /** When the user was last notified about this loop */
+  lastNotifiedAt?: string;
+  /** How many times the sleep cycle has attempted this loop */
+  attemptCount?: number;
 }
 
 /**

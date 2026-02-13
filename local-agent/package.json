@@ -13,13 +13,16 @@
   },
   "dependencies": {
     "@dotbot/shared": "*",
+    "express": "^5.2.1",
     "nanoid": "^5.0.9",
     "node-llama-cpp": "^3.5.1",
     "playwright": "^1.58.2",
+    "re2": "^1.23.3",
     "ws": "^8.18.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^22.13.1",
     "@types/ws": "^8.5.14",
     "tsx": "^4.19.2",

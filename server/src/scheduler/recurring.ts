@@ -2,14 +2,18 @@
  * Recurring Scheduler — Server-Side Recurring Task Execution
  *
  * Manages user-defined recurring tasks (daily, weekly, hourly, interval).
- * Tasks persist in SQLite and execute even when no client device is connected.
+ * Tasks persist in SQLite but REQUIRE a connected client to execute because:
+ * - API credentials use split-knowledge architecture (encrypted blob on client, key on server)
+ * - Tools like http.request, brave_search, etc. need credential blobs from the client
+ * - Neither server nor client alone can access credential plaintext
  *
  * Flow:
  * 1. LLM creates task via schedule.create tool → stored in recurring_tasks table
  * 2. Poll loop checks for due tasks every 30s
- * 3. Due tasks submitted as synthetic prompts through the agent pipeline
- * 4. Results stored and streamed to connected client (or queued for reconnect)
- * 5. next_run_at advanced to the next occurrence
+ * 3. Verifies client is connected before executing (fails gracefully if not)
+ * 4. Due tasks submitted as synthetic prompts through the agent pipeline
+ * 5. Results stored and streamed to connected client
+ * 6. next_run_at advanced to the next occurrence
  *
  * This is separate from the deferred task scheduler (service.ts) which handles
  * one-shot retries with exponential backoff.
@@ -552,7 +556,22 @@ async function pollDueTasks(): Promise<void> {
         continue;
       }
 
-      // Due task (within 2-hour grace period) — execute normally
+      // Due task (within 2-hour grace period) — check client connectivity first
+      // CRITICAL: Scheduled tasks require client to be connected because credentials
+      // use split-knowledge architecture (encrypted blob on client, decryption key on server)
+      const { getDeviceForUser } = await import("../ws/devices.js");
+      const deviceId = getDeviceForUser(task.userId);
+      if (!deviceId) {
+        // Client offline - skip for now, will retry on next poll
+        // If it stays offline beyond 2 hours, the next poll will catch it as "missed"
+        log.debug("Skipping recurring task - client offline (will retry)", {
+          taskId: task.id,
+          name: task.name,
+          overdueMinutes: (overdueMs / 60000).toFixed(1),
+        });
+        continue;
+      }
+
       // Respect concurrency limit
       if (activeExecutions.size >= config.maxConcurrent) {
         log.debug("Max concurrent recurring executions reached");
@@ -622,6 +641,12 @@ async function executeRecurringTask(task: RecurringTask): Promise<void> {
     return;
   }
 
+  // NOTE: Client connectivity is checked in pollDueTasks() before calling this function
+  // This ensures the 2-hour grace period logic works correctly:
+  // - Task due but client offline: skip and retry on next poll (30s)
+  // - Client reconnects < 2 hours: executes automatically
+  // - Client reconnects > 2 hours: marked as missed, user prompted
+
   activeExecutions.add(task.id);
   const database = db.getDatabase();
 
@@ -637,7 +662,7 @@ async function executeRecurringTask(task: RecurringTask): Promise<void> {
     log.info("Executing recurring task", {
       taskId: task.id,
       name: task.name,
-      prompt: task.prompt.substring(0, 80),
+      promptLength: task.prompt.length,
     });
 
     const result = await executeCallback(task);

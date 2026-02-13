@@ -17,7 +17,7 @@ import {
   detectArchitectTask,
 } from "../llm/providers.js";
 import { createComponentLogger } from "../logging.js";
-import { injectRelevantKnowledge } from "../knowledge/index.js";
+import { injectRelevantKnowledge, injectRelevantKnowledgeWithPersonaPriority } from "../knowledge/index.js";
 import { runToolLoop } from "./tool-loop.js";
 import type { AgentRunnerOptions } from "./runner.js";
 import type {
@@ -246,6 +246,8 @@ export interface PersonaExecutionResult {
   workLog: string;
   /** Raw tool call data for V2 workspace logging (tool-calls.jsonl) */
   toolCallsMade?: { tool: string; args: Record<string, any>; result: string; success: boolean }[];
+  /** V2: Full conversation log (system + user + assistant + tool) for workspace persistence */
+  conversationLog?: Array<{ role: string; content: string; toolCalls?: any[] }>;
 }
 
 /**
@@ -312,14 +314,37 @@ export async function executeWithPersona(
     reason: selectedModel.reason,
   });
 
+  // Notify orchestrator of model selection (for execution journal)
+  options.onModelSelected?.({
+    role: selectedModel.role,
+    provider: selectedModel.provider,
+    model: selectedModel.model,
+    reason: selectedModel.reason,
+  });
+
   // Load relevant knowledge for this persona and task
   let knowledgeSection = "";
   try {
-    const knowledgeInjection = await injectRelevantKnowledge(
-      persona.id,
-      taskDescription,
-      { maxCharacters: 4000, format: "markdown" }
-    );
+    let knowledgeInjection;
+
+    // Check if this is a local persona (type === "client") — prioritize their knowledge
+    if (persona.type === "client") {
+      knowledgeInjection = await injectRelevantKnowledgeWithPersonaPriority(
+        persona.id, // Priority: local persona's own knowledge
+        "general",   // Fallback: general knowledge base
+        taskDescription,
+        { maxCharacters: 4000, format: "markdown" }
+      );
+      log.info(`Using persona-priority knowledge search for local persona ${persona.id}`);
+    } else {
+      // Server personas use standard knowledge search
+      knowledgeInjection = await injectRelevantKnowledge(
+        persona.id,
+        taskDescription,
+        { maxCharacters: 4000, format: "markdown" }
+      );
+    }
+
     if (knowledgeInjection.characterCount > 0) {
       knowledgeSection = `\n\n${knowledgeInjection.content}`;
       log.debug(`Injected ${knowledgeInjection.characterCount} chars of knowledge for ${persona.id}`, {
@@ -332,7 +357,22 @@ export async function executeWithPersona(
 
   // Build memory context from the request's mental models and thread index
   const memoryContext = await buildMemoryContextSection(request, taskDescription, options.onPersistMemory);
-  const systemPrompt = `${persona.systemPrompt}${knowledgeSection}${memoryContext}`;
+
+  // Inject Tool Discovery Protocol at execution level — this ensures every
+  // agent knows it can find or request tools, regardless of what the persona-writer included.
+  const toolDiscoveryProtocol = `
+
+## Tool Discovery — You Can Find or Request Tools
+
+Your initial tools are a starting point, not a limit. If you need a tool you don't have:
+1. **Request tools**: Call agent.request_tools({ categories: "filesystem, shell" }) to add entire categories at runtime
+2. **Search the catalog**: Use tools.list_tools() or tools.search_tools(query) to discover what's available
+3. **Create if needed**: Test an API with http.request(), then save it with tools.save_tool() for permanent reuse
+4. **Escalate only as last resort**: Use agent.escalate() only when requesting tools didn't work
+
+**NEVER say "I don't have that tool" or give up without first calling agent.request_tools.** Tool categories include: filesystem, shell, search, http, knowledge, research, discord, git, npm, data, database, pdf, vision, audio, and more.`;
+
+  const systemPrompt = `${persona.systemPrompt}${knowledgeSection}${memoryContext}${toolDiscoveryProtocol}`;
 
   // Build user message: always preserve the original prompt content.
   // The taskDescription may be a receptionist-reformulated instruction that
@@ -438,22 +478,27 @@ export async function executeWithPersona(
   const hasNoTools = personaToolCategories.includes("none") || personaToolCategories.length === 0;
   const hasAllTools = personaToolCategories.includes("all");
 
-  // Filter tool manifest: V2 ID-based slicing takes priority over V1 category filtering
+  // Filter tool manifest by selected tool IDs from the receptionist/persona writer
   let filteredManifest = options.toolManifest;
   if (filteredManifest && selectedToolIds && selectedToolIds.length > 0) {
-    // V2 path: receptionist picked specific tool IDs for this agent
     const idSet = new Set(selectedToolIds);
-    filteredManifest = filteredManifest.filter((t: any) => idSet.has(t.id));
-    log.info("Tool manifest sliced by selected IDs", {
-      persona: persona.id,
-      requested: selectedToolIds.length,
-      matched: filteredManifest.length,
-    });
-  } else if (filteredManifest && !hasAllTools && !hasNoTools) {
-    // V1 path: filter by persona's allowed categories
-    filteredManifest = filteredManifest.filter((t: any) =>
-      personaToolCategories.includes(t.category) || t.id === "tools.list_tools"
-    );
+    const sliced = filteredManifest.filter((t: any) => idSet.has(t.id));
+    if (sliced.length > 0) {
+      filteredManifest = sliced;
+      log.info("Tool manifest sliced by selected IDs", {
+        persona: persona.id,
+        requested: selectedToolIds.length,
+        matched: sliced.length,
+      });
+    } else {
+      // No IDs matched — the persona writer selected IDs not in the manifest.
+      // Fall back to the full manifest so the agent has working tools.
+      log.warn("selectedToolIds matched ZERO manifest entries — using full manifest as fallback", {
+        persona: persona.id,
+        selectedToolIds: selectedToolIds.slice(0, 10),
+        manifestSize: filteredManifest.length,
+      });
+    }
   }
 
   // If persona explicitly disables tools, skip the tool loop
@@ -492,6 +537,9 @@ export async function executeWithPersona(
         executeImageGenTool: options.onExecuteImageGenTool,
         executeKnowledgeIngest: options.onExecuteKnowledgeIngest,
         executeScheduleTool: options.onExecuteScheduleTool,
+        executeResearchTool: options.onExecuteResearchTool,
+        saveToWorkspace: options.saveToWorkspace,
+        summarizeLargeResult: options.summarizeLargeResult,
         skillMatched,
         injectionQueue,
         onWaitForUser,
@@ -499,7 +547,7 @@ export async function executeWithPersona(
         onStream: options.onStream,
         onLLMResponse: options.onLLMResponse,
         onToolCall: (tool, args) => {
-          log.info(`Tool call: ${tool}`, { persona: persona.id, args });
+          log.info(`Tool call: ${tool}`, { persona: persona.id, argKeys: Object.keys(args) });
           const argsSummary = Object.keys(args).slice(0, 3).map(k => `${k}=${String(args[k]).substring(0, 40)}`).join(", ");
           options.onTaskProgress?.({
             taskId: `tool_${nanoid(8)}`,
@@ -523,6 +571,7 @@ export async function executeWithPersona(
             tool,
             eventType: "tool_result",
             success,
+            resultLength: result.length,
           });
         },
       }
@@ -543,6 +592,7 @@ export async function executeWithPersona(
       neededToolCategories: result.neededToolCategories,
       escalationReason: result.escalationReason,
       toolCallsMade: result.toolCallsMade,
+      conversationLog: result.conversationLog,
     };
   }
 

@@ -181,6 +181,22 @@ export function getPlatformForUser(userId: string): "windows" | "linux" | "macos
 }
 
 /**
+ * Check if a user has ANY connected devices (including non-memory-capable ones like browsers).
+ * Used for cleanup logic when determining if a userId's session should be cleared.
+ */
+export function hasAnyConnectedDevices(userId: string): boolean {
+  for (const device of devices.values()) {
+    if (device.session.userId === userId && device.session.status === "connected") {
+      // Check WebSocket is actually open
+      if (device.ws.readyState === 1 /* OPEN */) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Send a security alert to all connected admin devices.
  * Delivered as user_notification — the local agent forwards these to Discord #updates.
  */

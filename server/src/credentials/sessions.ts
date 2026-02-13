@@ -131,6 +131,28 @@ export function consumeSession(token: string): void {
 }
 
 /**
+ * Atomically get and consume a session (M-06 fix).
+ * Prevents TOCTOU race where two concurrent requests could both pass
+ * getSession() before either calls consumeSession().
+ * Returns null if expired, consumed, or not found.
+ */
+export function getAndConsumeSession(token: string): CredentialSession | null {
+  const session = sessions.get(token);
+  if (!session) return null;
+  if (session.consumed) return null;
+  if (Date.now() > session.expiresAt) {
+    sessions.delete(token);
+    return null;
+  }
+
+  // Mark as consumed immediately (atomic check-and-consume)
+  session.consumed = true;
+  setTimeout(() => sessions.delete(token), 5000);
+
+  return session;
+}
+
+/**
  * Get active (non-consumed, non-expired) session count.
  */
 export function getActiveSessionCount(): number {

@@ -419,6 +419,27 @@ WS_PORT=3001
   fi
   echo ""
 
+  # Admin API Key
+  echo -e "  ${BOLD}${YELLOW}Admin API Key${NC} (${RED}SECURITY:${NC} protects HTTP admin endpoints)"
+  echo "    ${YELLOW}⚠ WARNING:${NC} Without this key, HTTP API endpoints are ${RED}UNAUTHENTICATED${NC}"
+  echo "    Anyone who can reach your server can access:"
+  echo "      - Scheduler tasks (list, cancel, create)"
+  echo "      - Memory queries (read all user data)"
+  echo "      - Recurring tasks (modify, delete)"
+  echo ""
+  echo "    ${BOLD}Generate a random key:${NC} openssl rand -hex 32"
+  ask "    ADMIN_API_KEY: "
+  read -r KEY_VAL
+  if [ -n "$KEY_VAL" ]; then
+    ENV_CONTENT+="ADMIN_API_KEY=$KEY_VAL\n"
+    log "ADMIN_API_KEY set (HTTP endpoints protected)"
+  else
+    ENV_CONTENT+="# ADMIN_API_KEY=\n"
+    warn "ADMIN_API_KEY not set — HTTP admin endpoints will allow unauthenticated access!"
+    warn "Add it later: nano $ENV_FILE"
+  fi
+  echo ""
+
   echo -e "$ENV_CONTENT" > "$ENV_FILE"
   chown "$BOT_USER:$BOT_USER" "$ENV_FILE"
   chmod 600 "$ENV_FILE"

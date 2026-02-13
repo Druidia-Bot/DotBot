@@ -121,13 +121,9 @@ describe("manifestToNativeTools", () => {
     expect(createFile.function.parameters!.required).toContain("path");
   });
 
-  it("falls back to legacy tools when no manifest", () => {
-    const tools = manifestToNativeTools(undefined);
-    expect(tools.length).toBeGreaterThan(0);
-    // Legacy tools should be present
-    const names = tools.map(t => t.function.name);
-    expect(names).toContain("create_file");
-    expect(names).toContain("read_file");
+  it("returns empty array when no manifest provided", () => {
+    expect(manifestToNativeTools(undefined)).toHaveLength(0);
+    expect(manifestToNativeTools([])).toHaveLength(0);
   });
 });
 

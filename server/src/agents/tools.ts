@@ -1,13 +1,9 @@
 /**
  * Tool Definitions
  * 
- * Defines the tools available to personas for executing actions
- * on the user's machine. These are injected into system prompts
- * so the LLM knows what it can do.
- * 
- * Supports both:
- * - Legacy hardcoded tools (fallback when local agent not connected)
- * - Dynamic tool manifest from local agent's plugin registry
+ * Converts the dynamic tool manifest from the local agent's plugin registry
+ * into native ToolDefinition[] for LLM function calling. Also provides
+ * system context generation and tool capabilities summaries for intake agents.
  */
 
 import { hostname, platform, release, arch } from "os";
@@ -49,57 +45,6 @@ function loadTemplate(filename: string, replacements: Record<string, string> = {
 export function clearTemplateCache(): void {
   templateCache.clear();
 }
-
-// ============================================
-// TOOL SCHEMAS
-// ============================================
-
-
-export interface LegacyToolDefinition {
-  name: string;
-  description: string;
-  parameters: Record<string, {
-    type: string;
-    description: string;
-    required?: boolean;
-  }>;
-}
-
-/**
- * @deprecated Use dynamic tool manifest from local agent instead.
- * Kept as fallback when no local agent is connected.
- */
-export const LEGACY_TOOLS: LegacyToolDefinition[] = [
-  {
-    name: "create_file",
-    description: "Create a new file with the specified content. Use forward slashes in paths. The user's home directory is available via ~/ (resolves to their actual home folder).",
-    parameters: {
-      path: { type: "string", description: "Full file path (e.g., ~/Desktop/hello.txt)", required: true },
-      content: { type: "string", description: "Content to write to the file", required: true },
-    },
-  },
-  {
-    name: "read_file",
-    description: "Read the contents of a file.",
-    parameters: {
-      path: { type: "string", description: "Full file path to read", required: true },
-    },
-  },
-  {
-    name: "run_command",
-    description: "Run a PowerShell command on the user's Windows PC. Use this for creating directories, moving/copying/renaming files, installing software, and any multi-step filesystem operations. Prefer this over multiple individual tool calls when you need to do bulk operations (e.g., moving many files).",
-    parameters: {
-      command: { type: "string", description: "PowerShell command to execute", required: true },
-    },
-  },
-  {
-    name: "list_directory",
-    description: "List files and folders in a directory. Returns file names, sizes, and types. Only call this ONCE per directory — do not re-list a directory you already listed.",
-    parameters: {
-      path: { type: "string", description: "Directory path to list", required: true },
-    },
-  },
-];
 
 // ============================================
 // SYSTEM CONTEXT
@@ -217,13 +162,12 @@ export function unsanitizeToolName(name: string): string {
 /**
  * Convert a tool manifest into native ToolDefinition[] for the LLM's tools parameter.
  * Tool IDs are sanitized (dots → __) to comply with function name restrictions.
+ * Returns an empty array if no manifest is provided.
  */
 export function manifestToNativeTools(manifest?: ToolManifestEntry[]): ToolDefinition[] {
-  const tools = manifest && manifest.length > 0
-    ? manifest
-    : LEGACY_TOOLS.map(legacyToManifest);
+  if (!manifest || manifest.length === 0) return [];
 
-  return tools.map(t => ({
+  return manifest.map(t => ({
     type: "function" as const,
     function: {
       name: sanitizeToolName(t.id),
@@ -235,25 +179,6 @@ export function manifestToNativeTools(manifest?: ToolManifestEntry[]): ToolDefin
       },
     },
   }));
-}
-
-/**
- * Convert a legacy LegacyToolDefinition to ToolManifestEntry for backward compat.
- */
-function legacyToManifest(tool: LegacyToolDefinition): ToolManifestEntry {
-  const props: Record<string, any> = {};
-  const required: string[] = [];
-  for (const [name, p] of Object.entries(tool.parameters)) {
-    props[name] = { type: p.type, description: p.description };
-    if (p.required) required.push(name);
-  }
-  return {
-    id: tool.name,
-    name: tool.name,
-    description: tool.description,
-    category: "general",
-    inputSchema: { type: "object", properties: props, required },
-  };
 }
 
 /**
@@ -331,8 +256,3 @@ export function generateToolCapabilitiesSummary(
     PERSONA_TOOL_ACCESS: personaSection,
   });
 }
-
-// NOTE: XML tool call parsing (parseToolCalls, stripToolCalls, hasToolCalls,
-// hasMalformedToolCallAttempt) has been removed. The tool loop now uses
-// response_format: json_object — the LLM responds with structured JSON
-// containing { response, tool_calls } instead of XML-wrapped tool calls.

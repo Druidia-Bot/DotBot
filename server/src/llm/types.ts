@@ -315,6 +315,12 @@ export interface ModelSelectionCriteria {
   personaModelTier?: ModelTier;
   /** Explicit role override (e.g. from receptionist decision) */
   explicitRole?: ModelRole;
+  /** Direct model override from local persona (highest priority) */
+  personaModelOverride?: {
+    tier?: ModelTier;
+    provider?: LLMProvider;
+    model?: string;
+  };
 }
 
 /** Output of the model selection function */

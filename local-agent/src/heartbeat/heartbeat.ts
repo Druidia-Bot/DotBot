@@ -43,7 +43,7 @@ Only notify me if:
 - A reminder I explicitly set for this time
 - A task I flagged as P0 is overdue
 
-If nothing needs attention, reply HEARTBEAT_OK.`;
+If nothing needs attention`;
 
 // ============================================
 // STATE

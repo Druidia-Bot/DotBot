@@ -342,6 +342,9 @@ export async function handleDiscord(toolId: string, args: Record<string, any>): 
         envMap.set("DISCORD_CHANNEL_CONVERSATION", args.channel_conversation);
         envMap.set("DISCORD_CHANNEL_UPDATES", args.channel_updates);
         envMap.set("DISCORD_CHANNEL_LOGS", args.channel_logs);
+        if (args.log_verbosity) {
+          envMap.set("DISCORD_LOG_VERBOSITY", args.log_verbosity);
+        }
 
         await fs.mkdir(dirname(envPath), { recursive: true });
         const lines = Array.from(envMap.entries()).map(([k, v]) => `${k}=${v}`);
@@ -352,6 +355,12 @@ export async function handleDiscord(toolId: string, args: Record<string, any>): 
         process.env.DISCORD_CHANNEL_CONVERSATION = args.channel_conversation;
         process.env.DISCORD_CHANNEL_UPDATES = args.channel_updates;
         process.env.DISCORD_CHANNEL_LOGS = args.channel_logs;
+        if (args.log_verbosity) {
+          process.env.DISCORD_LOG_VERBOSITY = args.log_verbosity;
+        }
+
+        const keysSet = ["DISCORD_GUILD_ID", "DISCORD_CHANNEL_CONVERSATION", "DISCORD_CHANNEL_UPDATES", "DISCORD_CHANNEL_LOGS"];
+        if (args.log_verbosity) keysSet.push("DISCORD_LOG_VERBOSITY");
 
         return {
           success: true,
@@ -359,7 +368,7 @@ export async function handleDiscord(toolId: string, args: Record<string, any>): 
             written: true,
             token_storage: "server-encrypted vault (~/.bot/vault.json)",
             config_storage: "~/.bot/.env (non-sensitive config only)",
-            keys_set: ["DISCORD_GUILD_ID", "DISCORD_CHANNEL_CONVERSATION", "DISCORD_CHANNEL_UPDATES", "DISCORD_CHANNEL_LOGS"],
+            keys_set: keysSet,
             hint: "Discord configuration saved. Bot token remains in the encrypted vault. Restart the local agent to activate the Discord adapter.",
           }, null, 2),
         };

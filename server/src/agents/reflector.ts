@@ -23,6 +23,7 @@ import { createComponentLogger } from "../logging.js";
 import { resolveModelAndClient } from "./execution.js";
 import type { ILLMClient } from "../llm/providers.js";
 import type { AgentRunnerOptions } from "./runner-types.js";
+import type { ExecutionJournalEntry } from "./workspace.js";
 
 const log = createComponentLogger("reflector");
 
@@ -89,6 +90,8 @@ export interface ReflectorInput {
   judgeVerdict?: string;
   /** Whether research was delegated */
   researchUsed?: boolean;
+  /** Structured execution journal (model selection, LLM calls, tool timing, supervisor events) */
+  executionJournal?: ExecutionJournalEntry[];
 }
 
 export interface ReflectorOutput {
@@ -155,7 +158,7 @@ You produce a JSON report with:
    - The operation is deterministic and testable (data transformation, parsing, calculation, API wrapper)
    - It would save significant manual work in future tasks
    For each suggestion, specify: name, description, language (python or javascript), purpose, inputs (what parameters it takes), expectedOutput (what it should return)
-5. **efficiencyNotes**: Execution inefficiencies (too many iterations, redundant searches, unnecessary tool calls)
+5. **efficiencyNotes**: Execution inefficiencies (too many iterations, redundant searches, unnecessary tool calls, wrong model tier used, excessive token consumption, supervisor intervention needed)
 6. **likelyRecurring**: Whether this type of task will likely be requested again
 
 ## Rules
@@ -166,6 +169,45 @@ You produce a JSON report with:
 - Focus on actionable insights, not obvious observations
 
 Respond with JSON.`;
+
+    // Build compact execution intelligence from journal (if available)
+    let executionIntelligence = "";
+    if (input.executionJournal && input.executionJournal.length > 0) {
+      const journal = input.executionJournal;
+
+      // Model selection
+      const modelEntries = journal.filter(e => e.type === "model_selected");
+      const modelInfo = modelEntries.length > 0
+        ? modelEntries.map(e => `${e.model?.role}: ${e.model?.provider}/${e.model?.model} (${e.model?.reason})`).join("; ")
+        : "unknown";
+
+      // LLM call totals
+      const llmEntries = journal.filter(e => e.type === "llm_call");
+      const totalInputTokens = llmEntries.reduce((sum, e) => sum + (e.llm?.inputTokens || 0), 0);
+      const totalOutputTokens = llmEntries.reduce((sum, e) => sum + (e.llm?.outputTokens || 0), 0);
+      const totalLLMDuration = llmEntries.reduce((sum, e) => sum + (e.llm?.durationMs || 0), 0);
+
+      // Tool call totals
+      const toolEntries = journal.filter(e => e.type === "tool_call");
+      const toolFailures = toolEntries.filter(e => !e.tool?.success).length;
+      const totalToolDuration = toolEntries.reduce((sum, e) => sum + (e.tool?.durationMs || 0), 0);
+
+      // Supervisor events
+      const supervisorEntries = journal.filter(e => e.type === "supervisor");
+      const supervisorIntervened = supervisorEntries.length > 0;
+
+      // Summarization events
+      const summEntries = journal.filter(e => e.type === "summarization");
+
+      executionIntelligence = `
+
+**Execution Intelligence (from journal):**
+- Model: ${modelInfo}
+- LLM calls: ${llmEntries.length} (${totalInputTokens} input tokens, ${totalOutputTokens} output tokens, ${Math.round(totalLLMDuration / 1000)}s total)
+- Tool calls: ${toolEntries.length} (${toolFailures} failures, ${Math.round(totalToolDuration / 1000)}s total)
+- Supervisor: ${supervisorIntervened ? supervisorEntries.map(e => e.supervisor?.message).join("; ") : "no intervention"}
+- Summarization: ${summEntries.length > 0 ? summEntries.map(e => `${e.summarization?.toolId}: ${e.summarization?.originalChars}→${e.summarization?.summaryChars} chars`).join("; ") : "none"}`;
+    }
 
     const userMessage = `## Task Execution Summary
 
@@ -178,6 +220,7 @@ Respond with JSON.`;
 
 **Tool Calls:**
 ${input.toolCallSummary || "(no tool calls)"}
+${executionIntelligence}
 
 **Final Response (first 500 chars):**
 ${input.finalResponse.substring(0, 500)}${input.finalResponse.length > 500 ? "..." : ""}

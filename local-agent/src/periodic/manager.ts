@@ -41,6 +41,11 @@ export interface PeriodicTaskDef {
    * Return false to skip this cycle (e.g., backoff, active hours check).
    */
   canRun?: () => boolean;
+  /**
+   * If true, run this task even when the system is not idle.
+   * Use for time-based tasks like reminders that must fire on schedule.
+   */
+  bypassIdleCheck?: boolean;
 }
 
 export interface ManagerStatus {
@@ -208,9 +213,9 @@ async function poll(): Promise<void> {
   // If something is already running, skip this poll
   if (currentlyRunning) return;
 
-  // If system is not idle, skip
+  // Check idle status
   const idleMs = Date.now() - lastActivityAt;
-  if (idleMs < DEFAULT_IDLE_THRESHOLD_MS) return;
+  const systemIdle = idleMs >= DEFAULT_IDLE_THRESHOLD_MS;
 
   // Run ALL due tasks in priority order (registration order)
   // Fixed: Previously only ran ONE task per poll, causing starvation where
@@ -218,6 +223,9 @@ async function poll(): Promise<void> {
   // starved longer-interval tasks (sleep-cycle at 30min, never ran since Feb 8)
   for (const task of tasks) {
     if (!task.enabled) continue;
+
+    // Skip if system is not idle, UNLESS task bypasses idle check
+    if (!systemIdle && !task.bypassIdleCheck) continue;
 
     const last = lastRunAt.get(task.id) || 0;
     const elapsed = Date.now() - last;
@@ -238,7 +246,10 @@ async function pollSingleTask(task: PeriodicTaskDef): Promise<void> {
   if (!task.enabled) return;
 
   const idleMs = Date.now() - lastActivityAt;
-  if (idleMs < DEFAULT_IDLE_THRESHOLD_MS) return;
+  const systemIdle = idleMs >= DEFAULT_IDLE_THRESHOLD_MS;
+
+  // Skip if system is not idle, UNLESS task bypasses idle check
+  if (!systemIdle && !task.bypassIdleCheck) return;
 
   // Only run if not already run (initial delay shouldn't re-run if poll already ran it)
   const last = lastRunAt.get(task.id) || 0;

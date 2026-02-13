@@ -86,8 +86,18 @@ export async function initDiscordAdapter(send: (message: WSMessage) => void): Pr
 
   // Guard: if already running (e.g. WS reconnect triggered auth_success again),
   // don't create a second Gateway — that causes duplicate message processing.
+  // But DO clear stale pending responses — the server lost all in-flight work on restart.
   if (gateway) {
-    console.log("[Discord] Adapter already running — updating send function only");
+    console.log("[Discord] Adapter already running — clearing stale state from previous session");
+    const staleCount = pendingDiscordResponses.size;
+    for (const [, entry] of pendingDiscordResponses) {
+      stopTyping(entry.channelId);
+    }
+    pendingDiscordResponses.clear();
+    discordTaskChannels.clear();
+    if (staleCount > 0) {
+      console.log(`[Discord] Cleared ${staleCount} stale pending response(s) and typing indicators`);
+    }
     return;
   }
 
@@ -424,7 +434,7 @@ async function sendToDiscord(channelId: string, content: string): Promise<void> 
     // Split long messages
     const chunks = splitMessage(sanitized);
     for (const chunk of chunks) {
-      await credentialProxyFetch(`/channels/${channelId}/messages`, DISCORD_CREDENTIAL_NAME, {
+      const result = await credentialProxyFetch(`/channels/${channelId}/messages`, DISCORD_CREDENTIAL_NAME, {
         baseUrl: DISCORD_API,
         method: "POST",
         headers: {
@@ -434,6 +444,9 @@ async function sendToDiscord(channelId: string, content: string): Promise<void> 
         body: JSON.stringify({ content: chunk }),
         placement: { header: "Authorization", prefix: "Bot " },
       });
+      if (result && !result.ok) {
+        console.error(`[Discord] POST failed: status=${result.status} body=${result.body?.slice(0, 200)}`);
+      }
     }
   } catch (err: any) {
     console.error(`[Discord] Failed to send message: ${err.message}`);
@@ -557,14 +570,38 @@ export async function sendToUpdatesChannel(content: string): Promise<void> {
 }
 
 /**
+ * Log verbosity levels for Discord #logs channel.
+ *
+ * - "full":    Every tool call, stream chunk, and lifecycle event (noisy but complete)
+ * - "summary": Only lifecycle events — agent started, completed, failed
+ * - "off":     Nothing sent to #logs
+ *
+ * Controlled by DISCORD_LOG_VERBOSITY env var. Defaults to "summary".
+ */
+export type DiscordLogVerbosity = "full" | "summary" | "off";
+
+function getLogVerbosity(): DiscordLogVerbosity {
+  const v = (process.env.DISCORD_LOG_VERBOSITY || "summary").toLowerCase();
+  if (v === "full" || v === "summary" || v === "off") return v;
+  return "summary";
+}
+
+/**
  * Send a log entry to the #logs channel.
- * Used for: agent_started, run_log summaries, errors.
+ * Respects DISCORD_LOG_VERBOSITY:
+ *   - level "detail" (tool calls, stream chunks) requires verbosity "full"
+ *   - level "summary" (lifecycle events) requires verbosity "summary" or "full"
  * Silently no-ops if Discord is not configured or #logs channel not set.
  */
-export async function sendToLogsChannel(content: string): Promise<void> {
+export async function sendToLogsChannel(content: string, level: "detail" | "summary" = "summary"): Promise<void> {
   if (!gateway) return;
   const channelId = process.env.DISCORD_CHANNEL_LOGS;
   if (!channelId) return;
+
+  const verbosity = getLogVerbosity();
+  if (verbosity === "off") return;
+  if (verbosity === "summary" && level === "detail") return;
+
   await sendToDiscord(channelId, content);
 }
 

@@ -14,6 +14,35 @@ import { store } from "./manager-store.js";
 
 const log = createComponentLogger("memory");
 
+// LRU cache configuration
+const MAX_THREADS_PER_USER = 100;
+
+/**
+ * Enforce LRU eviction: keep only the most recent N threads per user.
+ */
+function enforceThreadLRU(userId: string): void {
+  const threadIds = store.userThreads.get(userId) || [];
+  if (threadIds.length <= MAX_THREADS_PER_USER) return;
+
+  // Sort threads by lastActiveAt (oldest first)
+  const threads = threadIds
+    .map(id => ({ id, thread: store.threads.get(id) }))
+    .filter(t => t.thread)
+    .sort((a, b) => a.thread!.lastActiveAt.getTime() - b.thread!.lastActiveAt.getTime());
+
+  // Evict oldest threads beyond the limit
+  const toEvict = threads.length - MAX_THREADS_PER_USER;
+  for (let i = 0; i < toEvict; i++) {
+    const { id } = threads[i];
+    store.threads.delete(id);
+    const index = threadIds.indexOf(id);
+    if (index !== -1) threadIds.splice(index, 1);
+  }
+
+  store.userThreads.set(userId, threadIds);
+  log.info(`Evicted ${toEvict} old threads for user ${userId} (LRU limit: ${MAX_THREADS_PER_USER})`);
+}
+
 // ============================================
 // THREAD CRUD
 // ============================================
@@ -37,10 +66,13 @@ export function createThread(
   };
 
   store.threads.set(thread.id, thread);
-  
+
   const userThreads = store.userThreads.get(userId) || [];
   userThreads.push(thread.id);
   store.userThreads.set(userId, userThreads);
+
+  // Enforce LRU: evict oldest threads if user exceeds limit
+  enforceThreadLRU(userId);
 
   return thread;
 }

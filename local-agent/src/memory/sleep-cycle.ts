@@ -147,26 +147,30 @@ async function runCycle(): Promise<void> {
     for (const model of allModels) {
       for (const loop of model.openLoops || []) {
         if (loop.status === "open" || loop.status === "investigating") {
+          // Skip loops attempted in the last 24 hours (cooldown to prevent spam)
+          if (loop.lastAttemptedAt) {
+            const hoursSinceAttempt = (Date.now() - new Date(loop.lastAttemptedAt).getTime()) / (1000 * 60 * 60);
+            if (hoursSinceAttempt < 24) continue;
+          }
           openLoops.push({ model, loop });
         }
       }
     }
 
-    // Prioritize: high importance first, then those with tool hints
+    // Prioritize: oldest loops first (longest unresolved get attention first)
     openLoops.sort((a, b) => {
-      const importanceOrder = { high: 0, medium: 1, low: 2 };
-      const aScore = (importanceOrder[a.loop.importance as keyof typeof importanceOrder] ?? 1) + (a.loop.toolHint ? 0 : 10);
-      const bScore = (importanceOrder[b.loop.importance as keyof typeof importanceOrder] ?? 1) + (b.loop.toolHint ? 0 : 10);
-      return aScore - bScore;
+      return new Date(a.loop.identifiedAt).getTime() - new Date(b.loop.identifiedAt).getTime();
     });
 
     const loopsToInvestigate = openLoops.slice(0, MAX_LOOPS_PER_CYCLE);
-    console.log(`[SleepCycle] ${openLoops.length} open loops total, investigating ${loopsToInvestigate.length}`);
+    console.log(`[SleepCycle] ${openLoops.length} open loops eligible (24h cooldown), investigating ${loopsToInvestigate.length}`);
 
+    let notifiedThisCycle = false;
     for (const { model, loop } of loopsToInvestigate) {
       try {
-        const result = await resolveLoop(model, loop);
+        const result = await resolveLoop(model, loop, notifiedThisCycle);
         loopsInvestigated++;
+        if (result.notified) notifiedThisCycle = true;
         if (result.applied > 0) {
           totalInstructionsApplied += result.applied;
           console.log(`[SleepCycle] Loop "${loop.description}" on ${model.name}: ${result.newStatus}`);
@@ -289,9 +293,10 @@ async function condenseThread(
 
 async function resolveLoop(
   model: any,
-  loop: any
-): Promise<{ applied: number; newStatus: string }> {
-  if (!sendToServer) return { applied: 0, newStatus: loop.status };
+  loop: any,
+  suppressNotification = false
+): Promise<{ applied: number; newStatus: string; notified: boolean }> {
+  if (!sendToServer) return { applied: 0, newStatus: loop.status, notified: false };
 
   // Build context beliefs for the resolver
   const contextBeliefs = (model.beliefs || []).map((b: any) => ({
@@ -317,7 +322,15 @@ async function resolveLoop(
     },
   });
 
-  if (!response) return { applied: 0, newStatus: loop.status };
+  // Stamp attempt tracking on the loop (persisted via the status update below)
+  loop.lastAttemptedAt = new Date().toISOString();
+  loop.attemptCount = (loop.attemptCount || 0) + 1;
+
+  if (!response) {
+    // Still save the attempt timestamp even on failure
+    await store.saveMentalModel(model);
+    return { applied: 0, newStatus: loop.status, notified: false };
+  }
 
   let applied = 0;
 
@@ -340,11 +353,20 @@ async function resolveLoop(
   }
 
   // Notify the user if the resolver found something worth sharing
-  if (response.notifyUser && response.notification && onLoopNotification) {
-    onLoopNotification(model.name, loop.description, response.notification, response.newStatus);
+  // Rules: max 1 notification per cycle, and don't re-notify loops the user already saw
+  let notified = false;
+  if (response.notifyUser && response.notification && onLoopNotification && !suppressNotification) {
+    if (!loop.lastNotifiedAt) {
+      loop.lastNotifiedAt = new Date().toISOString();
+      await store.saveMentalModel(model);
+      onLoopNotification(model.name, loop.description, response.notification, response.newStatus);
+      notified = true;
+    } else {
+      console.log(`[SleepCycle] Skipping re-notification for loop "${loop.description}" (already notified at ${loop.lastNotifiedAt})`);
+    }
   }
 
-  return { applied, newStatus: response.newStatus };
+  return { applied, newStatus: response.newStatus, notified };
 }
 
 // ============================================
@@ -563,9 +585,12 @@ Reply with ONLY a number from 0.0 to 1.0:
 
   const systemPrompt = "You compare two entity profiles and return a single similarity score. Reply with ONLY a decimal number between 0.0 and 1.0. No explanation.";
 
-  // Race with timeout to prevent hanging
+  // Race with timeout to prevent hanging.
+  // Suppress the dangling promise's rejection to avoid crashing on unhandled rejection.
+  const llmCall = queryLocalLLM(prompt, systemPrompt, 16);
+  llmCall.catch(() => {}); // Prevent unhandled rejection if timeout wins the race
   const response = await Promise.race([
-    queryLocalLLM(prompt, systemPrompt, 16),
+    llmCall,
     new Promise<string>((_, reject) =>
       setTimeout(() => reject(new Error("Local LLM timed out")), LOCAL_LLM_TIMEOUT_MS)
     ),

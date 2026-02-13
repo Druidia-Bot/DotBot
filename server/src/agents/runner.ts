@@ -72,13 +72,4 @@ export class AgentRunner {
       };
     }
   }
-
-  async runWithDecision(
-    request: EnhancedPromptRequest,
-    userId: string,
-    decision: import("../types/agent.js").ReceptionistDecision,
-  ): Promise<AgentRunResult & { router?: import("./message-router.js").MessageRouter }> {
-    // V2 goes through full pipeline
-    return this.run(request, userId);
-  }
 }

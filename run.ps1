@@ -230,17 +230,25 @@ else {
                 $serverWsUrl = $Matches[1].Trim()
             }
         }
-        $webAuthToken = ""
-        $tokenFile = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".bot\web-auth-token"
-        if (Test-Path $tokenFile) {
-            $webAuthToken = (Get-Content $tokenFile -Raw).Trim()
+        $deviceId = ""
+        $deviceSecret = ""
+        $deviceFile = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".bot\device.json"
+        if (Test-Path $deviceFile) {
+            try {
+                $deviceData = Get-Content $deviceFile -Raw | ConvertFrom-Json
+                $deviceId = $deviceData.deviceId
+                $deviceSecret = $deviceData.secret
+            } catch {
+                Write-Host "  [!] Failed to read device.json" -ForegroundColor Yellow
+            }
         }
         $queryParts = @()
         if ($serverWsUrl -and $serverWsUrl -ne "ws://localhost:3001") {
             $queryParts += "ws=$([Uri]::EscapeDataString($serverWsUrl))"
         }
-        if ($webAuthToken) {
-            $queryParts += "token=$([Uri]::EscapeDataString($webAuthToken))"
+        if ($deviceId -and $deviceSecret) {
+            $queryParts += "deviceId=$([Uri]::EscapeDataString($deviceId))"
+            $queryParts += "secret=$([Uri]::EscapeDataString($deviceSecret))"
         }
         $fileUri = "file:///" + (($clientPath -replace '\\', '/') -replace ' ', '%20')
         if ($queryParts.Count -gt 0) {

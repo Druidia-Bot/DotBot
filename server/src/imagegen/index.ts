@@ -74,7 +74,7 @@ async function handleGenerate(
     }
   }
 
-  log.info(`Generating image with ${provider}`, { prompt: prompt.substring(0, 100), aspectRatio, refs: referenceImages.length });
+  log.info(`Generating image with ${provider}`, { promptLength: prompt.length, aspectRatio, refs: referenceImages.length });
 
   let result: { base64: string; mimeType: string; description?: string } | null = null;
 
@@ -136,7 +136,7 @@ async function handleEdit(
   // Default save path: same directory with _edited suffix
   const savePath = args.save_path || imagePath.replace(/(\.\w+)$/, `_edited_${Date.now()}$1`);
 
-  log.info(`Editing image with ${provider}`, { prompt: prompt.substring(0, 100), imagePath, refs: referenceImages.length });
+  log.info(`Editing image with ${provider}`, { promptLength: prompt.length, imagePath, refs: referenceImages.length });
 
   let result: { base64: string; mimeType: string; description?: string } | null = null;
 
