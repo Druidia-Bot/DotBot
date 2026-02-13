@@ -450,14 +450,17 @@ async function handleMessage(message: WSMessage): Promise<void> {
         console.log("[Agent] Ready for commands.");
 
         // Start local setup server for secure browser authentication
-        if (message.payload.deviceId && message.payload.deviceSecret) {
+        // Use message payload (first registration) or saved credentials (reconnect)
+        const setupDeviceId = message.payload.deviceId || deviceCredentials?.deviceId;
+        const setupDeviceSecret = message.payload.deviceSecret || deviceCredentials?.deviceSecret;
+        if (setupDeviceId && setupDeviceSecret) {
           // Convert WebSocket URL to HTTP URL for browser redirect
           const httpUrl = SERVER_URL.replace(/^wss?:\/\//, (match) => match === 'wss://' ? 'https://' : 'http://');
 
           try {
             const { port, setupCode } = startSetupServer(
-              message.payload.deviceId,
-              message.payload.deviceSecret,
+              setupDeviceId,
+              setupDeviceSecret,
               httpUrl
             );
 
