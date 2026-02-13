@@ -1,16 +1,16 @@
 # ============================================================
-# DotBot CLI — Quick commands from the terminal
+# DotBot CLI -- Quick commands from the terminal
 # ============================================================
 #
 # Usage:
-#   dotbot open       — Open the browser UI
-#   dotbot status     — Show agent and service status
-#   dotbot update     — Pull latest and rebuild
-#   dotbot start      — Start the DotBot service
-#   dotbot stop       — Stop the DotBot service
-#   dotbot restart    — Restart the DotBot service
-#   dotbot logs       — Tail the launcher log
-#   dotbot help       — Show this help
+#   dotbot open       -- Open the browser UI
+#   dotbot status     -- Show agent and service status
+#   dotbot update     -- Pull latest and rebuild
+#   dotbot start      -- Start the DotBot service
+#   dotbot stop       -- Stop the DotBot service
+#   dotbot restart    -- Restart the DotBot service
+#   dotbot logs       -- Tail the launcher log
+#   dotbot help       -- Show this help
 #
 # Install:
 #   Copy this to a directory in your PATH, or run:

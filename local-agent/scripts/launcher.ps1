@@ -1,5 +1,5 @@
 # ============================================================
-# DotBot Local Agent — Launcher with Self-Update Support
+# DotBot Local Agent -- Launcher with Self-Update Support
 # ============================================================
 #
 # Usage:
@@ -31,7 +31,7 @@ $BackupDistDir = Join-Path $WorkspaceDir "dist-backup"
 $RollbackMarker = Join-Path $WorkspaceDir "rollback-pending"
 $LauncherLog = Join-Path $BotDir "launcher.log"
 
-# Resolve agent root — look for package.json with name "dotbot-local"
+# Resolve agent root -- look for package.json with name "dotbot-local"
 # Try: script's grandparent, or CWD
 $ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Get-Location }
 $AgentRoot = Split-Path $ScriptDir -Parent
@@ -85,7 +85,7 @@ Write-Log "Agent entry: $AgentEntry"
 while ($Running) {
     # --- Check for pending update BEFORE starting ---
     if (Test-Path $UpdateMarker) {
-        Write-Log "Update marker detected — applying staged update..."
+        Write-Log "Update marker detected -- applying staged update..."
 
         if (Test-Path $StagedDistDir) {
             # Backup current dist
@@ -110,21 +110,21 @@ while ($Running) {
             Write-Log "Update applied successfully"
         }
         else {
-            Write-Log "Update marker found but no staged-dist directory — ignoring" "WARN"
+            Write-Log "Update marker found but no staged-dist directory -- ignoring" "WARN"
             Remove-Item -Force $UpdateMarker
         }
     }
 
     # --- Check for rollback ---
     if (Test-Path $RollbackMarker) {
-        Write-Log "Rollback marker detected — restoring backup..."
+        Write-Log "Rollback marker detected -- restoring backup..."
         if (Test-Path $BackupDistDir) {
             if (Test-Path $AgentDist) {
                 Remove-Item -Recurse -Force $AgentDist
             }
             Copy-Item -Recurse -Force $BackupDistDir $AgentDist
             Remove-Item -Force $RollbackMarker
-            Write-Log "Rollback complete — restored from backup"
+            Write-Log "Rollback complete -- restored from backup"
         }
         else {
             Write-Log "Rollback requested but no backup found!" "ERROR"
@@ -159,7 +159,7 @@ while ($Running) {
 
     # Exit code 42 = intentional restart request (from system.restart tool)
     if ($ExitCode -eq 42) {
-        Write-Log "Intentional restart requested (exit code 42) — restarting immediately..."
+        Write-Log "Intentional restart requested (exit code 42) -- restarting immediately..."
         continue
     }
 
@@ -170,26 +170,26 @@ while ($Running) {
 
     # If an update is pending, don't count this as a crash
     if (Test-Path $UpdateMarker) {
-        Write-Log "Update pending — restarting to apply..."
+        Write-Log "Update pending -- restarting to apply..."
         continue
     }
 
     # If it crashed immediately after an update, rollback
     if ($RunDuration.TotalSeconds -lt 10 -and (Test-Path $BackupDistDir)) {
-        Write-Log "Agent crashed within 10s — auto-rolling back to previous version" "WARN"
+        Write-Log "Agent crashed within 10s -- auto-rolling back to previous version" "WARN"
         if (Test-Path $AgentDist) {
             Remove-Item -Recurse -Force $AgentDist
         }
         Copy-Item -Recurse -Force $BackupDistDir $AgentDist
         Write-Log "Auto-rollback complete"
-        # Don't count this crash against restart limit — it's a known recovery
+        # Don't count this crash against restart limit -- it's a known recovery
         continue
     }
 
     # Normal restart with backoff
     $RestartCount++
     if ($RestartCount -ge $MaxRestarts) {
-        Write-Log "Max restarts ($MaxRestarts) reached — giving up" "ERROR"
+        Write-Log "Max restarts ($MaxRestarts) reached -- giving up" "ERROR"
         $Running = $false
         break
     }
