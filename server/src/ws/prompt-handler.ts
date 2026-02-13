@@ -121,44 +121,6 @@ export async function handlePrompt(
     return;
   }
 
-  // ── Check for blocked agents waiting for user input ──
-  // If an agent is blocked on wait_for_user, resolve it directly with the user's
-  // message. This avoids running the receptionist/pipeline/skill-matching again —
-  // the original tool loop resumes and continues streaming the next step.
-  const blockedResult = v2OrchestratorResults.get(userId);
-  if (blockedResult && blockedResult.waitResolvers) {
-    const blockedAgents = blockedResult.router.getActiveAgents().filter(a => a.status === "blocked");
-    if (blockedAgents.length > 0 && blockedResult.waitResolvers.size > 0) {
-      const targetAgent = blockedAgents[0]; // Resolve the first blocked agent
-      const resolver = blockedResult.waitResolvers.get(targetAgent.id);
-      if (resolver) {
-        log.info("Resuming blocked agent with user response", {
-          agentId: targetAgent.id,
-          topic: targetAgent.topic,
-          promptLength: prompt.length,
-        });
-        // Send brief confirmation so the user knows their response was received
-        sendMessage(responseWs, {
-          type: "response",
-          id: message.id,
-          timestamp: Date.now(),
-          payload: {
-            success: true,
-            response: `Got it — resuming **${targetAgent.topic}**...`,
-            classification: "CONVERSATIONAL" as const,
-            threadIds: [],
-            keyPoints: [],
-          }
-        });
-
-        // Resolve the blocked agent — the original tool loop resumes and streams the next step
-        resolver(prompt);
-        tracker.markResponseSent(message.id);
-        return;
-      }
-    }
-  }
-
   // ── V2 Pipeline (V1 removed) ──
   try {
     // Build enhanced request with context
@@ -256,11 +218,6 @@ export async function handlePrompt(
       (orchestratorResult) => {
         v2OrchestratorResults.set(userId, orchestratorResult);
         log.info("Orchestrator result registered eagerly", { userId, agents: orchestratorResult.router.getAgents().length });
-
-        // Extend tracker timeout generously — agents may block on wait_for_user
-        // for extended periods (e.g. onboarding steps where the user needs to
-        // create accounts, enter credentials, etc.)
-        tracker.extendTimeout(message.id, 3_600_000); // 1 hour
       },
     );
 
@@ -273,22 +230,13 @@ export async function handlePrompt(
     const completedAgents = result.agentResults?.filter(r => r.status === "completed") || [];
     const isMultiAgent = completedAgents.length > 1;
 
-    // For single-agent tasks, onAgentComplete already broadcast the response via
-    // agent_complete — sending it again as type:"response" would duplicate the message
-    // in the client chat. Only send the final response when:
-    //  - It's a multi-agent merge (different from individual agent_complete payloads)
-    //  - There are no completed agents (direct/conversational response, no agent_complete fired)
-    //  - The pipeline returned an error
-    const agentAlreadyDelivered = completedAgents.length === 1 && result.success;
-    const finalResponse = agentAlreadyDelivered ? "" : result.response;
-
     sendMessage(responseWs, {
       type: "response",
       id: message.id,
       timestamp: Date.now(),
       payload: {
         success: result.success,
-        response: finalResponse,
+        response: result.response,
         classification: result.classification,
         threadIds: result.threadIds,
         keyPoints: result.keyPoints,

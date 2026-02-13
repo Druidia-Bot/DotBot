@@ -96,16 +96,12 @@ const MEMORY_QUESTION_PATTERNS = [
  * @param activeAgentCount — Number of active/completed agents in the router.
  *   When > 0, short ambiguous messages skip the short path so the router
  *   can check for follow-up routing instead.
- * @param hasBlockedAgents — When true, there are agents blocked on wait_for_user.
- *   The user's next message should reach the blocked agent, so we skip ALL
- *   short-path handling except explicit greetings.
  */
 export async function tryShortPath(
   llm: ILLMClient,
   options: AgentRunnerOptions,
   request: EnhancedPromptRequest,
-  activeAgentCount: number = 0,
-  hasBlockedAgents: boolean = false
+  activeAgentCount: number = 0
 ): Promise<ShortPathResult> {
   const raw = request.prompt;
   const normalized = raw.trim().toLowerCase().replace(/[!?.]+$/, "").trim();
@@ -122,16 +118,6 @@ export async function tryShortPath(
         return { isShortPath: false };
       }
     }
-  }
-
-  // If agents are blocked on wait_for_user, skip ALL short-path handling.
-  // The user's message is a response to the blocked agent — "yes", "sure", "ok"
-  // are likely answers, not generic acknowledgments.
-  if (hasBlockedAgents) {
-    log.info("Short path: skipping — agents are blocked on wait_for_user", {
-      raw: raw.substring(0, 50),
-    });
-    return { isShortPath: false };
   }
 
   // Parse agent identity (me.json) for personality-consistent responses

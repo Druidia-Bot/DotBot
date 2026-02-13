@@ -221,22 +221,6 @@ Analyze the conversation and provide your routing decision as JSON.`;
       }
 
       decision = parsed as ReceptionistDecision;
-
-      // Sanitize directResponse: if the LLM set it to a raw classification keyword
-      // (e.g. "CONVERSATIONAL", "ACTION"), strip it — the user would see pipeline internals.
-      if (decision.directResponse) {
-        const CLASSIFICATION_KEYWORDS = new Set([
-          "CONVERSATIONAL", "ACTION", "INFO_REQUEST", "CONTINUATION",
-          "CORRECTION", "COMPOUND", "GREETING", "ACKNOWLEDGMENT",
-        ]);
-        if (CLASSIFICATION_KEYWORDS.has(decision.directResponse.trim().toUpperCase())) {
-          log.warn("Receptionist set directResponse to classification keyword — stripping", {
-            directResponse: decision.directResponse,
-            classification: decision.classification,
-          });
-          decision.directResponse = undefined;
-        }
-      }
     } else {
       throw new Error("No JSON found");
     }
@@ -275,20 +259,6 @@ Analyze the conversation and provide your routing decision as JSON.`;
         .replace(/```[\s\S]*?```/g, "")
         .trim();
 
-      // Guard: if the LLM just returned a classification keyword (e.g. "CONVERSATIONAL",
-      // "ACTION") instead of a real response, don't use it as a direct response — the user
-      // would see raw pipeline internals.
-      const CLASSIFICATION_KEYWORDS = new Set([
-        "CONVERSATIONAL", "ACTION", "INFO_REQUEST", "CONTINUATION",
-        "CORRECTION", "COMPOUND", "GREETING", "ACKNOWLEDGMENT",
-      ]);
-      const isRawClassification = CLASSIFICATION_KEYWORDS.has(cleanedResponse.toUpperCase());
-      if (isRawClassification) {
-        log.warn("Receptionist returned raw classification keyword as text — discarding", {
-          raw: cleanedResponse,
-        });
-      }
-
       decision = {
         classification: "CONVERSATIONAL",
         priority: "BLOCKING",
@@ -298,7 +268,7 @@ Analyze the conversation and provide your routing decision as JSON.`;
         personaId: "general",
         councilNeeded: false,
         reasoning: "Receptionist answered directly (JSON parse failed, using text as response)",
-        directResponse: isRawClassification ? "Hey! I'm here and ready to help. What do you need?" : (cleanedResponse || undefined),
+        directResponse: cleanedResponse || undefined,
         memoryAction: "session_only",
       };
     }

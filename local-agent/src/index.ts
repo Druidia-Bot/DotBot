@@ -214,6 +214,7 @@ function connect(): void {
   console.log(`[Agent] Connecting to ${SERVER_URL}...`);
   
   ws = new WebSocket(SERVER_URL);
+  const thisWs = ws; // Capture instance — stale close events must not trigger reconnect
 
   ws.on("open", () => {
     console.log("[Agent] Connected! Authenticating...");
@@ -232,6 +233,12 @@ function connect(): void {
   });
 
   ws.on("close", () => {
+    // Guard: if a newer connect() replaced ws, this is a stale close event
+    // from the old WebSocket being closed by the server — don't reconnect.
+    if (thisWs !== ws) {
+      console.log("[Agent] Stale WebSocket closed (already reconnected) — ignoring");
+      return;
+    }
     console.log("[Agent] Disconnected");
     scheduleReconnect();
   });
