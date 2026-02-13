@@ -874,6 +874,25 @@ function Install-Shortcuts {
         $shortcut.Save()
         Write-OK "Start Menu shortcut created -- search 'DotBot' to launch"
 
+        # Install dotbot CLI to ~/.bot/ and add to user PATH
+        $cliSource = Join-Path $Dir "local-agent\scripts\dotbot.ps1"
+        $cliDest = Join-Path $BOT_DIR "dotbot.ps1"
+        if (Test-Path $cliSource) {
+            Copy-Item -Force $cliSource $cliDest
+            # Create dotbot.cmd wrapper so 'dotbot update' works from cmd/powershell
+            $cmdWrapper = "@echo off`r`npowershell -ExecutionPolicy Bypass -File `"%~dp0dotbot.ps1`" %*"
+            [System.IO.File]::WriteAllText((Join-Path $BOT_DIR "dotbot.cmd"), $cmdWrapper, [System.Text.UTF8Encoding]::new($false))
+            $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+            if (-not $userPath) { $userPath = "" }
+            if ($userPath -notmatch [regex]::Escape($BOT_DIR)) {
+                [System.Environment]::SetEnvironmentVariable("Path", "$userPath;$BOT_DIR", "User")
+                $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+                Write-OK "dotbot CLI installed -- run 'dotbot help' in a new terminal"
+            } else {
+                Write-OK "dotbot CLI updated"
+            }
+        }
+
         # Register as background service via Task Scheduler (hidden, no window)
         Write-Host ""
         $autoStart = Read-Host "  Start DotBot automatically on login? (Y/n)"

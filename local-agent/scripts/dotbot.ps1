@@ -28,6 +28,9 @@ $LauncherLog = Join-Path $BotDir "launcher.log"
 $InstallDir = if ($env:DOTBOT_INSTALL_DIR) { $env:DOTBOT_INSTALL_DIR } else { "C:\Program Files\.bot" }
 $TaskName = "DotBot"
 
+# Refresh PATH from registry -- elevated/new sessions may not have tools installed by winget
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+
 switch ($Command.ToLower()) {
     "open" {
         $serverUrl = $env:DOTBOT_SERVER
@@ -81,12 +84,27 @@ switch ($Command.ToLower()) {
         Write-Host "Updating DotBot..." -ForegroundColor Yellow
         Push-Location $InstallDir
         try {
-            git pull 2>&1
-            npm install 2>&1
-            npm run build -w shared -w local-agent 2>&1
-            Write-Host "Update complete. Restart with: dotbot restart" -ForegroundColor Green
+            Write-Host "  Pulling latest..." -ForegroundColor Gray
+            $out = & cmd /c "git pull 2>&1"
+            if ($LASTEXITCODE -ne 0) { throw "git pull failed: $out" }
+            Write-Host "  $out"
+
+            Write-Host "  Installing dependencies..." -ForegroundColor Gray
+            $out = & cmd /c "npm install 2>&1"
+            if ($LASTEXITCODE -ne 0) { throw "npm install failed (exit $LASTEXITCODE)" }
+
+            Write-Host "  Building..." -ForegroundColor Gray
+            $out = & cmd /c "npm run build -w shared -w local-agent 2>&1"
+            if ($LASTEXITCODE -ne 0) { throw "build failed (exit $LASTEXITCODE)" }
+
+            # Update the CLI copy in ~/.bot/
+            $cliSource = Join-Path $InstallDir "local-agent\scripts\dotbot.ps1"
+            $cliDest = Join-Path $BotDir "dotbot.ps1"
+            if (Test-Path $cliSource) { Copy-Item -Force $cliSource $cliDest }
+
+            Write-Host "  [OK] Update complete. Restart with: dotbot restart" -ForegroundColor Green
         } catch {
-            Write-Host "Update failed: $_" -ForegroundColor Red
+            Write-Host "  [X] Update failed: $_" -ForegroundColor Red
         }
         Pop-Location
     }
