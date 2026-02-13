@@ -559,10 +559,8 @@ function Install-CloneRepo {
         # Valid repo exists -- pull latest instead of re-cloning
         Write-Step "6/11" "Repository exists at $Dir -- pulling latest..."
         try {
-            $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-            $pullOut = git -C $Dir pull 2>&1
+            $pullOut = & cmd /c "git -C `"$Dir`" pull 2>&1"
             $gitExit = $LASTEXITCODE
-            $ErrorActionPreference = $prevEAP
             if ($gitExit -ne 0) { Write-Warn "git pull failed: $pullOut" }
         } catch {}
         Write-OK "Repository already exists at $Dir"
@@ -582,10 +580,8 @@ function Install-CloneRepo {
             if ((Test-Path $Dir) -and -not (Test-Path (Join-Path $Dir "package.json"))) {
                 Remove-Item -Recurse -Force $Dir -ErrorAction SilentlyContinue
             }
-            $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-            $output = git clone $RepoUrl $Dir 2>&1
+            $output = & cmd /c "git clone $RepoUrl `"$Dir`" 2>&1"
             $gitExit = $LASTEXITCODE
-            $ErrorActionPreference = $prevEAP
             if ($gitExit -ne 0) {
                 throw "git clone failed with exit code $gitExit : $output"
             }
@@ -632,13 +628,12 @@ function Install-NpmDeps {
                 npm cache clean --force 2>$null | Out-Null
             }
 
-            # Run npm with Continue error preference — npm writes warnings to stderr
-            # which PS5.1 converts to terminating errors under $ErrorActionPreference=Stop
-            $prevEAP = $ErrorActionPreference
-            $ErrorActionPreference = "Continue"
-            $npmOut = npm install 2>&1
+            # Use cmd /c to run npm — PS5.1's $ErrorActionPreference=Stop converts
+            # stderr from native commands into terminating errors, even with 2>&1.
+            # Running through cmd.exe avoids this because stderr merging happens in
+            # cmd.exe, not PowerShell — output comes back as plain strings.
+            $npmOut = & cmd /c "npm install 2>&1"
             $npmExit = $LASTEXITCODE
-            $ErrorActionPreference = $prevEAP
 
             if ($npmExit -ne 0) {
                 $npmOut | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
