@@ -8,6 +8,7 @@
 
 import express, { Request, Response } from 'express';
 import { randomBytes, createCipheriv, createDecipheriv } from 'crypto';
+import * as path from 'path';
 import { createComponentLogger } from './logging.js';
 
 let _log: ReturnType<typeof createComponentLogger> | null = null;
@@ -70,8 +71,15 @@ export function startSetupServer(
   const app = express();
   const port = findAvailablePort();
   const setupCode = randomBytes(8).toString('hex');
+  let codeUsed = false;
 
-  // Setup endpoint - validates code and redirects to server for session creation
+  // Derive WebSocket URL from HTTP URL (reverse of the conversion in index.ts)
+  const wsUrl = serverUrl.replace(/^https?:\/\//, (match) => match === 'https://' ? 'wss://' : 'ws://') + '/ws';
+
+  // Resolve local client path
+  const clientPath = path.resolve('client', 'index.html');
+
+  // Setup endpoint - validates code and redirects to local client with credentials
   app.get('/setup', (req: Request, res: Response) => {
     // Validate one-time setup code
     if (req.query.code !== setupCode) {
@@ -80,62 +88,35 @@ export function startSetupServer(
         <html>
           <head><title>Setup Failed</title></head>
           <body style="font-family: system-ui; max-width: 600px; margin: 100px auto; text-align: center;">
-            <h1>❌ Invalid Setup Code</h1>
-            <p>Please use the setup link provided by the agent.</p>
+            <h1>Setup Failed</h1>
+            <p>Invalid or expired setup code. Please use the setup link provided by the agent.</p>
           </body>
         </html>
       `);
     }
 
-    log().info('Setup code validated, submitting credentials to server via POST');
+    if (codeUsed) {
+      return res.status(403).send(`
+        <html>
+          <head><title>Setup Code Used</title></head>
+          <body style="font-family: system-ui; max-width: 600px; margin: 100px auto; text-align: center;">
+            <h1>Already Used</h1>
+            <p>This setup code has already been used. Restart the agent for a new one.</p>
+          </body>
+        </html>
+      `);
+    }
 
-    // Auto-submit POST form to avoid exposing device secret in URL query params
-    // (GET redirects would log the secret in web server access logs and browser history)
-    const authUrl = `${serverUrl}/auth/device-session`;
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Authenticating...</title>
-          <style>
-            body {
-              font-family: system-ui, -apple-system, sans-serif;
-              max-width: 600px;
-              margin: 100px auto;
-              text-align: center;
-              color: #333;
-            }
-            .spinner {
-              border: 4px solid #f3f3f3;
-              border-top: 4px solid #3498db;
-              border-radius: 50%;
-              width: 40px;
-              height: 40px;
-              animation: spin 1s linear infinite;
-              margin: 20px auto;
-            }
-            @keyframes spin {
-              0% { transform: rotate(0deg); }
-              100% { transform: rotate(360deg); }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="spinner"></div>
-          <h2>Authenticating device...</h2>
-          <p>You will be redirected shortly.</p>
-          <form id="authForm" method="POST" action="${authUrl}">
-            <input type="hidden" name="deviceId" value="${deviceId}" />
-            <input type="hidden" name="secret" value="${deviceSecret}" />
-            <input type="hidden" name="redirect" value="/credentials/session" />
-          </form>
-          <script>
-            // Auto-submit after a brief delay to show the loading screen
-            setTimeout(() => document.getElementById('authForm').submit(), 500);
-          </script>
-        </body>
-      </html>
-    `);
+    codeUsed = true;
+    log().info('Setup code validated, redirecting to local client with credentials');
+
+    // Build file:// URL with credentials in hash fragment
+    // Hash fragments are never sent to any server — they stay in the browser only
+    // The client's resolveConfig() reads them and clears the hash immediately
+    const fileUrl = 'file:///' + clientPath.replace(/\\/g, '/').replace(/ /g, '%20');
+    const hash = `ws=${encodeURIComponent(wsUrl)}&deviceId=${encodeURIComponent(deviceId)}&secret=${encodeURIComponent(deviceSecret)}`;
+
+    res.redirect(`${fileUrl}#${hash}`);
   });
 
   // Health check
