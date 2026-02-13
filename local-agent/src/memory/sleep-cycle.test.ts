@@ -24,6 +24,14 @@ vi.mock("./store.js", () => ({
   updateModelIndex: vi.fn(),
   readModel: vi.fn(() => null),
   listModels: vi.fn(() => []),
+  getAllThreadSummaries: vi.fn(() => []),
+  getL0MemoryIndex: vi.fn(() => []),
+  getAllMentalModels: vi.fn(() => []),
+  getMentalModel: vi.fn(() => null),
+  saveMentalModel: vi.fn(),
+  rebuildMemoryIndex: vi.fn(),
+  mergeMentalModels: vi.fn(() => null),
+  archiveThread: vi.fn(() => false),
 }));
 
 vi.mock("./store-core.js", () => ({
