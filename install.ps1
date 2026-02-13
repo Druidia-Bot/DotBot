@@ -556,13 +556,29 @@ function Install-CloneRepo {
     Write-Step "6/11" "Cloning DotBot repository..."
 
     if (Test-Path (Join-Path $Dir "package.json")) {
+        # Valid repo exists -- pull latest instead of re-cloning
+        Write-Step "6/11" "Repository exists at $Dir -- pulling latest..."
+        try {
+            $pullOut = git -C $Dir pull 2>&1
+            if ($LASTEXITCODE -ne 0) { Write-Warn "git pull failed: $pullOut" }
+        } catch {}
         Write-OK "Repository already exists at $Dir"
         Set-StepStatus -StepName "clone" -Status "success" -Path $Dir
         return $true
     }
 
+    # Clean up partial/failed clone (directory exists but no package.json)
+    if (Test-Path $Dir) {
+        Write-Warn "Removing incomplete directory: $Dir"
+        Remove-Item -Recurse -Force $Dir -ErrorAction SilentlyContinue
+    }
+
     try {
         Invoke-WithRetry -OperationName "Git clone" -MaxAttempts 3 -RetryDelaySeconds 10 -ScriptBlock {
+            # Clean up again in case a previous retry left a partial clone
+            if ((Test-Path $Dir) -and -not (Test-Path (Join-Path $Dir "package.json"))) {
+                Remove-Item -Recurse -Force $Dir -ErrorAction SilentlyContinue
+            }
             $output = git clone $RepoUrl $Dir 2>&1
             if ($LASTEXITCODE -ne 0) {
                 throw "git clone failed with exit code $LASTEXITCODE : $output"
