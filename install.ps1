@@ -32,11 +32,11 @@
 
 .NOTES
     This installer includes:
-    • Pre-flight checks (disk space, internet, Windows version)
-    • Automatic retry logic for network operations (3 attempts)
-    • Invite token format validation
-    • WebSocket connectivity testing
-    • Comprehensive error diagnostics and recovery instructions
+    - Pre-flight checks (disk space, internet, Windows version)
+    - Automatic retry logic for network operations (3 attempts)
+    - Invite token format validation
+    - WebSocket connectivity testing
+    - Comprehensive error diagnostics and recovery instructions
 #>
 
 param(
@@ -89,7 +89,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
 
-# Refresh PATH from registry — the elevated session may have a stale PATH
+# Refresh PATH from registry -- the elevated session may have a stale PATH
 # that doesn't include tools installed since the last logon (e.g. Git, Node)
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 
@@ -262,8 +262,8 @@ function Get-AgentConfig {
         Write-Host "    Example: dbot-a1b2-c3d4-e5f6-g7h8" -ForegroundColor Gray
         Write-Host ""
         Write-Host "    Common issues:" -ForegroundColor Yellow
-        Write-Host "      • Copy-paste error (check for extra spaces or missing characters)" -ForegroundColor Gray
-        Write-Host "      • Token expired (generate a new one on the server)" -ForegroundColor Gray
+        Write-Host "      - Copy-paste error (check for extra spaces or missing characters)" -ForegroundColor Gray
+        Write-Host "      - Token expired (generate a new one on the server)" -ForegroundColor Gray
         Write-Host ""
         exit 1
     }
@@ -282,9 +282,9 @@ function Get-AgentConfig {
             } else {
                 Write-Warn "Cannot reach server at ${wsHost}:${wsPort}"
                 Write-Host "    The agent may fail to connect. Check:" -ForegroundColor Gray
-                Write-Host "      • Server URL is correct" -ForegroundColor Gray
-                Write-Host "      • Server is running and accessible from this network" -ForegroundColor Gray
-                Write-Host "      • Firewall/proxy allows connections" -ForegroundColor Gray
+                Write-Host "      - Server URL is correct" -ForegroundColor Gray
+                Write-Host "      - Server is running and accessible from this network" -ForegroundColor Gray
+                Write-Host "      - Firewall/proxy allows connections" -ForegroundColor Gray
                 Write-Host ""
                 $continue = Read-Host "  Continue anyway? (y/N)"
                 if ($continue -ne "y" -and $continue -ne "Y") {
@@ -330,7 +330,7 @@ function Install-Git {
             Write-Warn "winget install failed: $($_.Exception.Message)"
         }
     } else {
-        Write-Warn "winget not available — skipping"
+        Write-Warn "winget not available -- skipping"
     }
 
     # Method 2: Direct download from GitHub releases
@@ -401,7 +401,7 @@ function Install-NodeJS {
             Write-Warn "winget install failed: $($_.Exception.Message)"
         }
     } else {
-        Write-Warn "winget not available — skipping"
+        Write-Warn "winget not available -- skipping"
     }
 
     # Method 2: Direct MSI download from nodejs.org
@@ -580,9 +580,9 @@ function Install-CloneRepo {
         Write-Host "    Error: $($_.Exception.Message)" -ForegroundColor Red
         Write-Host ""
         Write-Host "    Possible causes:" -ForegroundColor Yellow
-        Write-Host "      • Network/proxy blocking git connections" -ForegroundColor Gray
-        Write-Host "      • GitHub is temporarily unavailable" -ForegroundColor Gray
-        Write-Host "      • Repository URL is incorrect" -ForegroundColor Gray
+        Write-Host "      - Network/proxy blocking git connections" -ForegroundColor Gray
+        Write-Host "      - GitHub is temporarily unavailable" -ForegroundColor Gray
+        Write-Host "      - Repository URL is incorrect" -ForegroundColor Gray
         Write-Host ""
         Write-Host "    Manual recovery:" -ForegroundColor Yellow
         Write-Host "      1. Clone manually: git clone $RepoUrl $Dir" -ForegroundColor White
@@ -626,10 +626,10 @@ function Install-NpmDeps {
         Write-Host "    Error: $($_.Exception.Message)" -ForegroundColor Red
         Write-Host ""
         Write-Host "    Possible causes:" -ForegroundColor Yellow
-        Write-Host "      • Network/proxy blocking npm registry" -ForegroundColor Gray
-        Write-Host "      • Corrupted npm cache" -ForegroundColor Gray
-        Write-Host "      • Insufficient disk space" -ForegroundColor Gray
-        Write-Host "      • Antivirus blocking npm operations" -ForegroundColor Gray
+        Write-Host "      - Network/proxy blocking npm registry" -ForegroundColor Gray
+        Write-Host "      - Corrupted npm cache" -ForegroundColor Gray
+        Write-Host "      - Insufficient disk space" -ForegroundColor Gray
+        Write-Host "      - Antivirus blocking npm operations" -ForegroundColor Gray
         Write-Host ""
         Write-Host "    Manual recovery:" -ForegroundColor Yellow
         Write-Host "      1. Configure proxy: npm config set proxy http://proxy:port" -ForegroundColor White
@@ -1249,9 +1249,9 @@ if ($registered) {
     # Diagnostic 1: Check if process is still running
     $nodeProcs = Get-Process -Name "node" -ErrorAction SilentlyContinue
     if ($nodeProcs) {
-        Write-Host "    [✓] Agent process is running (PID: $($nodeProcs[0].Id))" -ForegroundColor Green
+        Write-Host "    [+] Agent process is running (PID: $($nodeProcs[0].Id))" -ForegroundColor Green
     } else {
-        Write-Host "    [✗] Agent process is not running" -ForegroundColor Red
+        Write-Host "    [X] Agent process is not running" -ForegroundColor Red
         Write-Host "        Likely cause: Node.js startup error or crash" -ForegroundColor Gray
     }
 
@@ -1259,10 +1259,10 @@ if ($registered) {
     if (Test-Path $agentLogFile) {
         $logContent = Get-Content $agentLogFile -Tail 20 -Raw
         if ($logContent -match "ECONNREFUSED|ENOTFOUND|EHOSTUNREACH") {
-            Write-Host "    [✗] Connection error detected in logs" -ForegroundColor Red
+            Write-Host "    [X] Connection error detected in logs" -ForegroundColor Red
             Write-Host "        Likely cause: Server unreachable or wrong URL" -ForegroundColor Gray
         } elseif ($logContent -match "Invalid.*token|authentication.*failed") {
-            Write-Host "    [✗] Authentication error detected in logs" -ForegroundColor Red
+            Write-Host "    [X] Authentication error detected in logs" -ForegroundColor Red
             Write-Host "        Likely cause: Invalid or expired invite token" -ForegroundColor Gray
         } elseif ($logContent -match "Error|error|exception") {
             Write-Host "    [!] Error detected in logs (see below)" -ForegroundColor Yellow
