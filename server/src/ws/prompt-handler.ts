@@ -88,10 +88,14 @@ export async function handlePrompt(
   deviceId: string,
   message: WSPromptMessage,
   apiKey: string,
-  serverProvider: string
+  serverProvider: string,
+  senderWs?: import("ws").WebSocket
 ): Promise<void> {
   const device = devices.get(deviceId);
   if (!device) return;
+
+  // Response target: use sender's WebSocket if provided (browser), otherwise device's own WS
+  const responseWs = senderWs || device.ws;
 
   if (!message.payload || typeof message.payload.prompt !== "string" || !message.payload.prompt.trim()) {
     log.warn("Invalid prompt message — missing or empty payload.prompt", { deviceId });
@@ -165,7 +169,7 @@ export async function handlePrompt(
         || `Working on it — estimated time: ~${estimatedLabel}`;
 
       // WebSocket ack for client UI
-      sendMessage(device.ws, {
+      sendMessage(responseWs, {
         type: "response",
         id: `${message.id}_ack`,
         timestamp: Date.now(),
@@ -179,7 +183,7 @@ export async function handlePrompt(
       });
 
       // Dedicated event for Discord/other channels — always fires for actionable tasks
-      sendMessage(device.ws, {
+      sendMessage(responseWs, {
         type: "task_acknowledged",
         id: `${message.id}_task_ack`,
         timestamp: Date.now(),
@@ -226,7 +230,7 @@ export async function handlePrompt(
     const completedAgents = result.agentResults?.filter(r => r.status === "completed") || [];
     const isMultiAgent = completedAgents.length > 1;
 
-    sendMessage(device.ws, {
+    sendMessage(responseWs, {
       type: "response",
       id: message.id,
       timestamp: Date.now(),
@@ -257,7 +261,7 @@ export async function handlePrompt(
     // Mark message as failed
     tracker.markFailed(message.id, error instanceof Error ? error.message : "Unknown error");
 
-    sendMessage(device.ws, {
+    sendMessage(responseWs, {
       type: "response",
       id: message.id,
       timestamp: Date.now(),

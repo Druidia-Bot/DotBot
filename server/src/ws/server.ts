@@ -285,7 +285,7 @@ export function createWSServer(options: {
             break;
           case "prompt":
             if (!deviceId) { sendError(ws, "Not authenticated"); return; }
-            await handlePrompt(deviceId, message as WSPromptMessage, options.apiKey, serverProvider);
+            await handlePrompt(deviceId, message as WSPromptMessage, options.apiKey, serverProvider, ws);
             break;
           case "execution_result":
             if (deviceId) handleExecutionResult(deviceId, message.payload);
