@@ -1309,7 +1309,7 @@ if ($registered) {
 
     # Diagnostic 2: Check log files for errors
     if (Test-Path $agentLogFile) {
-        $logContent = Get-Content $agentLogFile -Tail 20 -Raw
+        $logContent = (Get-Content $agentLogFile -Tail 20) -join "`n"
         if ($logContent -match "ECONNREFUSED|ENOTFOUND|EHOSTUNREACH") {
             Write-Host "    [X] Connection error detected in logs" -ForegroundColor Red
             Write-Host "        Likely cause: Server unreachable or wrong URL" -ForegroundColor Gray
