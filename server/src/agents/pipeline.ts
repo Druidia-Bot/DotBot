@@ -163,7 +163,7 @@ export async function executeV2Pipeline(
   // Step 1: Short path — skip everything for greetings, acks, farewells
   // Pass active agent count so short path can skip ambiguous messages that might be follow-ups
   const existingAgentCount = messageRouter.getAgents().length;
-  const hasBlockedAgents = previousOrchestratorResult
+  const hasBlockedAgents = previousOrchestratorResult?.waitResolvers
     ? previousOrchestratorResult.waitResolvers.size > 0
     : false;
   log.info("V2 pipeline: checking short path", { existingAgentCount, hasBlockedAgents });
@@ -216,7 +216,7 @@ export async function executeV2Pipeline(
       if ((matchedAgent.status === "running" || matchedAgent.status === "blocked") && previousOrchestratorResult) {
         // For blocked agents: resolve the wait_for_user promise directly
         // (the prompt-handler usually catches this first, but this is a safety net)
-        if (matchedAgent.status === "blocked") {
+        if (matchedAgent.status === "blocked" && previousOrchestratorResult.waitResolvers) {
           const waitResolver = previousOrchestratorResult.waitResolvers.get(matchedAgent.id);
           if (waitResolver) {
             log.info("V2 pipeline: resolving blocked agent via wait resolver", {

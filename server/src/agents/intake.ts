@@ -259,6 +259,20 @@ Analyze the conversation and provide your routing decision as JSON.`;
         .replace(/```[\s\S]*?```/g, "")
         .trim();
 
+      // Guard: if the LLM just returned a classification keyword (e.g. "CONVERSATIONAL",
+      // "ACTION") instead of a real response, don't use it as a direct response — the user
+      // would see raw pipeline internals.
+      const CLASSIFICATION_KEYWORDS = new Set([
+        "CONVERSATIONAL", "ACTION", "INFO_REQUEST", "CONTINUATION",
+        "CORRECTION", "COMPOUND", "GREETING", "ACKNOWLEDGMENT",
+      ]);
+      const isRawClassification = CLASSIFICATION_KEYWORDS.has(cleanedResponse.toUpperCase());
+      if (isRawClassification) {
+        log.warn("Receptionist returned raw classification keyword as text — discarding", {
+          raw: cleanedResponse,
+        });
+      }
+
       decision = {
         classification: "CONVERSATIONAL",
         priority: "BLOCKING",
@@ -268,7 +282,7 @@ Analyze the conversation and provide your routing decision as JSON.`;
         personaId: "general",
         councilNeeded: false,
         reasoning: "Receptionist answered directly (JSON parse failed, using text as response)",
-        directResponse: cleanedResponse || undefined,
+        directResponse: isRawClassification ? "Hey! I'm here and ready to help. What do you need?" : (cleanedResponse || undefined),
         memoryAction: "session_only",
       };
     }

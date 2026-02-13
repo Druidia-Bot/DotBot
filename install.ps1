@@ -115,7 +115,8 @@ $BOT_DIR = Join-Path $env:USERPROFILE ".bot"
 $STATUS_FILE = Join-Path $BOT_DIR "install-status.json"
 $ENV_FILE = Join-Path $BOT_DIR ".env"
 $DEVICE_FILE = Join-Path $BOT_DIR "device.json"
-$INSTALLER_VERSION = "1.0.0"
+$INSTALLER_VERSION = "1.0.1"
+$INSTALLER_BUILD = "2026-02-13a"
 $NODE_MAJOR = 20
 $DEFAULT_REPO_URL = "https://github.com/Druidia-Bot/DotBot.git"
 
@@ -127,7 +128,7 @@ function Write-Banner {
     Write-Host ""
     Write-Host "  =====================================================" -ForegroundColor Cyan
     Write-Host "                                                        " -ForegroundColor Cyan
-    Write-Host "      DotBot Installer v${INSTALLER_VERSION}                       " -ForegroundColor Cyan
+    Write-Host "      DotBot Installer v${INSTALLER_VERSION} (${INSTALLER_BUILD})   " -ForegroundColor Cyan
     Write-Host "                                                        " -ForegroundColor Cyan
     Write-Host "      Your AI assistant, installed in minutes.           " -ForegroundColor Cyan
     Write-Host "                                                        " -ForegroundColor Cyan
@@ -963,59 +964,19 @@ function Install-Shortcuts {
 # ============================================
 
 function Test-PreflightChecks {
-    # Use Continue locally — PS 5.1 can promote errors past function try/catch when script-level is Stop
-    $ErrorActionPreference = "Continue"
     Write-Step "0/11" "Running pre-flight checks..."
-    $failed = $false
 
     # Check Windows version (need 10+)
     $winVer = [System.Environment]::OSVersion.Version
     if ($winVer.Major -lt 10) {
         Write-Fail "Windows 10 or later required (detected: Windows $($winVer.Major).$($winVer.Minor))"
-        $failed = $true
-    } else {
-        Write-OK "Windows version: $($winVer.Major).$($winVer.Minor).$(${winVer}.Build)"
-    }
-
-    # Check disk space (need 2GB free on system drive)
-    try {
-        $sysDrive = $env:SystemDrive
-        $disk = Get-PSDrive -Name $sysDrive.TrimEnd(':') -ErrorAction Stop
-        $freeGB = [math]::Round($disk.Free / 1GB, 2)
-        if ($freeGB -lt 2) {
-            Write-Fail "Insufficient disk space: ${freeGB}GB free (need 2GB+)"
-            $failed = $true
-        } else {
-            Write-OK "Disk space: ${freeGB}GB free"
-        }
-    } catch {
-        Write-Warn "Could not check disk space: $($_.Exception.Message)"
-    }
-
-    # Check internet connectivity
-    $connected = $false
-    foreach ($testUrl in @("https://www.google.com", "https://github.com", "https://nodejs.org")) {
-        try {
-            $null = Invoke-WebRequest -Uri $testUrl -Method Head -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
-            $connected = $true
-            break
-        } catch {}
-    }
-    if (-not $connected) {
-        Write-Fail "No internet connection detected. Check network/proxy settings."
-        Write-Host "    If behind a corporate proxy, you may need to configure npm/git proxy settings." -ForegroundColor Gray
-        $failed = $true
-    } else {
-        Write-OK "Internet connectivity verified"
-    }
-
-    if ($failed) {
-        Write-Host ""
-        Write-Fail "Pre-flight checks failed. Fix the issues above and try again."
         Read-Host "  Press Enter to exit"
         exit 1
     }
+    Write-OK "Windows version: $($winVer.Major).$($winVer.Minor).$($winVer.Build)"
 
+    # Disk space and internet are checked implicitly —
+    # git clone / npm install will fail with clear messages if either is insufficient.
     Write-OK "Pre-flight checks passed"
 }
 

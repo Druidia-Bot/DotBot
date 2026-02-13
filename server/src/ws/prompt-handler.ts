@@ -126,7 +126,7 @@ export async function handlePrompt(
   // message. This avoids running the receptionist/pipeline/skill-matching again —
   // the original tool loop resumes and continues streaming the next step.
   const blockedResult = v2OrchestratorResults.get(userId);
-  if (blockedResult) {
+  if (blockedResult && blockedResult.waitResolvers) {
     const blockedAgents = blockedResult.router.getActiveAgents().filter(a => a.status === "blocked");
     if (blockedAgents.length > 0 && blockedResult.waitResolvers.size > 0) {
       const targetAgent = blockedAgents[0]; // Resolve the first blocked agent
