@@ -1238,9 +1238,8 @@ try { $taskExists = [bool](Get-ScheduledTask -TaskName "DotBot" -ErrorAction Sil
 
 $agentLogFile = Join-Path $BOT_DIR "agent.log"
 
-# Delete stale web auth token BEFORE starting agent, so we can detect when a fresh one appears
-$webAuthTokenFile = Join-Path $BOT_DIR "web-auth-token"
-if (Test-Path $webAuthTokenFile) { Remove-Item -Force $webAuthTokenFile }
+# The agent writes ~/.bot/device.json after successful registration
+$deviceJsonFile = Join-Path $BOT_DIR "device.json"
 
 if ($taskExists) {
     Write-Host "  Starting DotBot service (hidden)..." -ForegroundColor Green
@@ -1273,7 +1272,7 @@ while ((Get-Date) -lt $deadline) {
         $lastProgress = (Get-Date)
     }
 
-    if (Test-Path $webAuthTokenFile) {
+    if (Test-Path $deviceJsonFile) {
         $registered = $true
         break
     }
