@@ -202,8 +202,9 @@ PUBLIC_URL=https://$DOMAIN
 # Premium tools (optional)
 # SCRAPING_DOG_API_KEY=
 
-# Database location (default: ~/.bot/server-data/)
-# DB_DIR=/home/dotbot/.bot/server-data
+# Database location (MUST be set explicitly — service runs as 'dotbot' user
+# but admin scripts may run as root, causing different ~/.bot paths)
+DB_DIR=/home/dotbot/.bot/server-data
 ENVFILE
 
   chown "$BOT_USER:$BOT_USER" "$DEPLOY_DIR/.env"
