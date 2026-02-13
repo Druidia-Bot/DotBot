@@ -259,6 +259,7 @@ export function createWSServer(options: {
 
   wss.on("connection", (ws) => {
     let deviceId: string | null = null;
+    let connectionKey: string | null = null;
     
     log.debug("New connection");
 
@@ -266,19 +267,21 @@ export function createWSServer(options: {
       try {
         const message: WSMessage = JSON.parse(data.toString());
 
-        if (deviceId) {
-          const dev = devices.get(deviceId);
+        if (connectionKey) {
+          const dev = devices.get(connectionKey);
           if (dev) dev.session.lastActiveAt = new Date();
         }
         
         switch (message.type) {
           case "register_device":
             if (deviceId) { sendError(ws, "Already authenticated"); break; }
-            deviceId = handleRegisterDevice(ws, message as WSRegisterDeviceMessage);
+            connectionKey = handleRegisterDevice(ws, message as WSRegisterDeviceMessage);
+            deviceId = connectionKey; // registration is always agent
             break;
           case "auth":
             if (deviceId) { sendError(ws, "Already authenticated"); break; }
-            deviceId = handleAuth(ws, message as WSAuthMessage);
+            connectionKey = handleAuth(ws, message as WSAuthMessage);
+            deviceId = connectionKey?.replace(/:browser$/, '') || null;
             break;
           case "prompt":
             if (!deviceId) { sendError(ws, "Not authenticated"); return; }
@@ -361,10 +364,10 @@ export function createWSServer(options: {
     });
 
     ws.on("close", () => {
-      if (deviceId) {
-        const device = devices.get(deviceId);
-        // Only act if THIS WebSocket is still the current one for this deviceId.
-        // If the agent reconnected, devices.get(deviceId) returns the NEW connection
+      if (connectionKey) {
+        const device = devices.get(connectionKey);
+        // Only act if THIS WebSocket is still the current one for this connection.
+        // If the agent reconnected, devices.get(connectionKey) returns the NEW connection
         // and we must NOT mark it disconnected or cancel its tasks.
         if (device && device.ws === ws) {
           const userId = device.session.userId;
@@ -377,7 +380,7 @@ export function createWSServer(options: {
           if (isLocalAgent) {
             log.info("Local-agent disconnect: V2 uses session-based agents, no cancellation needed", { deviceId });
           }
-          cleanupResolveTracking(deviceId);
+          if (deviceId) cleanupResolveTracking(deviceId);
 
           // Clean up V2 orchestrator state if this was the user's last device
           if (!hasAnyConnectedDevices(userId)) {
@@ -385,7 +388,7 @@ export function createWSServer(options: {
             cleanupUserSession(userId);
           }
         } else if (device) {
-          log.debug(`Stale WS closed for ${deviceId} — device already reconnected, ignoring`);
+          log.debug(`Stale WS closed for ${connectionKey} — device already reconnected, ignoring`);
         }
       }
     });
@@ -556,10 +559,15 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
     });
   }
 
-  // If this device was already connected (reconnect), close the old WS gracefully
-  const existingDevice = devices.get(deviceId);
+  // Determine if this is an agent (has "memory" capability) or a browser client
+  const isAgent = capabilities.includes("memory");
+  const connectionKey = isAgent ? deviceId : `${deviceId}:browser`;
+
+  // If this connection type was already connected (reconnect), close the old WS gracefully
+  // Agent reconnects only kick agents; browser reconnects only kick browsers
+  const existingDevice = devices.get(connectionKey);
   if (existingDevice && existingDevice.ws !== ws) {
-    log.info(`Device ${deviceId} reconnecting — closing stale WebSocket`);
+    log.info(`Device ${connectionKey} reconnecting — closing stale WebSocket`);
     try { existingDevice.ws.close(); } catch { /* already closed */ }
   }
 
@@ -576,7 +584,7 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
     status: "connected",
   };
 
-  devices.set(deviceId, {
+  devices.set(connectionKey, {
     ws,
     session,
     pendingCommands: new Map(),
@@ -589,7 +597,7 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
     pendingToolRequests: new Map(),
   });
 
-  log.info(`Device authenticated: ${deviceName || authResult.device!.label} (${deviceId})`);
+  log.info(`Device authenticated: ${deviceName || authResult.device!.label} (${connectionKey})`);
 
   sendMessage(ws, {
     type: "auth",
@@ -598,18 +606,21 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
     payload: {
       success: true,
       sessionId: session.id,
+      deviceId,
       provider: serverProvider,
       model: serverModel,
     },
   });
 
-  // V2: Check for incomplete agent workspaces (async, non-blocking)
-  checkIncompleteWorkspaces(deviceId, session.userId).catch(() => {});
+  // V2: Check for incomplete agent workspaces (async, non-blocking) — agents only
+  if (isAgent) {
+    checkIncompleteWorkspaces(deviceId, session.userId).catch(() => {});
+  }
 
   // Part 18: Notify about recurring tasks that ran while device was offline
   notifyOfflineRecurringResults(session.userId, session.connectedAt).catch(() => {});
 
-  return deviceId;
+  return connectionKey;
 }
 
 /**
