@@ -10,7 +10,7 @@ An AI assistant framework that understands how people actually communicate — w
 
 - [Getting Started](#getting-started)
 - [What an AI Framework Should Be](#what-an-ai-framework-should-be)
-- [Why DotBot? (vs. OpenClaw and Others)](#why-dotbot-vs-openclaw-and-others)
+- [Why DotBot? (vs. OpenClaw and Others)](#why-dotbot)
 - [How It Works](#how-it-works)
 - [Why This Architecture Matters](#why-this-architecture-matters)
   - [Real Data Ownership](#real-data-ownership)
@@ -162,23 +162,20 @@ This is **conversation threading at the architectural level**. Each task gets it
 
 ---
 
-## Why DotBot? (vs. OpenClaw and Others)
+## Why DotBot?
 
 As an **open-source agent framework**, DotBot is designed for flexibility and scale — not just single-user setups.
 
 ### Multi-Device Architecture
 
-**OpenClaw:** Uses a paired node model — a host Gateway device + satellite devices connected via Bridge. Commands route through `node.invoke()`, requiring devices to be paired and on the same network.
-
 **DotBot:** Cloud server routes to **any connected device**, anywhere:
 - **Browser** (web UI)
-- **Discord** (from any device with Discord installed)
-- **Multiple local agents** (desktop, laptop, work PC — all the same user)
+- **Multiple local agents** (desktop, laptop, work PC — all with their own memory)
 
 **Why this matters:**
 - ✅ **No network constraints** — devices don't need to be on the same LAN
 - ✅ **Cross-device workflows** — initiate from Discord on your phone → executes on your PC at home
-- ✅ **Zero pairing** — invite token auto-registers devices, no manual node setup
+- ✅ **Zero pairing** — invite token auto-registers devices.
 - ✅ **Server-orchestrated routing** — cloud server intelligently routes tasks to the right execution target
 - ✅ **Multi-tenant by design** — one server supports multiple users, each with their own agent infrastructure
 
@@ -239,7 +236,7 @@ This isn't a privacy promise — it's architectural fact. The server was never d
 
 ### Security by Architecture, Not Prompts
 
-**API keys are invisible to the LLM.** They live in the server's `process.env` and are used only in HTTP Authorization headers. They never appear in prompts, tool results, or WebSocket messages.
+**LLM and Core API keys are invisible to the LLM.** They live in the server's `process.env` and are used only in HTTP Authorization headers. They never appear in prompts, tool results, or WebSocket messages.
 
 Even if a prompt injection tricks the LLM into running:
 ```bash
@@ -268,7 +265,7 @@ Users don't pick models. The system examines each task — estimated tokens, fil
 | **Deep Context** | Gemini 3 Pro | 1M token context (video, PDFs, huge codebases) |
 | **Architect** | Claude Opus 4.6 | Complex planning, design decisions |
 | **GUI Fast** | Gemini 2.5 Flash | Low-latency automation (screen reading, clicking) |
-| **Local** | Qwen 2.5 0.5B | Offline fallback (runs on user's machine) |
+| **Local** | Qwen 2.5 0.5B | fast lightweight decision making |
 
 If a provider is down, automatic fallback chains kick in. Users never configure temperature, manage token budgets, or manually switch models. Different tasks get different strengths automatically.
 
@@ -314,9 +311,9 @@ Users can create personas with domain-specific expertise by adding **knowledge b
 
 When a persona handles a task, its knowledge index is automatically injected into context. This enables deep domain expertise that persists across sessions and grows over time.
 
-General knowledge in `~/.bot/knowledge/` is available to all personas. Persona-specific knowledge is scoped — only loaded when that persona is active.
+General knowledge in `~/.bot/knowledge/` is available to all personas. Persona-specific knowledge is scoped — only loaded when that persona is active. **Currently personas are auto selected** based on the task type, but this MIGHT be enhanced to allow manual selection in the future.
 
-**V2 dynamic persona generation (Feb 2026):**
+**Dynamic persona generation:**
 
 The receptionist doesn't pick a static "sysadmin" prompt — it **writes** a custom system prompt per task: *"You're helping debug a PostgreSQL connection timeout. Here are the 8 relevant tools..."* Then spawns an agent with only those tools, an isolated conversation, and a persistent workspace.
 
@@ -358,7 +355,7 @@ This enables **multi-model consensus** and **specialized expertise** beyond what
 
 **150+ specific tools** instead of a handful of general ones. `create_file(path, content)` is more reliable than `bash("echo '...' > file.txt")` because the LLM doesn't have to figure out shell escaping, quoting, redirect syntax, or platform differences.
 
-The tradeoff is intentional: more tools = larger system prompt. But **accuracy and repeatability matter more than latency**. A tool that works every time is worth more than a fast one that works 80% of the time.
+The tradeoff is intentional: more tools = larger system prompt. But **accuracy and repeatability matter more than latency**. A tool that works every time is worth more than a fast one that works 70% of the time.
 
 Tools are first-class:
 - **Core tools** — built-in (filesystem, shell, http, browser, search)
@@ -379,7 +376,6 @@ The server orchestrates intelligence (LLM routing, persona selection, task decom
 
 This enables:
 - **Team deployments** — one company server, each employee has their own agent
-- **Customer deployments** — SaaS providers can run DotBot infrastructure for customers
 - **Enterprise scaling** — horizontal server scaling (stateless) + per-user on-device execution
 
 Users connect via:

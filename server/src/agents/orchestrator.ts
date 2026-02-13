@@ -99,6 +99,9 @@ export interface OrchestratorResult {
   workspaces: Map<string, import("./workspace.js").AgentWorkspace>;
   /** TaskJson state for each agent (enables real-time updates without re-reading from client) */
   taskJsonState: Map<string, import("./workspace.js").TaskJson>;
+  /** Wait resolvers for blocked agents — call resolver(message) to unblock an agent
+   *  that called agent.wait_for_user. The promise in the tool loop resolves with the message. */
+  waitResolvers: Map<string, (message: string) => void>;
 }
 
 // ============================================
@@ -164,11 +167,12 @@ export async function executeWithSpawnedAgents(
     }
   }
 
-  // Per-agent injection queues, workspaces, task state, and abort controllers for supervisor intervention
+  // Per-agent injection queues, workspaces, task state, abort controllers, and wait resolvers
   const agentInjectionQueues = new Map<string, string[]>();
   const agentWorkspaces = new Map<string, AgentWorkspace>();
   const agentTaskJsonState = new Map<string, TaskJson>();
   const agentAbortControllers = new Map<string, AbortController>();
+  const agentWaitResolvers = new Map<string, (message: string) => void>();
   for (const agent of agents) {
     agentInjectionQueues.set(agent.id, []);
     agentAbortControllers.set(agent.id, new AbortController());
@@ -225,6 +229,7 @@ export async function executeWithSpawnedAgents(
     injectionQueues: agentInjectionQueues,
     workspaces: agentWorkspaces,
     taskJsonState: agentTaskJsonState,
+    waitResolvers: agentWaitResolvers,
   };
 
   // Notify the caller that agents are spawned and injection infrastructure is live.
@@ -363,7 +368,7 @@ export async function executeWithSpawnedAgents(
     try {
       const injectionQueue = agentInjectionQueues.get(agent.id);
       const abortController = agentAbortControllers.get(agent.id)!;
-      let result = await executeAgent(llm, options, request, agent, injectionQueue, abortController, workspace, agentJournals.get(agent.id));
+      let result = await executeAgent(llm, options, request, agent, injectionQueue, abortController, workspace, agentJournals.get(agent.id), agentWaitResolvers);
 
       // Handle escalation — agent realized it needs different tools/approach
       if (result.escalated) {
@@ -641,7 +646,8 @@ async function executeAgent(
   injectionQueue?: string[],
   abortController?: AbortController,
   workspace?: AgentWorkspace | null,
-  journal?: ExecutionJournalEntry[]
+  journal?: ExecutionJournalEntry[],
+  waitResolvers?: Map<string, (message: string) => void>
 ): Promise<{ response: string; workLog: string; escalated?: boolean; escalationReason?: string; neededToolCategories?: string[]; toolCallsMade?: { tool: string; args: Record<string, any>; result: string; success: boolean }[]; conversationLog?: Array<{ role: string; content: string; toolCalls?: any[] }> }> {
   // Build an ad-hoc persona from the agent's dynamic config
   const persona = {
@@ -847,19 +853,44 @@ async function executeAgent(
     },
   };
 
-  const onWaitForUser = async (reason: string, resumeHint?: string, timeoutMs?: number): Promise<string> => {
-    log.info("Agent waiting for user input", {
+  const onWaitForUser = (reason: string, resumeHint?: string, timeoutMs?: number): Promise<string> => {
+    log.info("Agent waiting for user input — blocking until user responds", {
       agentId: agent.id,
       reason,
       resumeHint,
-      timeoutMs
+      timeoutMs,
     });
 
-    // Mark agent as blocked — it will auto-resume when user sends a relevant message
+    // Mark agent as blocked — the pipeline and tool loop pause here
     agent.block();
 
-    // Return success message to LLM, instructing it to inform the user
-    return `[TASK PAUSED] You have successfully paused this task. Now respond to the user explaining what you need from them: "${reason}". The task will automatically resume when they send a message matching: "${resumeHint || reason}". Do not call any more tools — just send your response to the user and exit.`;
+    return new Promise<string>((resolve, reject) => {
+      // Default timeout: 60 minutes (onboarding can be slow)
+      const effectiveTimeout = timeoutMs || 60 * 60 * 1000;
+      const timer = setTimeout(() => {
+        if (waitResolvers?.has(agent.id)) {
+          waitResolvers.delete(agent.id);
+          log.warn("Agent wait_for_user timed out", { agentId: agent.id, reason, timeoutMs: effectiveTimeout });
+          reject(new Error(`Timed out waiting for user response (${Math.round(effectiveTimeout / 60_000)}m): ${reason}`));
+        }
+      }, effectiveTimeout);
+
+      // Store the resolver — prompt-handler calls this when the user responds
+      waitResolvers?.set(agent.id, (userMessage: string) => {
+        clearTimeout(timer);
+        waitResolvers.delete(agent.id);
+        agent.start(); // Back to running
+        log.info("Agent wait_for_user resolved by user message", { agentId: agent.id, messageLength: userMessage.length });
+        resolve(userMessage);
+      });
+
+      // If no waitResolvers map available, fall back to immediate resolution (shouldn't happen)
+      if (!waitResolvers) {
+        clearTimeout(timer);
+        log.warn("No waitResolvers map — falling back to immediate resolution", { agentId: agent.id });
+        resolve(`[No wait mechanism available] User needs to: ${reason}`);
+      }
+    });
   };
 
   // Mark that the tool loop is about to start — supervisor uses this to avoid false-positive aborts

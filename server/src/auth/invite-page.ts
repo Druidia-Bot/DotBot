@@ -197,6 +197,14 @@ Write-Host "  Starting installation with pre-filled server details..." -Foregrou
 Write-Host ""
 
 powershell -ExecutionPolicy Bypass -File $installScript -Mode agent -ServerUrl "${wsUrl}" -InviteToken "${token}" -RepoUrl "${repoUrl}"
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "  [X] Installer exited with code $LASTEXITCODE" -ForegroundColor Red
+    Write-Host "  If the installer window closed too quickly, run it manually:" -ForegroundColor Yellow
+    Write-Host "    powershell -ExecutionPolicy Bypass -File $installScript -Mode agent" -ForegroundColor White
+    Write-Host ""
+}
 `;
 }
 

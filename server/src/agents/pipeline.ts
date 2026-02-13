@@ -163,9 +163,12 @@ export async function executeV2Pipeline(
   // Step 1: Short path — skip everything for greetings, acks, farewells
   // Pass active agent count so short path can skip ambiguous messages that might be follow-ups
   const existingAgentCount = messageRouter.getAgents().length;
-  log.info("V2 pipeline: checking short path", { existingAgentCount });
+  const hasBlockedAgents = previousOrchestratorResult
+    ? previousOrchestratorResult.waitResolvers.size > 0
+    : false;
+  log.info("V2 pipeline: checking short path", { existingAgentCount, hasBlockedAgents });
 
-  const shortResult = await tryShortPath(llm, options, request, existingAgentCount);
+  const shortResult = await tryShortPath(llm, options, request, existingAgentCount, hasBlockedAgents);
   if (shortResult.isShortPath && shortResult.response) {
     log.info("V2 pipeline: short path hit", { reason: shortResult.reason });
 
@@ -211,6 +214,28 @@ export async function executeV2Pipeline(
 
       // V2 INJECTION: If agent is running or blocked (paused), inject message instead of spawning continuation
       if ((matchedAgent.status === "running" || matchedAgent.status === "blocked") && previousOrchestratorResult) {
+        // For blocked agents: resolve the wait_for_user promise directly
+        // (the prompt-handler usually catches this first, but this is a safety net)
+        if (matchedAgent.status === "blocked") {
+          const waitResolver = previousOrchestratorResult.waitResolvers.get(matchedAgent.id);
+          if (waitResolver) {
+            log.info("V2 pipeline: resolving blocked agent via wait resolver", {
+              agentId: matchedAgent.id,
+              topic: matchedAgent.topic,
+            });
+            waitResolver(request.prompt);
+            return {
+              success: true,
+              response: "", // Empty — the original pipeline streams the response
+              classification: "CONVERSATIONAL",
+              threadIds: [],
+              keyPoints: [],
+              router: messageRouter,
+              orchestratorResult: previousOrchestratorResult,
+            };
+          }
+        }
+
         const injectionQueue = previousOrchestratorResult.injectionQueues.get(matchedAgent.id);
         const workspace = previousOrchestratorResult.workspaces.get(matchedAgent.id);
         const taskJson = previousOrchestratorResult.taskJsonState.get(matchedAgent.id);

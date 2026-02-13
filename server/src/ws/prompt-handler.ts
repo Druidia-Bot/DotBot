@@ -121,6 +121,34 @@ export async function handlePrompt(
     return;
   }
 
+  // ── Check for blocked agents waiting for user input ──
+  // If an agent is blocked on wait_for_user, resolve it directly with the user's
+  // message. This avoids running the receptionist/pipeline/skill-matching again —
+  // the original tool loop resumes and continues streaming the next step.
+  const blockedResult = v2OrchestratorResults.get(userId);
+  if (blockedResult) {
+    const blockedAgents = blockedResult.router.getActiveAgents().filter(a => a.status === "blocked");
+    if (blockedAgents.length > 0 && blockedResult.waitResolvers.size > 0) {
+      const targetAgent = blockedAgents[0]; // Resolve the first blocked agent
+      const resolver = blockedResult.waitResolvers.get(targetAgent.id);
+      if (resolver) {
+        log.info("Resuming blocked agent with user response", {
+          agentId: targetAgent.id,
+          topic: targetAgent.topic,
+          promptLength: prompt.length,
+        });
+        resolver(prompt);
+        // Don't send a response — the original pipeline's tool loop will stream content
+        tracker.markResponseSent(message.id);
+
+        // Extend the ORIGINAL pipeline's tracker timeout since we know it's still alive
+        // (the first handlePrompt call is still awaiting executeV2Pipeline)
+        tracker.extendTimeout(message.id, 600_000);
+        return;
+      }
+    }
+  }
+
   // ── V2 Pipeline (V1 removed) ──
   try {
     // Build enhanced request with context
@@ -218,6 +246,11 @@ export async function handlePrompt(
       (orchestratorResult) => {
         v2OrchestratorResults.set(userId, orchestratorResult);
         log.info("Orchestrator result registered eagerly", { userId, agents: orchestratorResult.router.getAgents().length });
+
+        // Extend tracker timeout generously — agents may block on wait_for_user
+        // for extended periods (e.g. onboarding steps where the user needs to
+        // create accounts, enter credentials, etc.)
+        tracker.extendTimeout(message.id, 3_600_000); // 1 hour
       },
     );
 
