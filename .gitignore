@@ -62,5 +62,8 @@ test-output.txt
 # DotBot local data (lives on user's machine, not in repo)
 .dotbot/
 
+# Generated per-machine client config (written by installer/launcher)
+client/config.js
+
 # Claude Code artifacts (worktrees, local settings)
 .claude/

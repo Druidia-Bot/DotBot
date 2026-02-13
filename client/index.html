@@ -206,13 +206,16 @@
     </div>
   </div>
 
+  <!-- Config file written by installer/launcher with server URL and credentials -->
+  <script src="config.js" onerror=""></script>
   <script>
-    // Resolve server URL and device credentials from hash fragment or query params.
-    // Hash fragments (#ws=...&deviceId=...&secret=...) are preferred for file:// protocol because
-    // Windows Start-Process/ShellExecute strips query params (?) from file:// URLs.
+    // Resolve server URL and device credentials.
+    // Priority: 1) URL hash/query params  2) config.js (window.DOTBOT_CONFIG)  3) localStorage  4) localhost default
+    // config.js is the most reliable method for file:// protocol because Windows
+    // Start-Process/ShellExecute can strip hash fragments from file:// URLs.
     // Device credentials are NOT stored in localStorage to prevent XSS exfiltration.
     function resolveConfig() {
-      // Check hash fragment first (works with file:// protocol)
+      // Check hash fragment (works with file:// on some systems)
       const hashParams = new URLSearchParams(window.location.hash.slice(1));
       // Fall back to query params (works with http:// protocol)
       const queryParams = new URLSearchParams(window.location.search);
@@ -221,8 +224,12 @@
       const paramDeviceId = hashParams.get('deviceId') || queryParams.get('deviceId');
       const paramSecret = hashParams.get('secret') || queryParams.get('secret');
 
+      // config.js sets window.DOTBOT_CONFIG = { wsUrl, deviceId, deviceSecret }
+      const fileConfig = window.DOTBOT_CONFIG || {};
+
       // Store only the WebSocket URL (not credentials)
-      if (paramUrl) localStorage.setItem('dotbot_ws_url', paramUrl);
+      const resolvedUrl = paramUrl || fileConfig.wsUrl;
+      if (resolvedUrl) localStorage.setItem('dotbot_ws_url', resolvedUrl);
 
       // Clear URL to remove credentials from address bar and browser history
       if (paramUrl || paramDeviceId || paramSecret) {
@@ -233,9 +240,9 @@
       }
 
       return {
-        url: paramUrl || localStorage.getItem('dotbot_ws_url') || 'ws://localhost:3001',
-        deviceId: paramDeviceId || '',
-        deviceSecret: paramSecret || '',
+        url: resolvedUrl || localStorage.getItem('dotbot_ws_url') || 'ws://localhost:3001',
+        deviceId: paramDeviceId || fileConfig.deviceId || '',
+        deviceSecret: paramSecret || fileConfig.deviceSecret || '',
       };
     }
     const config = resolveConfig();
