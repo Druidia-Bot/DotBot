@@ -49,8 +49,21 @@ param(
     [string]$InstallDir
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 $ProgressPreference = "SilentlyContinue"  # Speeds up Invoke-WebRequest
+
+# Safety net: catch any unhandled error, display it, and pause so the user can see it
+trap {
+    Write-Host ""
+    Write-Host "  ============================================" -ForegroundColor Red
+    Write-Host "  [X] UNEXPECTED ERROR" -ForegroundColor Red
+    Write-Host "  ============================================" -ForegroundColor Red
+    Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "  At: $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)" -ForegroundColor DarkGray
+    Write-Host ""
+    Read-Host "  Press Enter to close"
+    break
+}
 
 # ============================================
 # SELF-ELEVATE TO ADMINISTRATOR
@@ -69,7 +82,8 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     }
 
     # Build argument list preserving any passed parameters
-    $argList = @("-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`"")
+    # -NoExit keeps the elevated window open so the user can see errors
+    $argList = @("-ExecutionPolicy", "Bypass", "-NoExit", "-File", "`"$scriptPath`"")
     if ($Mode)        { $argList += "-Mode",        $Mode }
     if ($ServerUrl)   { $argList += "-ServerUrl",   $ServerUrl }
     if ($InviteToken) { $argList += "-InviteToken", $InviteToken }
