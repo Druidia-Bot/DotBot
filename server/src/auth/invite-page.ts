@@ -196,7 +196,7 @@ Write-Host "  [OK] Installer downloaded" -ForegroundColor Green
 Write-Host "  Starting installation with pre-filled server details..." -ForegroundColor Gray
 Write-Host ""
 
-& $installScript -Mode agent -ServerUrl "${wsUrl}" -InviteToken "${token}" -RepoUrl "${repoUrl}"
+powershell -ExecutionPolicy Bypass -File $installScript -Mode agent -ServerUrl "${wsUrl}" -InviteToken "${token}" -RepoUrl "${repoUrl}"
 `;
 }
 
