@@ -35,7 +35,9 @@ cd "$DEPLOY_DIR"
 # Pull latest if git repo
 if [ -d ".git" ]; then
   echo "Pulling latest code..."
+  sudo -u "$BOT_USER" git reset --hard HEAD
   sudo -u "$BOT_USER" git pull
+  chmod +x deploy/*.sh local-agent/scripts/*.sh run-dev.sh install.sh 2>/dev/null || true
   log "Code updated"
 else
   warn "No git repo — assuming you rsynced the code already"
