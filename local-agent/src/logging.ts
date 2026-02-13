@@ -123,7 +123,15 @@ export function initLocalAgentLogging(options: LoggingOptions = {}): Logger {
  */
 export function getLocalLogger(): Logger {
   if (!logger) {
-    throw new Error("Logger not initialized. Call initLocalAgentLogging() first.");
+    // Return a minimal console-based logger instead of throwing.
+    // Async callbacks (e.g. Express listen) can fire before initLocalAgentLogging() runs.
+    return {
+      debug: (...args: unknown[]) => console.debug("[pre-init]", ...args),
+      info: (...args: unknown[]) => console.info("[pre-init]", ...args),
+      warn: (...args: unknown[]) => console.warn("[pre-init]", ...args),
+      error: (...args: unknown[]) => console.error("[pre-init]", ...args),
+      child: () => getLocalLogger() as unknown as ILogger,
+    } as unknown as Logger;
   }
   return logger;
 }
