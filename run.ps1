@@ -73,24 +73,13 @@ if (-not $Root -or -not (Test-Path (Join-Path $Root "package.json"))) {
     }
 }
 
-# Migrate from old install location (C:\Program Files\.bot → C:\.bot)
+# Migrate from old install location (C:\Program Files\.bot -> C:\.bot)
 $OldInstallDir = Join-Path $env:ProgramFiles ".bot"
 if ((Test-Path (Join-Path $OldInstallDir 'package.json')) -and -not (Test-Path (Join-Path 'C:\.bot' 'package.json'))) {
-    Write-Host "  Migrating install from '$OldInstallDir' to 'C:\.bot'..."  -ForegroundColor Yellow
+    Write-Host "  Migrating install from '$OldInstallDir' to 'C:\.bot'..." -ForegroundColor Yellow
     try {
-        # Stop any running DotBot processes first
-        Get-Process -Name "node" -ErrorAction SilentlyContinue | ForEach-Object {
-            try {
-                $cmdLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction SilentlyContinue).CommandLine
-                if ($cmdLine -and $cmdLine -match '[Dd]ot[Bb]ot|\.bot') {
-                    Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
-                }
-            } catch {}
-        }
-        Start-Sleep -Seconds 1
-
-        # Move the directory
-        Move-Item -Path $OldInstallDir -Destination 'C:\.bot' -Force
+        # Copy entire directory to new location (can't Move-Item while running from inside it)
+        Copy-Item -Path $OldInstallDir -Destination 'C:\.bot' -Recurse -Force
         $Root = 'C:\.bot'
 
         # Update scheduled task if it exists
@@ -118,12 +107,34 @@ if ((Test-Path (Join-Path $OldInstallDir 'package.json')) -and -not (Test-Path (
             }
         } catch {}
 
-        Write-Host '  [OK] Migrated to C:\.bot' -ForegroundColor Green
+        Write-Host '  [OK] Copied to C:\.bot' -ForegroundColor Green
+
+        # Try to delete old directory; if files are locked, schedule deletion on next boot
+        try {
+            Remove-Item -Path $OldInstallDir -Recurse -Force -ErrorAction Stop
+            Write-Host '  [OK] Removed old install from Program Files' -ForegroundColor Green
+        } catch {
+            # Schedule deletion on next reboot via cmd's rd (runs before anything locks files)
+            $delAction = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c rd /s /q `"$OldInstallDir`""
+            $delTrigger = New-ScheduledTaskTrigger -AtStartup
+            $delSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -StartWhenAvailable
+            try {
+                Register-ScheduledTask -TaskName "DotBot-Cleanup" -Action $delAction -Trigger $delTrigger -Settings $delSettings -RunLevel Highest -Force | Out-Null
+                Write-Host '  [!] Old folder locked - will be deleted on next reboot' -ForegroundColor Yellow
+            } catch {
+                Write-Host "  [!] Could not remove old folder: $OldInstallDir" -ForegroundColor Yellow
+                Write-Host '      Delete it manually after reboot.' -ForegroundColor Gray
+            }
+        }
     } catch {
         Write-Host "  [X] Migration failed: $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "      DotBot will continue from the old location." -ForegroundColor Gray
         $Root = $OldInstallDir
     }
+}
+# Clean up the one-shot cleanup task if it exists and the old dir is gone
+if (-not (Test-Path $OldInstallDir)) {
+    try { Unregister-ScheduledTask -TaskName "DotBot-Cleanup" -Confirm:$false -ErrorAction SilentlyContinue } catch {}
 }
 
 $LauncherLog = Join-Path $BotDir "launcher.log"
