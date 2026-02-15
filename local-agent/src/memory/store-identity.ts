@@ -62,15 +62,7 @@ function createDefaultIdentity(): AgentIdentity {
       "Revise the plan based on incremental test results — don't repeat failed approaches without understanding why they failed",
     ],
     properties: {},
-    importiantPaths: {
-      dotbotHome: `${DOTBOT_DIR} | Root of all DotBot data — memory, skills, tasks, config`,
-      agentWorkspaces: `${path.join(DOTBOT_DIR, "agent-workspaces")} | Where spawned agents store their workspace files (task.json, research/, output/)`,
-      memory: `${path.join(DOTBOT_DIR, "memory")} | Mental models, threads, schemas, and the memory index`,
-      memoryModels: `${path.join(DOTBOT_DIR, "memory", "models")} | Hot (active) mental model JSON files`,
-      deepMemory: `${path.join(DOTBOT_DIR, "memory", "deep")} | Demoted/archived mental models (cold storage)`,
-      skills: `${path.join(DOTBOT_DIR, "skills")} | Reusable skill definitions (.md files)`,
-      sourceCode: `${process.env.DOTBOT_INSTALL_DIR || "C:\\Program Files\\.bot"} | DotBot source code repository (server + local-agent + client)`,
-    },
+    importiantPaths: buildExpectedPaths(),
     humanInstructions: [],
     communicationStyle: [
       "concise",
@@ -117,6 +109,51 @@ export async function bootstrapIdentity(): Promise<boolean> {
   await writeJson(IDENTITY_PATH, identity);
   console.log("[Identity] Created default identity at ~/.bot/me.json");
   return true;
+}
+
+/**
+ * Reconcile importiantPaths on every startup.
+ * Ensures paths and descriptions match the current runtime,
+ * even if me.json was created on a different machine or install dir.
+ */
+export async function reconcileIdentityPaths(): Promise<boolean> {
+  const identity = await loadIdentity();
+  if (!identity) return false;
+
+  const expected = buildExpectedPaths();
+  let changed = false;
+
+  // Only reconcile the known system keys — leave user-added paths untouched
+  for (const [key, value] of Object.entries(expected)) {
+    if (identity.importiantPaths[key] !== value) {
+      identity.importiantPaths[key] = value;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    identity.version++;
+    await saveIdentity(identity);
+    console.log("[Identity] Updated importiantPaths in me.json to match current runtime");
+  }
+
+  return changed;
+}
+
+/**
+ * Build the canonical importiantPaths from current runtime values.
+ * Single source of truth — used by both createDefaultIdentity and reconcile.
+ */
+function buildExpectedPaths(): Record<string, string> {
+  return {
+    dotbotHome: `${DOTBOT_DIR} | Root of all DotBot data — memory, skills, tasks, config`,
+    agentWorkspaces: `${path.join(DOTBOT_DIR, "agent-workspaces")} | Where spawned agents store their workspace files (task.json, research/, output/)`,
+    memory: `${path.join(DOTBOT_DIR, "memory")} | Mental models, threads, schemas, and the memory index`,
+    memoryModels: `${path.join(DOTBOT_DIR, "memory", "models")} | Hot (active) mental model JSON files`,
+    deepMemory: `${path.join(DOTBOT_DIR, "memory", "deep")} | Demoted/archived mental models (cold storage)`,
+    skills: `${path.join(DOTBOT_DIR, "skills")} | Reusable skill definitions (.md files)`,
+    sourceCode: `${process.env.DOTBOT_INSTALL_DIR || "C:\\Program Files\\.bot"} | DotBot source code repository (server + local-agent + client)`,
+  };
 }
 
 // ============================================

@@ -68,8 +68,9 @@ Server: ${SERVER_URL}
     // Bootstrap default council + personas (Skill Building Team)
     await memory.bootstrapInitialData();
 
-    // Bootstrap agent identity (me.json) if it doesn't exist
+    // Bootstrap agent identity (me.json) if it doesn't exist, then reconcile paths
     await memory.bootstrapIdentity();
+    await memory.reconcileIdentityPaths();
 
     // Probe local LLM (non-blocking — just checks if model is downloaded)
     try {
