@@ -38,7 +38,7 @@ export async function summarizeAndSave(
   }
 
   try {
-    const { resolveModelAndClient } = await import("#llm/resolve.js");
+    const { resolveModelAndClient } = await import("#llm/selection/resolve.js");
     const { selectedModel, client } = await resolveModelAndClient(llmClient, {
       explicitRole: "intake",
     });

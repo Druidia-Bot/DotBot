@@ -58,7 +58,7 @@ export function registerIngestUploadRoute(app: Hono): void {
     }
 
     // Get Gemini API key
-    const { getApiKeyForProvider } = await import("#llm/model-selector.js");
+    const { getApiKeyForProvider } = await import("#llm/selection/model-selector.js");
     const geminiKey = getApiKeyForProvider("gemini");
     if (!geminiKey) {
       return c.json({ success: false, error: "Gemini API key not configured" }, 500);

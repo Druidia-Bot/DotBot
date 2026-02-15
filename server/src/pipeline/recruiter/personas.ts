@@ -16,30 +16,9 @@ import { registerCouncil } from "../../personas/council-loader.js";
 import { createComponentLogger } from "#logging.js";
 import { requestPersonas, requestCouncilPaths } from "#ws/device-bridge.js";
 import type { LocalPersonaDefinition, CouncilDefinition } from "../../types/agent.js";
-import RE2 from "re2";
+import { safeRegexTest } from "../../utils/safe-regex.js";
 
 const log = createComponentLogger("recruiter.personas");
-
-// ── Safe Regex (ReDoS protection) ───────────────────────────────────
-
-/**
- * Test a regex pattern against input using RE2 (Google's safe regex engine).
- * RE2 guarantees linear-time execution with no catastrophic backtracking,
- * completely preventing ReDoS attacks.
- */
-function safeRegexTest(pattern: string, input: string): boolean {
-  try {
-    if (pattern.length > 500) {
-      log.warn("Regex pattern too long, rejecting", { patternLength: pattern.length });
-      return false;
-    }
-    const regex = new RE2(pattern, "i");
-    return regex.test(input);
-  } catch (e) {
-    log.warn("Invalid regex pattern in safeRegexTest", { pattern, error: e });
-    return false;
-  }
-}
 
 // ── Persona Fetching & Registration ─────────────────────────────────
 

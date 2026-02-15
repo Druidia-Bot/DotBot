@@ -28,39 +28,9 @@ import {
   requestCouncilPaths,
   requestTools,
 } from "./device-bridge.js";
-import RE2 from "re2";
+import { safeRegexTest } from "../utils/safe-regex.js";
 
 const log = createComponentLogger("ws.context");
-
-// ============================================
-// SAFE REGEX TESTING (ReDoS PROTECTION)
-// ============================================
-
-/**
- * Test a regex pattern against input using RE2 (Google's safe regex engine).
- * RE2 guarantees linear-time execution with no catastrophic backtracking,
- * completely preventing ReDoS attacks.
- *
- * @param pattern User-provided regex pattern
- * @param input String to test against
- * @returns true if pattern matches, false if no match or error
- */
-function safeRegexTest(pattern: string, input: string): boolean {
-  try {
-    // Validate pattern length (excessively long patterns are suspicious)
-    if (pattern.length > 500) {
-      log.warn("Regex pattern too long, rejecting", { patternLength: pattern.length });
-      return false;
-    }
-
-    // RE2 guarantees O(n) time complexity - no backtracking
-    const regex = new RE2(pattern, "i");
-    return regex.test(input);
-  } catch (e) {
-    log.warn("Invalid regex pattern in safeRegexTest", { pattern, error: e });
-    return false;
-  }
-}
 
 // ============================================
 // CONTEXT BUILDING

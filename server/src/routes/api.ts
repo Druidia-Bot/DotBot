@@ -75,7 +75,7 @@ export function registerApiRoutes(app: Hono, config: { llmProvider: string; llmA
       return c.json({ error: "prompt is required" }, 400);
     }
 
-    const { createLLMClient } = await import("#llm/providers.js");
+    const { createLLMClient } = await import("#llm/factory.js");
     const { getConnectedDevices, getDeviceForUser } = await import("#ws/devices.js");
     const { runPipeline } = await import("#pipeline/pipeline.js");
 

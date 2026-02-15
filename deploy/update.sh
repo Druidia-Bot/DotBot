@@ -44,17 +44,36 @@ else
 fi
 
 # Rebuild
+BUILD_LOG=$(mktemp)
+trap 'rm -f "$BUILD_LOG"' EXIT
+
 echo "Installing dependencies..."
-sudo -u "$BOT_USER" npm install --production=false 2>&1 | tail -3
-log "Dependencies updated"
+if sudo -u "$BOT_USER" npm install --production=false >"$BUILD_LOG" 2>&1; then
+  tail -3 "$BUILD_LOG"
+  log "Dependencies updated"
+else
+  echo -e "${RED}npm install failed:${NC}"
+  tail -30 "$BUILD_LOG"
+  err "Dependency install failed — see output above"
+fi
 
 echo "Building shared..."
-sudo -u "$BOT_USER" npm run build -w shared 2>&1 | tail -1
-log "Shared built"
+if sudo -u "$BOT_USER" npm run build -w shared >"$BUILD_LOG" 2>&1; then
+  log "Shared built"
+else
+  echo -e "${RED}Shared build failed:${NC}"
+  cat "$BUILD_LOG"
+  err "Shared build failed — see output above"
+fi
 
 echo "Building server..."
-sudo -u "$BOT_USER" npm run build -w server 2>&1 | tail -1
-log "Server built"
+if sudo -u "$BOT_USER" npm run build -w server >"$BUILD_LOG" 2>&1; then
+  log "Server built"
+else
+  echo -e "${RED}Server build failed:${NC}"
+  cat "$BUILD_LOG"
+  err "Server build failed — see output above"
+fi
 
 # Restart
 echo "Restarting server..."
