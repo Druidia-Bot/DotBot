@@ -7,7 +7,7 @@
 
 import { getDatabase } from "../db/index.js";
 import { nanoid } from "nanoid";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("credits");
 

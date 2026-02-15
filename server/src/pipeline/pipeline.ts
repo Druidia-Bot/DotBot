@@ -20,19 +20,19 @@
  *   workspace-io.ts     — all workspace file I/O helpers
  */
 
-import { createComponentLogger } from "../logging.js";
-import { buildRequestContext } from "../context/context-builder.js";
-import { executeClassifyPipeline } from "../intake/intake.js";
+import { createComponentLogger } from "#logging.js";
+import { buildRequestContext } from "./context/context-builder.js";
+import { executeClassifyPipeline } from "./intake/intake.js";
 import { drainTaskQueue } from "./agent-signals.js";
 import { checkAgentRouting } from "./routing/handler.js";
 import { executeQueuedTasks } from "./queue-executor.js";
-import { updatePersonaStatus, readPersonaJson } from "./workspace-io.js";
-import { updateAgentAssignmentStatus } from "../receptionist/agent-exec.js";
+import { updatePersonaStatus, readPersonaJson } from "./workspace/persona.js";
+import { updateAgentAssignmentStatus } from "./receptionist/agent-exec.js";
 import {
   sendMemoryRequest,
   sendRunLog,
   sendSaveToThread,
-} from "../ws/device-bridge.js";
+} from "#ws/device-bridge.js";
 
 import type { PipelineOptions, PipelineResult } from "./types.js";
 export type { PipelineOptions, PipelineResult } from "./types.js";
@@ -70,17 +70,15 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
     timestamp: new Date().toISOString(),
   });
 
-  // ── Step 3: Save user message to thread on client ──
-  const threadId = enhancedRequest.activeThreadId || `thread_${messageId}`;
-  const threadTopic = (intakeResult.relevantMemories as any[])?.[0]?.name
-    || (intakeResult.requestType as string) || "Conversation";
+  // ── Step 3: Save dispatched prompt to thread ──
+  const threadId = enhancedRequest.activeThreadId || "conversation";
   sendSaveToThread(userId, threadId, {
     role: "user",
     content: prompt,
     source,
     messageId,
     intakeRequestType: intakeResult.requestType as string,
-  }, threadTopic);
+  }, "Conversation");
 
   // ── Step 4: Fast-path check ──
   // If we have high context confidence and the request is NOT automatable
@@ -215,7 +213,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
   // ── Step 6: Run receptionist (tool loop + workspace creation) ──
   log.info("Routing to receptionist", { messageId });
 
-  const { runReceptionist } = await import("../receptionist/receptionist.js");
+  const { runReceptionist } = await import("./receptionist/receptionist.js");
   const result = await runReceptionist(llm, userId, enhancedRequest, intakeResult);
 
   // Persist receptionist run-log to client
@@ -235,7 +233,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
   const restatedRequest = (intakeResult.restatedRequest as string) || prompt;
   log.info("Routing to recruiter", { agentId: result.agentId, messageId });
 
-  const { runRecruiter } = await import("../recruiter/recruiter.js");
+  const { runRecruiter } = await import("./recruiter/recruiter.js");
   const recruiterResult = await runRecruiter(llm, {
     agentId: result.agentId,
     deviceId,
@@ -267,8 +265,8 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
   // ── Step 9: Plan + execute ──
   log.info("Routing to planner", { agentId: result.agentId, messageId });
 
-  const { createPlan } = await import("../planner/planner.js");
-  const { executeSteps } = await import("../planner/step-executor.js");
+  const { createPlan } = await import("./planner/planning/create-plan.js");
+  const { executeSteps } = await import("./planner/execution/step-executor.js");
 
   const plan = await createPlan(llm, {
     agentId: result.agentId,
@@ -292,6 +290,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
 
   const executionResult = await executeSteps(plan, {
     llm,
+    userId,
     deviceId,
     agentId: result.agentId,
     workspacePath: result.workspacePath,

@@ -10,8 +10,8 @@
  */
 
 import type { ToolHandler } from "../types.js";
-import type { ToolManifestEntry } from "../../agents/tools.js";
-import type { ToolDefinition } from "../../llm/types.js";
+import type { ToolManifestEntry } from "#tools/types.js";
+import type { ToolDefinition } from "#llm/types.js";
 import { buildProxyHandlers } from "./local-agent-proxy.js";
 import { wrapHandlersWithResearch } from "./research-wrapper.js";
 import { buildServerSideHandlers } from "./server-side-handlers.js";

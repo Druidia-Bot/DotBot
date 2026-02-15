@@ -22,7 +22,7 @@ import type {
 } from "../types.js";
 import { initServerPersonas } from "../personas/loader.js";
 import { initDatabase } from "../db/index.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 
 // Extracted modules
 import {
@@ -62,15 +62,15 @@ import {
   categorizeIncompleteTasks,
   cleanupWorkspace,
   type TaskJson,
-} from "../agents/workspace.js";
-import { setExecuteCallback, onSchedulerEvent } from "../scheduler/index.js";
-import type { DeferredTask } from "../scheduler/index.js";
+} from "#pipeline/workspace/index.js";
+import { setExecuteCallback, onSchedulerEvent } from "../services/scheduler/index.js";
+import type { DeferredTask } from "../services/scheduler/index.js";
 import {
   setRecurringExecuteCallback,
   onRecurringEvent,
   getOfflineResults,
-} from "../scheduler/index.js";
-import type { RecurringTask } from "../scheduler/index.js";
+} from "../services/scheduler/index.js";
+import type { RecurringTask } from "../services/scheduler/index.js";
 import { validateAndConsumeToken } from "../auth/invite-tokens.js";
 import { registerDevice, authenticateDevice, getRecentFailures, logAuthEvent, listDevices } from "../auth/device-store.js";
 
@@ -614,7 +614,7 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
 
   // V2: Check for incomplete agent workspaces (async, non-blocking) — agents only
   if (isAgent) {
-    checkIncompleteWorkspaces(deviceId, session.userId).catch(() => {});
+    // checkIncompleteWorkspaces(deviceId, session.userId).catch(() => {});
   }
 
   // Part 18: Notify about recurring tasks that ran while device was offline

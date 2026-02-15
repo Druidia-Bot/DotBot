@@ -10,7 +10,7 @@
  *   2. image_base64 — inline base64 fallback
  */
 
-import { createComponentLogger } from "../../logging.js";
+import { createComponentLogger } from "#logging.js";
 import { resolveScreenshot } from "../../gui/screenshot-store.js";
 import type { ToolHandler, ToolContext, ToolHandlerResult } from "../types.js";
 

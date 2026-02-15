@@ -9,7 +9,7 @@
 
 import { nanoid } from "nanoid";
 import type { ExecutionCommand } from "../types.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 import { devices, sendMessage, broadcastToUser, type MemoryRequest, type SkillRequest } from "./devices.js";
 
 const log = createComponentLogger("ws.bridge");

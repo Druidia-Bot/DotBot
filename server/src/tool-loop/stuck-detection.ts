@@ -19,7 +19,7 @@
  *   account for both call patterns and result patterns.
  */
 
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("tool-loop.stuck");
 

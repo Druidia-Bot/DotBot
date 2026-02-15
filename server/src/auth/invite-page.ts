@@ -11,7 +11,7 @@
 
 import type { Hono } from "hono";
 import { peekToken } from "./invite-tokens.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("auth.invite-page");
 

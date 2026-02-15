@@ -16,8 +16,8 @@
  * Callbacks are pulled from ctx.state (set by the caller at setup time).
  */
 
-import { createComponentLogger } from "../../logging.js";
-import type { ToolDefinition } from "../../llm/types.js";
+import { createComponentLogger } from "#logging.js";
+import type { ToolDefinition } from "#llm/types.js";
 import type { ToolHandler, ToolHandlerResult } from "../types.js";
 
 const log = createComponentLogger("tool-loop.synthetic");

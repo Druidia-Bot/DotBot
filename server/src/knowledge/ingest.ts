@@ -15,8 +15,8 @@
  *   Send directly to Gemini inline (no file upload needed).
  */
 
-import { createComponentLogger } from "../logging.js";
-import { PROVIDER_CONFIGS } from "../llm/types.js";
+import { createComponentLogger } from "#logging.js";
+import { PROVIDER_CONFIGS } from "#llm/config.js";
 
 const log = createComponentLogger("knowledge.ingest");
 

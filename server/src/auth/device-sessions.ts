@@ -8,7 +8,7 @@
 
 import { nanoid } from "nanoid";
 import { authenticateDevice } from "./device-store.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("auth.device-sessions");
 

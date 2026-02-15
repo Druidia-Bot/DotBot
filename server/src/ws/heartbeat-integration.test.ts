@@ -31,7 +31,7 @@ vi.mock("./devices.js", () => ({
 }));
 
 // Mock scheduler module — no tasks by default
-vi.mock("../scheduler/index.js", () => ({
+vi.mock("../services/scheduler/index.js", () => ({
   getDueTasks: vi.fn(() => []),
   getUserTasks: vi.fn(() => []),
 }));
@@ -42,14 +42,8 @@ vi.mock("./device-bridge.js", () => ({
   requestTools: vi.fn().mockRejectedValue(new Error("No tools in test")),
 }));
 
-// Mock LLM providers — return controlled LLM responses
-vi.mock("../llm/providers.js", () => ({
-  selectModel: vi.fn(() => ({
-    provider: "deepseek",
-    model: "deepseek-chat",
-    temperature: 0.2,
-    maxTokens: 8192,
-  })),
+// Mock LLM factory — return controlled LLM client
+vi.mock("../llm/factory.js", () => ({
   createClientForSelection: vi.fn(() => ({
     provider: "deepseek",
     chat: vi.fn(),
@@ -57,9 +51,19 @@ vi.mock("../llm/providers.js", () => ({
   })),
 }));
 
+// Mock model selector — return controlled model selection
+vi.mock("../llm/selection/model-selector.js", () => ({
+  selectModel: vi.fn(() => ({
+    provider: "deepseek",
+    model: "deepseek-chat",
+    temperature: 0.2,
+    maxTokens: 8192,
+  })),
+}));
+
 import { handleHeartbeatRequest } from "./heartbeat-handler.js";
-import { createClientForSelection } from "../llm/providers.js";
-import { getDueTasks, getUserTasks } from "../scheduler/index.js";
+import { createClientForSelection } from "#llm/factory.js";
+import { getDueTasks, getUserTasks } from "../services/scheduler/index.js";
 
 // ============================================
 // SETUP
@@ -304,7 +308,7 @@ describe("Heartbeat Integration — Prompt", () => {
     await handleHeartbeatRequest("dev_test", makeHeartbeatRequest(), "sk-test", "deepseek");
 
     // selectModel should have been called with fast tier
-    const { selectModel } = await import("../llm/providers.js");
-    expect(selectModel).toHaveBeenCalledWith({ personaModelTier: "fast" });
+    const { selectModel } = await import("#llm/selection/model-selector.js");
+    expect(selectModel).toHaveBeenCalledWith({ explicitRole: "workhorse" });
   });
 });

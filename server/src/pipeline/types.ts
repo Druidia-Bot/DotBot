@@ -2,9 +2,9 @@
  * Pipeline Types — Shared interfaces and constants for the pipeline modules.
  */
 
-import type { ILLMClient } from "../llm/providers.js";
-import type { ClassifyResult } from "../intake/intake.js";
-import type { ToolManifestEntry } from "../agents/tools.js";
+import type { ILLMClient } from "#llm/types.js";
+import type { ClassifyResult } from "./intake/intake.js";
+import type { ToolManifestEntry } from "#tools/types.js";
 
 // ============================================
 // PIPELINE OPTIONS & RESULT

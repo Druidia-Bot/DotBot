@@ -18,7 +18,7 @@ import type { WSMessage } from "../types.js";
 import { devices, sendMessage } from "./devices.js";
 import { isDeviceAdmin, listDevices, revokeDevice, unrevokeDevice } from "../auth/device-store.js";
 import { createInviteToken, listTokens, revokeToken } from "../auth/invite-tokens.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("ws.admin");
 

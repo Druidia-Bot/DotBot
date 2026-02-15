@@ -6,18 +6,18 @@
  *
  * Same pattern as ws/prompt-handler.ts → pipeline/pipeline.ts.
  *
- * Business logic: heartbeat/heartbeat.ts
- * Scheduler helpers: heartbeat/scheduler.ts
+ * Business logic: services/heartbeat/heartbeat.ts
+ * Scheduler helpers: services/heartbeat/scheduler.ts
  */
 
 import { nanoid } from "nanoid";
 import type { WSMessage, HeartbeatResult } from "../types.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 import { devices, sendMessage } from "./devices.js";
-import { runHeartbeat } from "../heartbeat/heartbeat.js";
-import { scanForDeadAgents } from "../pipeline/agent-recovery.js";
+import { runHeartbeat } from "../services/heartbeat/index.js";
+import { scanForDeadAgents } from "#pipeline/agent-recovery.js";
 
-export type { ScheduledTaskCounts } from "../heartbeat/scheduler.js";
+export type { ScheduledTaskCounts } from "../services/heartbeat/index.js";
 
 const log = createComponentLogger("ws.heartbeat");
 

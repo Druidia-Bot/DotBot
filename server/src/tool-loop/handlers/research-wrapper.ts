@@ -14,8 +14,8 @@
  */
 
 import { nanoid } from "nanoid";
-import { createComponentLogger } from "../../logging.js";
-import { sendExecutionCommand } from "../../ws/device-bridge.js";
+import { createComponentLogger } from "#logging.js";
+import { sendExecutionCommand } from "#ws/device-bridge.js";
 import { isResearchTool, MAX_TOOL_RESULT_CHARS } from "./research-categories.js";
 import { summarizeAndSave } from "./research-summarizer.js";
 import type { ToolHandler, ToolContext, ToolHandlerResult } from "../types.js";

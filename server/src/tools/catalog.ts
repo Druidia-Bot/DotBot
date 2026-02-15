@@ -9,7 +9,7 @@
  * replacing the old category-count summary that was too vague for good routing.
  */
 
-import type { ToolManifestEntry } from "../agents/tools.js";
+import type { ToolManifestEntry } from "./types.js";
 
 /**
  * A single entry in the compact catalog.

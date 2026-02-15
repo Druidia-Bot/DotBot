@@ -5,8 +5,8 @@
  * deep archive if needed. Tracks side effects in ctx.state.
  */
 
-import { createComponentLogger } from "../../logging.js";
-import { sendMemoryRequest } from "../../ws/device-bridge.js";
+import { createComponentLogger } from "#logging.js";
+import { sendMemoryRequest } from "#ws/device-bridge.js";
 import type { ToolContext } from "../types.js";
 
 const log = createComponentLogger("tool-loop.memory.save_message");

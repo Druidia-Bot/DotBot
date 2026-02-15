@@ -11,14 +11,14 @@
 
 import { nanoid } from "nanoid";
 import type { WSPromptMessage } from "../types.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 import {
   devices,
   sendMessage,
   getDeviceForUser,
 } from "./devices.js";
-import { sendMemoryRequest, sendRunLog } from "./device-bridge.js";
-import { runPipeline } from "../pipeline/pipeline.js";
+import { sendMemoryRequest, sendRunLog, sendSaveToThread } from "./device-bridge.js";
+import { runDot } from "../dot/dot.js";
 
 const log = createComponentLogger("ws.prompt");
 
@@ -63,80 +63,59 @@ export async function handlePrompt(
     return;
   }
 
-  // ── Full Pipeline ──
-  try {
-    const { createLLMClient } = await import("../llm/providers.js");
-    const llm = createLLMClient({
-      provider: serverProvider as any,
-      apiKey,
-    });
+  // ── Dot (root-level conversational assistant) ──
+  const source = message.payload?.source || "unknown";
 
-    const pipelineResult = await runPipeline({
+  // Save user message to thread before processing
+  sendSaveToThread(userId, "conversation", {
+    role: "user",
+    content: prompt,
+    source,
+    messageId: message.id,
+  }, "Conversation");
+
+  try {
+    const { createClientForSelection } = await import("#llm/factory.js");
+    const { selectModel } = await import("#llm/selection/model-selector.js");
+    const modelConfig = selectModel({ explicitRole: "assistant" });
+    const llm = createClientForSelection(modelConfig, deviceId);
+
+    const dotResult = await runDot({
       llm,
       userId,
       deviceId,
       prompt,
       messageId: message.id,
-      source: message.payload?.source || "unknown",
-      onIntakeComplete: (intakeResult) => {
-        // Send immediate ack before heavy processing starts
-        const estimate = intakeResult.estimatedMinutes as number;
-        const directResponse = intakeResult.directResponse as string || "";
-        const estimateText = estimate < 1
-          ? "less than a minute"
-          : estimate === 1 ? "about 1 minute" : `about ${Math.round(estimate)} minutes`;
-        const ackText = `${directResponse}\n\n⏱️ *Estimated time: ${estimateText}*`;
-
-        // Send task_acknowledged to device WS — this reaches Discord #conversation + console
-        // via the message-router's task_acknowledged handler
-        sendMessage(device.ws, {
-          type: "task_acknowledged" as any,
-          id: `${message.id}_ack`,
-          timestamp: Date.now(),
-          payload: {
-            acknowledgment: ackText,
-            prompt: prompt.slice(0, 200),
-            estimatedLabel: estimateText,
-          }
-        });
-
-        // If response target is a browser (not the device), also send a response type
-        if (responseWs !== device.ws) {
-          sendMessage(responseWs, {
-            type: "response",
-            id: `${message.id}_ack`,
-            timestamp: Date.now(),
-            payload: {
-              success: true,
-              response: ackText,
-              classification: "CONVERSATIONAL" as const,
-              threadIds: [],
-              keyPoints: [],
-            }
-          });
-        }
-      },
+      source,
     });
 
-    const finalResponse = pipelineResult.executionResponse
-      || (pipelineResult.intakeResult.directResponse as string)
-      || "";
+    const threadId = dotResult.threadId;
+
+    // Save Dot's response to thread
+    sendSaveToThread(userId, threadId, {
+      role: "assistant",
+      content: dotResult.response,
+      source: "dot",
+      messageId: message.id,
+      dispatched: dotResult.dispatched,
+    });
+
     sendMessage(responseWs, {
       type: "response",
       id: message.id,
       timestamp: Date.now(),
       payload: {
-        success: pipelineResult.executionSuccess ?? true,
-        response: finalResponse,
-        classification: (pipelineResult.intakeResult.requestType as string) || "CONVERSATIONAL",
-        threadIds: [],
+        success: dotResult.dispatch?.success ?? true,
+        response: dotResult.response,
+        classification: "CONVERSATIONAL",
+        threadIds: [threadId],
         keyPoints: [],
       }
     });
 
     return;
   } catch (error) {
-    log.error("Pipeline error", { error });
+    log.error("Dot error", { error });
 
     // Persist error to client run-logs so we can diagnose without server console
     sendRunLog(userId, {

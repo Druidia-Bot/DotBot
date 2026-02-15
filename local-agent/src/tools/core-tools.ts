@@ -38,6 +38,16 @@ import { marketTools } from "./market/defs.js";
 import { onboardingTools } from "./onboarding/defs.js";
 import { researchTools } from "./research/defs.js";
 import { guiTools } from "./gui/index.js";
+import { registryTools } from "./registry/defs.js";
+import { windowTools } from "./window/defs.js";
+import { screenTools } from "./screen/defs.js";
+import { audioTools } from "./audio/defs.js";
+import { monitoringTools } from "./monitoring/defs.js";
+import { packageTools } from "./package/defs.js";
+import { dataTools } from "./data/defs.js";
+import { pdfTools } from "./pdf/defs.js";
+import { dbTools } from "./db/defs.js";
+import { visionTools } from "./vision/defs.js";
 
 // ============================================
 // EXPORT ALL CORE TOOLS
@@ -71,6 +81,16 @@ export const CORE_TOOLS: DotBotTool[] = [
   ...onboardingTools,
   ...researchTools,
   ...guiTools,
+  ...registryTools,
+  ...windowTools,
+  ...screenTools,
+  ...audioTools,
+  ...monitoringTools,
+  ...packageTools,
+  ...dataTools,
+  ...pdfTools,
+  ...dbTools,
+  ...visionTools,
 ];
 
 /**

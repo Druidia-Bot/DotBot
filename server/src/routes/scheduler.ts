@@ -16,7 +16,7 @@ import {
   pauseRecurringTask,
   resumeRecurringTask,
   getRecurringStats,
-} from "../scheduler/index.js";
+} from "../services/scheduler/index.js";
 
 // ============================================
 // DEFERRED TASKS

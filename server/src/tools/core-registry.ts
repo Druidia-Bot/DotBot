@@ -17,8 +17,8 @@
  * - universal.ts: All platform tools (ALL - including web, server-executed)
  */
 
-import type { Platform } from "../agents/tools.js";
-import type { ToolDefinition } from "../llm/types.js";
+import type { Platform } from "./types.js";
+import type { ToolDefinition } from "#llm/types.js";
 import { WINDOWS_ONLY_TOOLS } from "./definitions/windows-only.js";
 import { CROSS_PLATFORM_TOOLS } from "./definitions/cross-platform.js";
 import { UNIVERSAL_TOOLS } from "./definitions/universal.js";

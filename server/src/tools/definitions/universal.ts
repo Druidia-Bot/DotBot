@@ -6,7 +6,7 @@
  */
 
 import type { CoreToolDefinition } from "../core-registry.js";
-import type { Platform } from "../../agents/tools.js";
+import type { Platform } from "../types.js";
 
 const ALL: Platform[] = ["windows", "linux", "macos", "web"];
 
@@ -26,44 +26,6 @@ export const schedule: CoreToolDefinition[] = [
   { id: "schedule.cancel", name: "cancel_scheduled_task", description: "Permanently cancel a recurring scheduled task.", category: "schedule", executor: "server", platforms: ALL, inputSchema: { type: "object", properties: { id: { type: "string", description: "Task ID (rsched_...)" } }, required: ["id"] } },
   { id: "schedule.pause", name: "pause_scheduled_task", description: "Temporarily pause a recurring scheduled task.", category: "schedule", executor: "server", platforms: ALL, inputSchema: { type: "object", properties: { id: { type: "string", description: "Task ID (rsched_...)" } }, required: ["id"] } },
   { id: "schedule.resume", name: "resume_scheduled_task", description: "Resume a paused scheduled task. Resets failure count and recalculates next run.", category: "schedule", executor: "server", platforms: ALL, inputSchema: { type: "object", properties: { id: { type: "string", description: "Task ID (rsched_...)" } }, required: ["id"] } },
-];
-
-// Research (server-executed workspace management)
-export const research: CoreToolDefinition[] = [
-  {
-    id: "research.save",
-    name: "save_research_artifact",
-    description: "Save research findings to workspace files. Creates detailed notes in workspace/research/ and executive summary in workspace/output/report.md. Use this for any research output (market analysis, competitive research, news summaries, etc.). Workspace persists for 24 hours after agent completion.",
-    category: "research",
-    executor: "server",
-    platforms: ALL,
-    inputSchema: {
-      type: "object",
-      properties: {
-        title: { type: "string", description: "Short title for the research (e.g., 'LYFT Stock Analysis')" },
-        type: { type: "string", enum: ["market-analysis", "news-summary", "general-research", "competitive-analysis"], description: "Type of research" },
-        detailedNotes: { type: "string", description: "Full markdown content with all findings, data, analysis" },
-        executiveSummary: { type: "string", description: "Brief 2-3 paragraph summary with key takeaways" },
-        tags: { type: "array", items: { type: "string" }, description: "Optional tags for categorization" },
-        metadata: { type: "object", description: "Optional metadata (e.g., tickers, dates, sources)" }
-      },
-      required: ["title", "type", "detailedNotes", "executiveSummary"]
-    },
-    annotations: { destructiveHint: true }
-  },
-  {
-    id: "research.list",
-    name: "list_research_artifacts",
-    description: "List all research files in your workspace. Use this at the START of research tasks to check if you've already researched this topic. Returns list of research files with titles, types, dates, and tags. Helps avoid duplicate work and build on previous findings.",
-    category: "research",
-    executor: "server",
-    platforms: ALL,
-    inputSchema: {
-      type: "object",
-      properties: {}
-    },
-    annotations: { readOnlyHint: true }
-  },
 ];
 
 // Memory (server-routed to local agent via WebSocket)
@@ -171,6 +133,5 @@ export const memoryTools: CoreToolDefinition[] = [
 export const UNIVERSAL_TOOLS: CoreToolDefinition[] = [
   ...knowledgeUniversal,
   ...schedule,
-  ...research,
   ...memoryTools,
 ];

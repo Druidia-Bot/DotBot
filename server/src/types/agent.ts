@@ -517,7 +517,7 @@ export interface PersonaDefinition {
   id: string;
   name: string;
   type: "intake" | "internal" | "client" | "dynamic";
-  modelTier: "fast" | "smart" | "powerful";
+  modelTier: string;
   description: string;
   systemPrompt: string;
   tools?: string[];

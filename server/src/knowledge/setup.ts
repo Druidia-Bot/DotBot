@@ -6,9 +6,9 @@
  */
 
 import { setKnowledgeRequestCallback, setKnowledgeQueryCallback } from "./service.js";
-import { requestKnowledge, requestKnowledgeQuery, getDeviceForUser } from "../ws/server.js";
+import { requestKnowledge, requestKnowledgeQuery, getDeviceForUser } from "#ws/server.js";
 import type { KnowledgeDocument, KnowledgeSearchResult } from "./types.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("knowledge");
 

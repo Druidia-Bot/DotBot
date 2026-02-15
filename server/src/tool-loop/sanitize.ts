@@ -8,8 +8,8 @@
  * Repairs in-place by injecting placeholder tool results where needed.
  */
 
-import { createComponentLogger } from "../logging.js";
-import type { LLMMessage } from "../llm/types.js";
+import { createComponentLogger } from "#logging.js";
+import type { LLMMessage } from "#llm/types.js";
 
 const log = createComponentLogger("tool-loop.sanitize");
 

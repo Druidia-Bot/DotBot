@@ -12,7 +12,7 @@
  */
 
 import { createHash } from "crypto";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 import type {
   KnowledgeDocument,
   KnowledgeDocumentRef,

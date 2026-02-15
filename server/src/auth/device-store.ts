@@ -11,7 +11,7 @@
 import { randomBytes, createHash } from "crypto";
 import { nanoid } from "nanoid";
 import { getDatabase } from "../db/index.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("auth.device-store");
 

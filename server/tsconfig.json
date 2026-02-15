@@ -12,7 +12,16 @@
     "declarationMap": true,
     "sourceMap": true,
     "resolveJsonModule": true,
-    "noEmit": false
+    "noEmit": false,
+    "paths": {
+      "#llm/*": ["./src/llm/*"],
+      "#tools-server/*": ["./src/tools-server/*"],
+      "#tool-loop/*": ["./src/tool-loop/*"],
+      "#tools/*": ["./src/tools/*"],
+      "#pipeline/*": ["./src/pipeline/*"],
+      "#ws/*": ["./src/ws/*"],
+      "#logging.js": ["./src/logging.ts"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "src/**/_deprecated"]

@@ -7,11 +7,12 @@
 
 import { nanoid } from "nanoid";
 import type { WSMessage } from "../types.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 import { devices, sendMessage, broadcastToUser } from "./devices.js";
 import { sendExecutionCommand, requestTools } from "./device-bridge.js";
-import { createLLMClient, getApiKeyForProvider } from "../llm/providers.js";
-import type { LLMProvider } from "../llm/types.js";
+import { createLLMClient } from "#llm/factory.js";
+import { getApiKeyForProvider } from "#llm/selection/model-selector.js";
+import type { LLMProvider } from "#llm/types.js";
 
 const log = createComponentLogger("ws.condenser");
 
@@ -24,7 +25,7 @@ export async function handleCondenseRequest(
   const device = devices.get(deviceId);
   if (!device) return;
 
-  const { runCondenser } = await import("../condenser/condenser.js");
+  const { runCondenser } = await import("../services/condenser/condenser.js");
 
   try {
     const result = await runCondenser(message.payload, {
@@ -69,7 +70,7 @@ export async function handleResolveLoopRequest(
   const device = devices.get(deviceId);
   if (!device) return;
 
-  const { runLoopResolver } = await import("../condenser/loop-resolver.js");
+  const { runLoopResolver } = await import("../services/condenser/loop-resolver.js");
 
   try {
     // Fetch tool manifest so the resolver can actually execute searches
@@ -170,9 +171,10 @@ export async function handleFormatFixRequest(
   const { content, fileType, errors, template, filePath } = message.payload;
 
   try {
-    const { selectModel, createClientForSelection } = await import("../llm/providers.js");
-    const modelConfig = selectModel({ personaModelTier: "fast" });
-    const llm = createClientForSelection(modelConfig);
+    const { createClientForSelection } = await import("#llm/factory.js");
+    const { selectModel } = await import("#llm/selection/model-selector.js");
+    const modelConfig = selectModel({ explicitRole: "workhorse" });
+    const llm = createClientForSelection(modelConfig, deviceId);
 
     const userMessage = `## File Type: ${fileType}
 

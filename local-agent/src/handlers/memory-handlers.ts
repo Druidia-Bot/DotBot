@@ -171,7 +171,9 @@ export async function handleMemoryRequest(request: MemoryRequest, send: SendFn):
         break;
 
       case "search_models":
-        result = request.query ? await memory.searchMentalModels(request.query) : [];
+        result = (request.data?.query || request.query)
+          ? await memory.searchMentalModels(request.data?.query || request.query)
+          : [];
         break;
         
       case "get_schema":
@@ -187,6 +189,10 @@ export async function handleMemoryRequest(request: MemoryRequest, send: SendFn):
 
       case "get_l0_index":
         result = await memory.getL0MemoryIndex();
+        break;
+
+      case "get_all_models":
+        result = await memory.getAllMentalModels();
         break;
 
       case "get_model_detail":
@@ -272,6 +278,50 @@ export async function handleMemoryRequest(request: MemoryRequest, send: SendFn):
 
       case "get_identity":
         result = await memory.loadIdentity();
+        break;
+
+      // ── Identity Mutations ──────────────────────────
+      case "identity_add_trait":
+        result = request.data?.value ? await memory.addTrait(request.data.value) : false;
+        break;
+      case "identity_remove_trait":
+        result = request.data?.value ? await memory.removeTrait(request.data.value) : false;
+        break;
+      case "identity_add_ethic":
+        result = request.data?.value ? await memory.addEthic(request.data.value) : false;
+        break;
+      case "identity_remove_ethic":
+        result = request.data?.value ? await memory.removeEthic(request.data.value) : false;
+        break;
+      case "identity_add_conduct":
+        result = request.data?.value ? await memory.addConduct(request.data.value) : false;
+        break;
+      case "identity_remove_conduct":
+        result = request.data?.value ? await memory.removeConduct(request.data.value) : false;
+        break;
+      case "identity_add_instruction":
+        result = request.data?.value ? await memory.addInstruction(request.data.value) : false;
+        break;
+      case "identity_remove_instruction":
+        result = request.data?.value ? await memory.removeInstruction(request.data.value) : false;
+        break;
+      case "identity_add_communication_style":
+        result = request.data?.value ? await memory.addCommunicationStyle(request.data.value) : false;
+        break;
+      case "identity_remove_communication_style":
+        result = request.data?.value ? await memory.removeCommunicationStyle(request.data.value) : false;
+        break;
+      case "identity_set_property":
+        result = (request.data?.key && request.data?.value) ? await memory.setProperty(request.data.key, request.data.value) : false;
+        break;
+      case "identity_remove_property":
+        result = request.data?.key ? await memory.removeProperty(request.data.key) : false;
+        break;
+      case "identity_set_name":
+        result = request.data?.value ? await memory.setName(request.data.value) : false;
+        break;
+      case "identity_set_role":
+        result = request.data?.value ? await memory.setRole(request.data.value) : false;
         break;
 
       case "get_model_skeletons": {

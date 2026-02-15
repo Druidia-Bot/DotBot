@@ -62,6 +62,15 @@ function createDefaultIdentity(): AgentIdentity {
       "Revise the plan based on incremental test results — don't repeat failed approaches without understanding why they failed",
     ],
     properties: {},
+    importiantPaths: {
+      dotbotHome: `${DOTBOT_DIR} | Root of all DotBot data — memory, skills, tasks, config`,
+      agentWorkspaces: `${path.join(DOTBOT_DIR, "agent-workspaces")} | Where spawned agents store their workspace files (task.json, research/, output/)`,
+      memory: `${path.join(DOTBOT_DIR, "memory")} | Mental models, threads, schemas, and the memory index`,
+      memoryModels: `${path.join(DOTBOT_DIR, "memory", "models")} | Hot (active) mental model JSON files`,
+      deepMemory: `${path.join(DOTBOT_DIR, "memory", "deep")} | Demoted/archived mental models (cold storage)`,
+      skills: `${path.join(DOTBOT_DIR, "skills")} | Reusable skill definitions (.md files)`,
+      sourceCode: `${process.env.DOTBOT_INSTALL_DIR || "C:\\Program Files\\.bot"} | DotBot source code repository (server + local-agent + client)`,
+    },
     humanInstructions: [],
     communicationStyle: [
       "concise",
@@ -136,6 +145,16 @@ export function buildIdentitySkeleton(identity: AgentIdentity): string {
   if (propKeys.length > 0) {
     const propStr = propKeys.map(k => `${k}: ${identity.properties[k]}`).join("; ");
     lines.push(`Properties: ${propStr}`);
+  }
+
+  const pathKeys = Object.keys(identity.importiantPaths || {});
+  if (pathKeys.length > 0) {
+    lines.push("Important Paths:");
+    for (const k of pathKeys) {
+      const raw = identity.importiantPaths[k];
+      const [p, desc] = raw.includes(" | ") ? raw.split(" | ", 2) : [raw, ""];
+      lines.push(`  ${k}: ${p}${desc ? ` — ${desc}` : ""}`);
+    }
   }
 
   return lines.join("\n");

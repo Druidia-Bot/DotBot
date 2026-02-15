@@ -15,12 +15,12 @@
  * Full callers (execution.ts) add streaming, abort, injection, stuck detection, etc.
  */
 
-import { createComponentLogger } from "../logging.js";
-import { unsanitizeToolName } from "../agents/tools.js";
+import { createComponentLogger } from "#logging.js";
+import { unsanitizeToolName } from "#tools/manifest.js";
 import { sanitizeMessages } from "./sanitize.js";
 import { abortableCall } from "./abort.js";
 import { createStuckState, checkStuck, recordToolResult, getStuckWarning } from "./stuck-detection.js";
-import type { LLMMessage, LLMRequestOptions, ToolCall } from "../llm/types.js";
+import type { LLMMessage, LLMRequestOptions, ToolCall } from "#llm/types.js";
 import type { ToolLoopOptions, ToolLoopResult, ToolHandlerResult } from "./types.js";
 
 const log = createComponentLogger("tool-loop");

@@ -5,7 +5,7 @@
  */
 
 import { nanoid } from "nanoid";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 import type {
   Thread,
   ThreadMessage,

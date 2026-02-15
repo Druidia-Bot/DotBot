@@ -18,7 +18,7 @@
 
 import { nanoid } from "nanoid";
 import type { Hono } from "hono";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("screenshot-store");
 

@@ -10,7 +10,7 @@
  *   unregisterAgent() → called when executor finishes (success, fail, or stop)
  */
 
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("agent-signals");
 

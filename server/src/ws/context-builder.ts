@@ -11,7 +11,7 @@
 import { registerUserPersona } from "../personas/loader.js";
 import { registerLocalPersona } from "../personas/local-loader.js";
 import { registerCouncil } from "../personas/council-loader.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 import type {
   EnhancedPromptRequest,
   LocalPersonaDefinition,
@@ -174,6 +174,15 @@ export async function buildRequestContext(
         if (propKeys.length > 0) {
           lines.push(`Properties: ${propKeys.map((k: string) => `${k}: ${identityResult.properties[k]}`).join("; ")}`);
         }
+        const pathKeys = Object.keys(identityResult.importiantPaths || {});
+        if (pathKeys.length > 0) {
+          lines.push("Important Paths:");
+          for (const k of pathKeys) {
+            const raw = identityResult.importiantPaths[k];
+            const [p, desc] = raw.includes(" | ") ? raw.split(" | ", 2) : [raw, ""];
+            lines.push(`  ${k}: ${p}${desc ? ` — ${desc}` : ""}`);
+          }
+        }
         agentIdentity = lines.join("\n");
       }
     } catch (err) {
@@ -192,8 +201,8 @@ export async function buildRequestContext(
         runtimeInfo = result.runtimes || [];
         log.info(`Fetched tool manifest: ${toolManifest.length} tools, ${runtimeInfo.length} runtimes`);
       }
-      const { PREMIUM_TOOLS } = await import("../credits/premium-manifest.js");
-      const { IMAGEGEN_TOOLS } = await import("../imagegen/manifest.js");
+      const { PREMIUM_TOOLS } = await import("#tools-server/premium/manifest.js");
+      const { IMAGEGEN_TOOLS } = await import("#tools-server/imagegen/manifest.js");
       toolManifest = [...toolManifest, ...PREMIUM_TOOLS, ...IMAGEGEN_TOOLS];
       log.info(`Added ${PREMIUM_TOOLS.length} premium + ${IMAGEGEN_TOOLS.length} imagegen tools to manifest (total: ${toolManifest.length})`);
     } catch (err) {

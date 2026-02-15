@@ -4,10 +4,47 @@
   "description": "DotBot Cloud Service - Think in the cloud, act locally",
   "type": "module",
   "main": "dist/index.js",
+  "imports": {
+    "#llm/*": {
+      "types": "./src/llm/*",
+      "development": "./src/llm/*",
+      "default": "./dist/llm/*"
+    },
+    "#tools-server/*": {
+      "types": "./src/tools-server/*",
+      "development": "./src/tools-server/*",
+      "default": "./dist/tools-server/*"
+    },
+    "#tool-loop/*": {
+      "types": "./src/tool-loop/*",
+      "development": "./src/tool-loop/*",
+      "default": "./dist/tool-loop/*"
+    },
+    "#tools/*": {
+      "types": "./src/tools/*",
+      "development": "./src/tools/*",
+      "default": "./dist/tools/*"
+    },
+    "#pipeline/*": {
+      "types": "./src/pipeline/*",
+      "development": "./src/pipeline/*",
+      "default": "./dist/pipeline/*"
+    },
+    "#ws/*": {
+      "types": "./src/ws/*",
+      "development": "./src/ws/*",
+      "default": "./dist/ws/*"
+    },
+    "#logging.js": {
+      "types": "./src/logging.js",
+      "development": "./src/logging.js",
+      "default": "./dist/logging.js"
+    }
+  },
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "debug": "node --inspect=9229 --import tsx src/index.ts",
-    "build": "tsc && node -e \"const fs=require('fs');const path=require('path');function cpDir(s,d,exts){fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s)){const sp=path.join(s,f),dp=path.join(d,f);fs.statSync(sp).isDirectory()?cpDir(sp,dp,exts):exts.some(e=>f.endsWith(e))&&fs.copyFileSync(sp,dp)}}cpDir('src','dist',['.md','.schema.json','.sql'])\"",
+    "dev": "tsx watch --conditions=development src/index.ts",
+    "debug": "node --conditions=development --inspect=9229 --import tsx src/index.ts",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc && node -e \"const fs=require('fs');const path=require('path');function cpDir(s,d,exts){fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s)){const sp=path.join(s,f),dp=path.join(d,f);fs.statSync(sp).isDirectory()?cpDir(sp,dp,exts):exts.some(e=>f.endsWith(e))&&fs.copyFileSync(sp,dp)}}cpDir('src','dist',['.md','.schema.json','.sql'])\"",
     "start": "node dist/index.js",
     "test": "vitest"
   },

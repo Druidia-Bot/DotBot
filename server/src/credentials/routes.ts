@@ -12,9 +12,9 @@ import type { Hono } from "hono";
 import QRCode from "qrcode";
 import { getSession, getAndConsumeSession } from "./sessions.js";
 import { encryptCredential } from "./crypto.js";
-import { devices, sendMessage } from "../ws/devices.js";
+import { devices, sendMessage } from "#ws/devices.js";
 import { nanoid } from "nanoid";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 import { validateDeviceSession } from "../auth/device-sessions.js";
 
 const log = createComponentLogger("credentials.routes");

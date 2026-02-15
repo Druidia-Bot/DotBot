@@ -6,10 +6,10 @@
  */
 
 import { nanoid } from "nanoid";
-import { createComponentLogger } from "../../logging.js";
+import { createComponentLogger } from "#logging.js";
 import { pushSignal, queueTask, abortAgent, releaseRoutingLock, isAgentRegistered } from "../agent-signals.js";
-import { persistQueueEntry, updatePersonaStatus, appendToPersonaRequests } from "../workspace-io.js";
-import { sendAgentLifecycle } from "../../ws/device-bridge.js";
+import { persistQueueEntry, updatePersonaStatus, appendToPersonaRequests } from "../workspace/persona.js";
+import { sendAgentLifecycle } from "#ws/device-bridge.js";
 import type { CandidateAgent } from "./router.js";
 import type { AgentRoutingResult } from "../types.js";
 

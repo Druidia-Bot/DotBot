@@ -4,8 +4,8 @@
  * Retrieves the full detail of a memory model.
  */
 
-import { createComponentLogger } from "../../logging.js";
-import { sendMemoryRequest } from "../../ws/device-bridge.js";
+import { createComponentLogger } from "#logging.js";
+import { sendMemoryRequest } from "#ws/device-bridge.js";
 import type { ToolContext } from "../types.js";
 
 const log = createComponentLogger("tool-loop.memory.get_model_detail");

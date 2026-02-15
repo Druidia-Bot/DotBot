@@ -9,10 +9,10 @@
  */
 
 import { nanoid } from "nanoid";
-import { createComponentLogger } from "../logging.js";
-import { sendExecutionCommand, sendRunLog, sendAgentLifecycle } from "../ws/device-bridge.js";
-import { readPlanJson } from "./workspace-io.js";
-import { buildHandoffBrief } from "../planner/plan-progress.js";
+import { createComponentLogger } from "#logging.js";
+import { sendExecutionCommand, sendRunLog, sendAgentLifecycle } from "#ws/device-bridge.js";
+import { readPlanJson } from "./workspace/persona.js";
+import { buildHandoffBrief } from "./planner/workspace/handoff.js";
 import type { QueueExecutionOptions } from "./types.js";
 
 const log = createComponentLogger("queue-executor");
@@ -77,7 +77,7 @@ export async function executeQueuedTasks(
 
   // Run recruiter with combined queued requests + structured handoff
   try {
-    const { runRecruiter } = await import("../recruiter/recruiter.js");
+    const { runRecruiter } = await import("./recruiter/recruiter.js");
     const recruiterResult = await runRecruiter(llm, {
       agentId: newAgentId,
       deviceId,
@@ -98,8 +98,8 @@ export async function executeQueuedTasks(
       timestamp: new Date().toISOString(),
     });
 
-    const { createPlan } = await import("../planner/planner.js");
-    const { executeSteps } = await import("../planner/step-executor.js");
+    const { createPlan } = await import("./planner/planning/create-plan.js");
+    const { executeSteps } = await import("./planner/execution/step-executor.js");
 
     const plan = await createPlan(llm, {
       agentId: newAgentId,
@@ -122,6 +122,7 @@ export async function executeQueuedTasks(
 
     const executionResult = await executeSteps(plan, {
       llm,
+      userId,
       deviceId,
       agentId: newAgentId,
       workspacePath,

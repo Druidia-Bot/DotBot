@@ -35,7 +35,7 @@ interface FrontMatter {
   id: string;
   name: string;
   type: "intake" | "internal";
-  modelTier: "fast" | "smart" | "powerful";
+  modelTier: string;
   description: string;
   tools?: string[];
   modelRole?: "workhorse" | "deep_context" | "architect" | "local" | "gui_fast";

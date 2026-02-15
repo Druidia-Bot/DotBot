@@ -13,7 +13,6 @@
 
 // Provider-agnostic types - see llm/providers.ts for full implementation
 export type LLMProvider = "deepseek" | "anthropic" | "openai" | "gemini" | "local";
-export type ModelTier = "fast" | "smart" | "powerful";
 
 // ============================================
 // MEMORY & THREADING TYPES

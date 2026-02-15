@@ -15,7 +15,7 @@
 
 import type { PersonaDefinition, LocalPersonaDefinition } from "../types/agent.js";
 import { parseFrontMatter } from "./loader.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("local-loader");
 

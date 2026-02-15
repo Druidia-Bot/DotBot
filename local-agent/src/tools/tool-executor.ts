@@ -39,6 +39,16 @@ import { handleMarket } from "./market/handler.js";
 import { handleResearch } from "./research/handler.js";
 import { handleOnboarding } from "./onboarding/handler.js";
 import { handleConfig } from "./config/handler.js";
+import { handleRegistry } from "./registry/handler.js";
+import { handleWindow } from "./window/handler.js";
+import { handleScreen } from "./screen/handler.js";
+import { handleAudio } from "./audio/handler.js";
+import { handleMonitoring } from "./monitoring/handler.js";
+import { handlePackage } from "./package/handler.js";
+import { handleData } from "./data/handler.js";
+import { handlePdf } from "./pdf/handler.js";
+import { handleDb } from "./db/handler.js";
+import { handleVision } from "./vision/handler.js";
 import { getTool } from "./registry.js";
 import { vaultHas } from "../credential-vault.js";
 import { credentialProxyFetch } from "../credential-proxy.js";
@@ -677,6 +687,16 @@ export async function executeTool(toolId: string, args: Record<string, any>): Pr
       case "research":   return await handleResearch(toolId, args);
       case "onboarding": return await handleOnboarding(toolId, args);
       case "config":     return await handleConfig(toolId, args);
+      case "registry":   return await handleRegistry(toolId, args);
+      case "window":     return await handleWindow(toolId, args);
+      case "screen":     return await handleScreen(toolId, args);
+      case "audio":      return await handleAudio(toolId, args);
+      case "monitoring": return await handleMonitoring(toolId, args);
+      case "package":    return await handlePackage(toolId, args);
+      case "data":       return await handleData(toolId, args);
+      case "pdf":        return await handlePdf(toolId, args);
+      case "db":         return await handleDb(toolId, args);
+      case "vision":     return await handleVision(toolId, args);
       default:
         // Catch-all: check if this is a registered non-core tool (API or custom script)
         return await executeRegisteredTool(toolId, args);

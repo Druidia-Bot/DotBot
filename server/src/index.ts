@@ -11,7 +11,7 @@ import { PORT, WS_PORT, PUBLIC_URL, LLM_PROVIDER, LLM_API_KEY } from "./config.j
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
-import { initWSServer, createWSServer } from "./ws/server.js";
+import { initWSServer, createWSServer } from "#ws/server.js";
 import * as memory from "./memory/manager.js";
 import { initBotEnvironment } from "./init.js";
 import { initKnowledgeService } from "./knowledge/index.js";
@@ -23,8 +23,8 @@ import {
   stopRecurringScheduler,
   onRecurringEvent,
   pruneOldCancelledTasks,
-} from "./scheduler/index.js";
-import { stopWorkspaceCleanup } from "./agents/workspace.js";
+} from "./services/scheduler/index.js";
+import { stopWorkspaceCleanup } from "#pipeline/workspace/index.js";
 import { initDatabase } from "./db/index.js";
 
 // Route registrations

@@ -114,6 +114,9 @@ export async function initializeMemoryStore(): Promise<void> {
     await writeJson(MEMORY_INDEX_PATH, initialIndex);
   }
 
+  // Rebuild index from disk so it's always in sync with model files
+  await rebuildMemoryIndex();
+
   await ensureDefaultSchemas();
 }
 

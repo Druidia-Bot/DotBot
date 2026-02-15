@@ -9,7 +9,7 @@ import { WebSocket } from "ws";
 import { nanoid } from "nanoid";
 import type { WSMessage, DeviceSession, ExecutionCommand, ExecutionResult } from "../types.js";
 import { isDeviceAdmin } from "../auth/device-store.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("ws.devices");
 

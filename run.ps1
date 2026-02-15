@@ -95,7 +95,7 @@ if ($Update) {
         # Scope npm install to only workspaces we need (server may not be present on client-only machines)
         $wsFlags = @("-w", "shared")
         if (-not $Server) { $wsFlags += @("-w", "local-agent") }
-        if (-not $Agent -and (Test-Path "$Root\server\package.json")) { $wsFlags += @("-w", "server") }
+        if ($Server -or (-not $Agent -and (Test-Path "$Root\server\package.json"))) { $wsFlags += @("-w", "server") }
         $installArgs = @("install") + $wsFlags
         & npm @installArgs 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
@@ -108,6 +108,7 @@ if ($Update) {
         Write-Host "  [OK] shared/ built" -ForegroundColor Green
 
         if (-not $Server) {
+            if (Test-Path "$Root\local-agent\dist") { Remove-Item "$Root\local-agent\dist" -Recurse -Force -ErrorAction SilentlyContinue }
             Push-Location "$Root\local-agent"
             $out = npm run build 2>&1
             if ($LASTEXITCODE -ne 0) { $out | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }; throw "local-agent/ build failed" }
@@ -115,12 +116,23 @@ if ($Update) {
             Write-Host "  [OK] local-agent/ built" -ForegroundColor Green
         }
 
-        if (-not $Agent -and (Test-Path "$Root\server\package.json")) {
+        if ($Server) {
+            if (Test-Path "$Root\server\dist") { Remove-Item "$Root\server\dist" -Recurse -Force -ErrorAction SilentlyContinue }
             Push-Location "$Root\server"
             $out = npm run build 2>&1
             if ($LASTEXITCODE -ne 0) { $out | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }; throw "server/ build failed" }
             Pop-Location
             Write-Host "  [OK] server/ built" -ForegroundColor Green
+        } elseif (-not $Agent -and (Test-Path "$Root\server\package.json")) {
+            if (Test-Path "$Root\server\dist") { Remove-Item "$Root\server\dist" -Recurse -Force -ErrorAction SilentlyContinue }
+            Push-Location "$Root\server"
+            $out = npm run build 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "  [!] server/ build failed (non-fatal on client machines)" -ForegroundColor Yellow
+            } else {
+                Write-Host "  [OK] server/ built" -ForegroundColor Green
+            }
+            Pop-Location
         }
 
         Write-Host ""

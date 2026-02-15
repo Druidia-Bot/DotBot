@@ -13,10 +13,10 @@
  */
 
 import { nanoid } from "nanoid";
-import { createComponentLogger } from "../../logging.js";
-import { sendExecutionCommand } from "../../ws/device-bridge.js";
+import { createComponentLogger } from "#logging.js";
+import { sendExecutionCommand } from "#ws/device-bridge.js";
 import type { ToolHandler, ToolContext } from "../types.js";
-import type { ToolManifestEntry } from "../../agents/tools.js";
+import type { ToolManifestEntry } from "#tools/types.js";
 
 const log = createComponentLogger("tool-loop.proxy");
 

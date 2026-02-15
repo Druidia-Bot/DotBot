@@ -6,7 +6,7 @@
  */
 
 import type { CoreToolDefinition } from "../core-registry.js";
-import type { Platform } from "../../agents/tools.js";
+import type { Platform } from "../types.js";
 
 const DESKTOP: Platform[] = ["windows", "linux", "macos"];
 

@@ -5,8 +5,8 @@
  */
 
 import { nanoid } from "nanoid";
-import { createComponentLogger } from "../../logging.js";
-import { sendExecutionCommand } from "../../ws/device-bridge.js";
+import { createComponentLogger } from "#logging.js";
+import { sendExecutionCommand } from "#ws/device-bridge.js";
 import type { ToolContext } from "../types.js";
 
 const log = createComponentLogger("tool-loop.knowledge.read");

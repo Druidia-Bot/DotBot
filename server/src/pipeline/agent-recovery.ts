@@ -14,18 +14,18 @@
  *    "running" agents with no active executor, marks them "failed".
  */
 
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 import { isAgentRegistered } from "./agent-signals.js";
 import {
   readPersonaJson,
   writePersonaJson,
   readPlanJson,
-  listWorkspaceDir,
-} from "./workspace-io.js";
-import type { AgentStatus } from "../recruiter/output.js";
+} from "./workspace/persona.js";
+import { listWorkspaceDir } from "./workspace/io.js";
+import type { AgentStatus } from "./recruiter/output.js";
 
-export { readPlanJson as readPlanFromWorkspace, readPersonaJson as readPersonaFromWorkspace } from "./workspace-io.js";
-export type { PlanProgress } from "./workspace-io.js";
+export { readPlanJson as readPlanFromWorkspace, readPersonaJson as readPersonaFromWorkspace } from "./workspace/persona.js";
+export type { PlanProgress } from "./workspace/persona.js";
 
 const log = createComponentLogger("agent-recovery");
 

@@ -9,14 +9,14 @@
  * Flow: collect candidates → acquire lock → route → apply decision → release lock
  */
 
-import { createComponentLogger } from "../../logging.js";
+import { createComponentLogger } from "#logging.js";
 import { pushSignal, tryAcquireRoutingLock, releaseRoutingLock } from "../agent-signals.js";
-import { appendToPersonaRequests } from "../workspace-io.js";
-import { sendAgentLifecycle } from "../../ws/device-bridge.js";
+import { appendToPersonaRequests } from "../workspace/persona.js";
+import { sendAgentLifecycle } from "#ws/device-bridge.js";
 import { routeToAgent } from "./router.js";
 import { collectCandidates, enrichCandidatesWithSteps } from "./candidates.js";
 import { handleModify, handleQueue, handleStop } from "./decisions.js";
-import type { ILLMClient } from "../../llm/providers.js";
+import type { ILLMClient } from "#llm/types.js";
 import type { AgentRoutingResult } from "../types.js";
 
 const log = createComponentLogger("routing-handler");

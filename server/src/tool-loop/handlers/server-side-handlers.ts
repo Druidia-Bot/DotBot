@@ -20,9 +20,9 @@
  *     - knowledge.ingest (overrides the static handler when ctx.state callback exists)
  */
 
-import { createComponentLogger } from "../../logging.js";
+import { createComponentLogger } from "#logging.js";
 import type { ToolHandler, ToolContext } from "../types.js";
-import type { ToolManifestEntry } from "../../agents/tools.js";
+import type { ToolManifestEntry } from "#tools/types.js";
 
 // Static handler imports — memory
 import { handleMemorySaveMessage } from "./memory-save-message.js";
@@ -77,7 +77,6 @@ const DYNAMIC_CATEGORIES: Record<string, { stateKey: string; label: string }> = 
   premium:  { stateKey: "executePremiumTool",      label: "premium" },
   imagegen: { stateKey: "executeImageGenTool",     label: "imagegen" },
   schedule: { stateKey: "executeScheduleTool",     label: "schedule" },
-  research: { stateKey: "executeResearchTool",     label: "research" },
 };
 
 function buildDynamicHandler(stateKey: string, label: string): ToolHandler {

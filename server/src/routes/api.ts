@@ -7,7 +7,7 @@
 
 import type { Hono } from "hono";
 import * as memory from "../memory/manager.js";
-import { getConnectedDevices } from "../ws/server.js";
+import { getConnectedDevices } from "#ws/server.js";
 
 // ============================================
 // PUBLIC / BASIC API
@@ -75,9 +75,9 @@ export function registerApiRoutes(app: Hono, config: { llmProvider: string; llmA
       return c.json({ error: "prompt is required" }, 400);
     }
 
-    const { createLLMClient } = await import("../llm/providers.js");
-    const { getConnectedDevices, getDeviceForUser } = await import("../ws/devices.js");
-    const { runPipeline } = await import("../pipeline/pipeline.js");
+    const { createLLMClient } = await import("#llm/providers.js");
+    const { getConnectedDevices, getDeviceForUser } = await import("#ws/devices.js");
+    const { runPipeline } = await import("#pipeline/pipeline.js");
 
     const llm = createLLMClient({
       provider: config.llmProvider as any,
@@ -120,7 +120,7 @@ export function registerApiRoutes(app: Hono, config: { llmProvider: string; llmA
 
     try {
       const { loadKnowledgeBase, queryKnowledge, injectRelevantKnowledge } = await import("../knowledge/index.js");
-      const { getDeviceForUser } = await import("../ws/server.js");
+      const { getDeviceForUser } = await import("#ws/server.js");
 
       const deviceId = getDeviceForUser("user_demo");
       if (!deviceId) {

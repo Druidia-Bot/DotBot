@@ -13,7 +13,7 @@
 import { readFile } from "fs/promises";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { createComponentLogger } from "./logging.js";
+import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("prompt-template");
 

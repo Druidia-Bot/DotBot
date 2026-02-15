@@ -8,11 +8,11 @@
 
 import { nanoid } from "nanoid";
 import type { WSMessage } from "../types.js";
-import { devices, sendMessage } from "../ws/devices.js";
+import { devices, sendMessage } from "#ws/devices.js";
 import { createSession } from "./sessions.js";
 import { executeProxyRequest } from "./proxy.js";
 import { decryptCredential, getBlobDomain } from "./crypto.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("credentials");
 

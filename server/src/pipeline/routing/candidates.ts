@@ -5,9 +5,9 @@
  * and enriches candidates with step progress from plan.json.
  */
 
-import { createComponentLogger } from "../../logging.js";
+import { createComponentLogger } from "#logging.js";
 import { isAgentDead, readPlanFromWorkspace } from "../agent-recovery.js";
-import { sendMemoryRequest } from "../../ws/device-bridge.js";
+import { sendMemoryRequest } from "#ws/device-bridge.js";
 import type { CandidateAgent } from "./router.js";
 
 const log = createComponentLogger("routing-candidates");

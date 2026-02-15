@@ -4,8 +4,8 @@
  * Creates a new memory model. Tracks the new slug in ctx.state.
  */
 
-import { createComponentLogger } from "../../logging.js";
-import { sendMemoryRequest } from "../../ws/device-bridge.js";
+import { createComponentLogger } from "#logging.js";
+import { sendMemoryRequest } from "#ws/device-bridge.js";
 import type { ToolContext } from "../types.js";
 
 const log = createComponentLogger("tool-loop.memory.create_model");

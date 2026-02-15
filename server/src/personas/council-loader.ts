@@ -16,7 +16,7 @@ import type {
   CouncilDefinition,
   ResolvedCouncil,
 } from "../types/agent.js";
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 import { getPersona } from "./loader.js";
 import { getLocalPersona } from "./local-loader.js";
 import RE2 from "re2";

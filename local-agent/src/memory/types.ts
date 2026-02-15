@@ -33,6 +33,8 @@ export interface AgentIdentity {
   codeOfConduct: string[];
   /** Non-secure properties (email, timezone, etc.) */
   properties: Record<string, string>;
+  /** Key filesystem paths Dot needs to know about — each value is "path | description" */
+  importiantPaths: Record<string, string>;
   /** Instructions the human has given about how the agent should behave */
   humanInstructions: string[];
   /** Preferred communication style keywords */

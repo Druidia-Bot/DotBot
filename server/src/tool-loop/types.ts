@@ -10,7 +10,7 @@
  * Full callers (execution.ts) add streaming, abort, injection, etc.
  */
 
-import type { ILLMClient, LLMMessage, LLMRequestOptions, ToolDefinition } from "../llm/types.js";
+import type { ILLMClient, LLMMessage, LLMRequestOptions, ToolDefinition } from "#llm/types.js";
 
 /**
  * Context passed to every tool handler. Contains what the handler needs

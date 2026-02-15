@@ -13,7 +13,7 @@
  * against executable content.
  */
 
-import { createComponentLogger } from "../logging.js";
+import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("upload.security");
 

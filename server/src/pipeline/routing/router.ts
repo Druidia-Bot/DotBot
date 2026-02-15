@@ -8,11 +8,11 @@
  * Output: routing decision + target agent ID
  */
 
-import { createComponentLogger } from "../../logging.js";
-import { resolveModelAndClient } from "../../llm/resolve.js";
+import { createComponentLogger } from "#logging.js";
+import { resolveModelAndClient } from "#llm/selection/resolve.js";
 import { loadPrompt, loadSchema } from "../../prompt-template.js";
-import type { ILLMClient } from "../../llm/types.js";
-import type { AgentStatus } from "../../recruiter/output.js";
+import type { ILLMClient } from "#llm/types.js";
+import type { AgentStatus } from "../recruiter/output.js";
 
 const log = createComponentLogger("agent-router");
 

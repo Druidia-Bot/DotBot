@@ -4,8 +4,8 @@
  * Searches across memory models by keyword. Tracks results in ctx.state.
  */
 
-import { createComponentLogger } from "../../logging.js";
-import { sendMemoryRequest } from "../../ws/device-bridge.js";
+import { createComponentLogger } from "#logging.js";
+import { sendMemoryRequest } from "#ws/device-bridge.js";
 import type { ToolContext } from "../types.js";
 
 const log = createComponentLogger("tool-loop.memory.search");

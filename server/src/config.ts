@@ -15,8 +15,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 config({ path: resolve(__dirname, "../../.env") });
 
-import { registerApiKeys } from "./llm/providers.js";
-import { probeLocalModel, downloadLocalModel } from "./llm/local-llm.js";
+import { registerApiKeys } from "#llm/selection/model-selector.js";
+import { probeLocalModel, downloadLocalModel } from "#llm/providers/local-llm/index.js";
 
 // ============================================
 // NETWORK
