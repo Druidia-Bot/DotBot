@@ -18,20 +18,13 @@ import { initCredentialProxy } from "../credential-proxy.js";
 import { initServerLLM } from "../server-llm.js";
 import { setAdminRequestSender } from "../tools/admin/handler.js";
 import { setPreRestartHook } from "../tools/tool-executor.js";
-import { initSleepCycle, executeSleepCycle, setSleepCycleLoopCallback, CYCLE_INTERVAL_MS } from "../memory/sleep-cycle.js";
-import {
-  initHeartbeat, executeHeartbeat, canRunHeartbeat,
-  getHeartbeatIntervalMs, isHeartbeatEnabled,
-} from "../heartbeat/heartbeat.js";
-import {
-  startPeriodicManager,
-  notifyActivity,
-  type PeriodicTaskDef,
-} from "../periodic/index.js";
-import { checkReminders, canCheckReminders, setReminderNotifyCallback } from "../reminders/checker.js";
-import { checkOnboarding, canCheckOnboarding, setOnboardingNotifyCallback, setOnboardingDiscordCallback } from "../onboarding/checker.js";
+import { initSleepCycle, setSleepCycleLoopCallback, getPeriodicTaskDef as getSleepCycleTaskDef } from "../memory/sleep-cycle.js";
+import { initHeartbeat, getPeriodicTaskDef as getHeartbeatTaskDef } from "../heartbeat/heartbeat.js";
+import { startPeriodicManager, notifyActivity } from "../periodic/index.js";
+import { setReminderNotifyCallback, getPeriodicTaskDef as getReminderTaskDef } from "../reminders/checker.js";
+import { setOnboardingNotifyCallback, setOnboardingDiscordCallback, getPeriodicTaskDef as getOnboardingTaskDef } from "../onboarding/checker.js";
 import { onboardingExists, initOnboarding } from "../onboarding/store.js";
-import { checkForUpdates, canCheckForUpdates, setUpdateNotifyCallback } from "../onboarding/update-checker.js";
+import { setUpdateNotifyCallback, getPeriodicTaskDef as getUpdateCheckTaskDef } from "../onboarding/update-checker.js";
 import { initDiscordAdapter, sendToConversationChannel, sendToUpdatesChannel } from "../discord/adapter.js";
 import { processFormatFixes } from "../handlers/format-fixer.js";
 import type { MalformedFile } from "../memory/startup-validator.js";
@@ -195,55 +188,14 @@ export async function initializeAfterAuth(
     sendToUpdatesChannel(`🔄 ${message}`);
   });
 
-  // Start the unified periodic manager
-  const periodicTasks: PeriodicTaskDef[] = [
-    {
-      id: "heartbeat",
-      name: "Heartbeat Check",
-      intervalMs: getHeartbeatIntervalMs(),
-      initialDelayMs: 60_000, // 1 minute after startup
-      enabled: isHeartbeatEnabled(),
-      run: (idleMs) => executeHeartbeat(idleMs),
-      canRun: canRunHeartbeat,
-    },
-    {
-      id: "reminder-check",
-      name: "Reminder Check",
-      intervalMs: 15_000, // Check every 15s (instant — just reads a JSON file)
-      initialDelayMs: 10_000, // 10 seconds after startup
-      enabled: true,
-      bypassIdleCheck: true, // Reminders must fire on schedule, not wait for idle
-      run: () => checkReminders(),
-      canRun: canCheckReminders,
-    },
-    {
-      id: "sleep-cycle",
-      name: "Memory Consolidation",
-      intervalMs: CYCLE_INTERVAL_MS,
-      initialDelayMs: 2 * 60 * 1000, // 2 minutes after startup
-      enabled: true,
-      run: () => executeSleepCycle(),
-    },
-    {
-      id: "onboarding-check",
-      name: "Onboarding Check",
-      intervalMs: 60 * 60 * 1000, // Check once per hour (nag logic limits to once/day)
-      initialDelayMs: 5 * 60 * 1000, // 5 minutes after startup
-      enabled: true,
-      run: () => checkOnboarding(),
-      canRun: canCheckOnboarding,
-    },
-    {
-      id: "update-check",
-      name: "Update Check",
-      intervalMs: 6 * 60 * 60 * 1000, // Check every 6 hours
-      initialDelayMs: 10 * 60 * 1000, // 10 minutes after startup
-      enabled: true,
-      run: () => checkForUpdates(),
-      canRun: canCheckForUpdates,
-    },
-  ];
-  startPeriodicManager(periodicTasks);
+  // Start the unified periodic manager — each subsystem owns its own config
+  startPeriodicManager([
+    getHeartbeatTaskDef(),
+    getReminderTaskDef(),
+    getSleepCycleTaskDef(),
+    getOnboardingTaskDef(),
+    getUpdateCheckTaskDef(),
+  ]);
 
   // Process pending format fixes if user opted in
   if (pendingFormatFixes.length > 0) {

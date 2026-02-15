@@ -21,6 +21,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { homedir } from "os";
 import type { HeartbeatResult } from "../types.js";
+import type { PeriodicTaskDef } from "../periodic/index.js";
 
 // ============================================
 // CONFIGURATION
@@ -390,6 +391,22 @@ function stopFileWatcher(): void {
     fileWatcher.close();
     fileWatcher = null;
   }
+}
+
+/**
+ * Returns the periodic task definition for the heartbeat.
+ * Config is co-located here; post-auth-init just collects it.
+ */
+export function getPeriodicTaskDef(): PeriodicTaskDef {
+  return {
+    id: "heartbeat",
+    name: "Heartbeat Check",
+    intervalMs: getHeartbeatIntervalMs(),
+    initialDelayMs: 60_000, // 1 minute after startup
+    enabled: isHeartbeatEnabled(),
+    run: (idleMs) => executeHeartbeat(idleMs),
+    canRun: canRunHeartbeat,
+  };
 }
 
 function isWithinActiveHours(hours: { start: string; end: string }): boolean {

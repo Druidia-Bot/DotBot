@@ -22,6 +22,7 @@ import { deduplicateModelFields, detectAndMergeDuplicates } from "./sleep-dedup.
 import type { ServerSender } from "./sleep-llm.js";
 import type { LoopNotificationCallback } from "./sleep-phases.js";
 import type { SleepCycleState } from "./types.js";
+import type { PeriodicTaskDef } from "../periodic/index.js";
 import path from "path";
 import { homedir } from "os";
 import { promises as fs } from "fs";
@@ -352,4 +353,19 @@ export async function flushSession(): Promise<FlushResult> {
   }
 
   return result;
+}
+
+/**
+ * Returns the periodic task definition for the sleep cycle.
+ * Config is co-located here; post-auth-init just collects it.
+ */
+export function getPeriodicTaskDef(): PeriodicTaskDef {
+  return {
+    id: "sleep-cycle",
+    name: "Memory Consolidation",
+    intervalMs: CYCLE_INTERVAL_MS,
+    initialDelayMs: 2 * 60 * 1000, // 2 minutes after startup
+    enabled: true,
+    run: () => executeSleepCycle(),
+  };
 }

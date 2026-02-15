@@ -6,6 +6,7 @@
  */
 
 import { execSync } from "child_process";
+import type { PeriodicTaskDef } from "../periodic/index.js";
 
 const INSTALL_DIR = process.env.DOTBOT_INSTALL_DIR || "C:\\Program Files\\.bot";
 
@@ -54,4 +55,20 @@ export async function checkForUpdates(): Promise<void> {
 
 export function canCheckForUpdates(): boolean {
   return true;
+}
+
+/**
+ * Returns the periodic task definition for the update checker.
+ * Config is co-located here; post-auth-init just collects it.
+ */
+export function getPeriodicTaskDef(): PeriodicTaskDef {
+  return {
+    id: "update-check",
+    name: "Update Check",
+    intervalMs: 6 * 60 * 60 * 1000, // Check every 6 hours
+    initialDelayMs: 10 * 60 * 1000, // 10 minutes after startup
+    enabled: true,
+    run: () => checkForUpdates(),
+    canRun: canCheckForUpdates,
+  };
 }

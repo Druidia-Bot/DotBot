@@ -123,6 +123,12 @@ export async function reconcileIdentityPaths(): Promise<boolean> {
   const expected = buildExpectedPaths();
   let changed = false;
 
+  // Create the field if it doesn't exist (pre-existing me.json from older version)
+  if (!identity.importiantPaths) {
+    identity.importiantPaths = {};
+    changed = true;
+  }
+
   // Only reconcile the known system keys — leave user-added paths untouched
   for (const [key, value] of Object.entries(expected)) {
     if (identity.importiantPaths[key] !== value) {

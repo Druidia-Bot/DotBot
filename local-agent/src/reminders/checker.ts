@@ -16,6 +16,7 @@
 
 import { getDueReminders, markTriggered } from "./store.js";
 import type { Reminder } from "./store.js";
+import type { PeriodicTaskDef } from "../periodic/index.js";
 
 // ============================================
 // STATE
@@ -67,6 +68,23 @@ export async function checkReminders(): Promise<void> {
  */
 export function canCheckReminders(): boolean {
   return true;
+}
+
+/**
+ * Returns the periodic task definition for the reminder checker.
+ * Config is co-located here; post-auth-init just collects it.
+ */
+export function getPeriodicTaskDef(): PeriodicTaskDef {
+  return {
+    id: "reminder-check",
+    name: "Reminder Check",
+    intervalMs: 15_000, // Check every 15s (instant — just reads a JSON file)
+    initialDelayMs: 10_000, // 10 seconds after startup
+    enabled: true,
+    bypassIdleCheck: true, // Reminders must fire on schedule, not wait for idle
+    run: () => checkReminders(),
+    canRun: canCheckReminders,
+  };
 }
 
 // ============================================

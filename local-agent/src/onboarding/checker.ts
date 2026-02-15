@@ -15,6 +15,7 @@ import {
   getIncompleteSteps,
   isOnboardingComplete,
 } from "./store.js";
+import type { PeriodicTaskDef } from "../periodic/index.js";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -104,4 +105,20 @@ export async function checkOnboarding(): Promise<void> {
 
 export function canCheckOnboarding(): boolean {
   return true;
+}
+
+/**
+ * Returns the periodic task definition for the onboarding checker.
+ * Config is co-located here; post-auth-init just collects it.
+ */
+export function getPeriodicTaskDef(): PeriodicTaskDef {
+  return {
+    id: "onboarding-check",
+    name: "Onboarding Check",
+    intervalMs: 60 * 60 * 1000, // Check once per hour (nag logic limits to once/day)
+    initialDelayMs: 5 * 60 * 1000, // 5 minutes after startup
+    enabled: true,
+    run: () => checkOnboarding(),
+    canRun: canCheckOnboarding,
+  };
 }
