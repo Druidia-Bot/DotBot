@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "debug": "node --inspect=9229 --import tsx src/index.ts",
-    "build": "tsc && node -e \"const fs=require('fs');const path=require('path');function cpDir(s,d,exts){fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s)){const sp=path.join(s,f),dp=path.join(d,f);fs.statSync(sp).isDirectory()?cpDir(sp,dp,exts):exts.some(e=>f.endsWith(e))&&fs.copyFileSync(sp,dp)}}cpDir('src/personas','dist/personas',['.md']);cpDir('src/prompts','dist/prompts',['.md']);cpDir('src/db','dist/db',['.sql'])\"",
+    "build": "tsc && node -e \"const fs=require('fs');const path=require('path');function cpDir(s,d,exts){fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s)){const sp=path.join(s,f),dp=path.join(d,f);fs.statSync(sp).isDirectory()?cpDir(sp,dp,exts):exts.some(e=>f.endsWith(e))&&fs.copyFileSync(sp,dp)}}cpDir('src','dist',['.md','.schema.json','.sql'])\"",
     "start": "node dist/index.js",
     "test": "vitest"
   },
