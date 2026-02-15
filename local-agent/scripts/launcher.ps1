@@ -20,6 +20,21 @@
 #
 # ============================================================
 
+# -- Self-elevate to administrator (DotBot needs full PC control) --
+
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    $scriptPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
+    try {
+        Start-Process powershell -Verb RunAs -ArgumentList @(
+            "-ExecutionPolicy", "Bypass", "-File", "`"$scriptPath`""
+        )
+    } catch {
+        Write-Host "  [X] Administrator privileges required for DotBot launcher." -ForegroundColor Red
+        exit 1
+    }
+    exit 0
+}
+
 $ErrorActionPreference = "Stop"
 
 # --- Paths ---

@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": ["modify", "queue", "new", "stop"]
+    },
+    "targetAgentId": {
+      "type": "string",
+      "description": "The agentId to target. Required for modify, queue, and stop. Omit for new."
+    },
+    "reasoning": {
+      "type": "string",
+      "description": "Brief explanation of why this decision was made."
+    }
+  },
+  "required": ["decision", "reasoning"],
+  "additionalProperties": false
+}

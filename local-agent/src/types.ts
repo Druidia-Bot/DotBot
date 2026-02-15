@@ -186,7 +186,8 @@ export type MemoryAction =
   | "clear_threads"
   | "get_identity"
   | "get_model_skeletons"
-  | "search_and_promote";
+  | "search_and_promote"
+  | "promote_model";
 
 export interface MemoryRequest {
   action: MemoryAction;

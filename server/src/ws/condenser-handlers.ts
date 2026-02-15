@@ -24,7 +24,7 @@ export async function handleCondenseRequest(
   const device = devices.get(deviceId);
   if (!device) return;
 
-  const { runCondenser } = await import("../agents/condenser.js");
+  const { runCondenser } = await import("../condenser/condenser.js");
 
   try {
     const result = await runCondenser(message.payload, {
@@ -44,7 +44,8 @@ export async function handleCondenseRequest(
       },
     });
   } catch (error) {
-    log.error("Condense request failed", { error });
+    const errMsg = error instanceof Error ? error.message : JSON.stringify(error);
+    log.error("Condense request failed", error);
     sendMessage(device.ws, {
       type: "condense_response",
       id: nanoid(),
@@ -53,7 +54,7 @@ export async function handleCondenseRequest(
         requestId: message.id,
         threadId: message.payload.thread?.id,
         instructions: [],
-        reasoning: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        reasoning: `Error: ${errMsg}`,
       },
     });
   }
@@ -68,7 +69,7 @@ export async function handleResolveLoopRequest(
   const device = devices.get(deviceId);
   if (!device) return;
 
-  const { runLoopResolver } = await import("../agents/condenser.js");
+  const { runLoopResolver } = await import("../condenser/loop-resolver.js");
 
   try {
     // Fetch tool manifest so the resolver can actually execute searches
@@ -118,7 +119,8 @@ export async function handleResolveLoopRequest(
       });
     }
   } catch (error) {
-    log.error("Resolve loop request failed", { error });
+    const errMsg = error instanceof Error ? error.message : JSON.stringify(error);
+    log.error("Resolve loop request failed", error);
     sendMessage(device.ws, {
       type: "resolve_loop_response",
       id: nanoid(),
@@ -128,7 +130,7 @@ export async function handleResolveLoopRequest(
         modelSlug: message.payload.modelSlug,
         loopId: message.payload.loop?.id,
         resolved: false,
-        blockedReason: `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        blockedReason: `Error: ${errMsg}`,
         notifyUser: false,
         newStatus: "blocked",
       },
@@ -216,7 +218,8 @@ Reformat this file to match the template. Return ONLY the corrected file content
       },
     });
   } catch (error) {
-    log.error("Format fix request failed", { error, filePath });
+    const errMsg = error instanceof Error ? error.message : JSON.stringify(error);
+    log.error("Format fix request failed", error, { filePath });
     sendMessage(device.ws, {
       type: "format_fix_response",
       id: nanoid(),
@@ -225,7 +228,7 @@ Reformat this file to match the template. Return ONLY the corrected file content
         requestId: message.id,
         correctedContent: null,
         filePath,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: errMsg,
       },
     });
   }
@@ -299,8 +302,9 @@ export async function handleLLMCallRequest(
         usage: result.usage,
       },
     });
-  } catch (err: any) {
-    log.error("LLM call request failed", { error: err.message, provider });
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : JSON.stringify(err);
+    log.error("LLM call request failed", err, { provider });
     sendMessage(device.ws, {
       type: "llm_call_response",
       id: nanoid(),
@@ -308,7 +312,7 @@ export async function handleLLMCallRequest(
       payload: {
         requestId: message.id,
         success: false,
-        error: err.message,
+        error: errMsg,
       },
     });
   }

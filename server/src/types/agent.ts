@@ -54,6 +54,7 @@ export interface MemoryIndexL0Entry {
   slug: string;
   name: string;
   category: string;
+  description: string;
   keywords: string[];
   lastUpdatedAt: string;
 }
@@ -345,8 +346,8 @@ export interface EnhancedPromptRequest {
   threadIndex: ThreadIndexL0;
   /** L0 mental model index — names + keywords for receptionist routing */
   memoryIndex?: MemoryIndexL0Entry[];
-  matchedCouncils: CouncilMatch[];
-  /** User-defined personas from ~/.bot/personas/ (fetched from local agent) */
+  matchedCouncils?: CouncilMatch[];
+  /** @deprecated User personas are now fetched directly by the recruiter */
   userPersonas?: { id: string; name: string; description: string }[];
   /** Recent/active tasks from local agent task log — gives receptionist visibility into in-progress, failed, and blocked work */
   activeTasks?: TaskSnapshot[];

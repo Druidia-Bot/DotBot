@@ -8,6 +8,7 @@
 import { promises as fs } from "fs";
 import * as path from "path";
 import { nanoid } from "nanoid";
+import { computeWordOverlap } from "./sleep-llm.js";
 import type {
   MentalModel,
   MentalModelIndexEntry,
@@ -118,8 +119,8 @@ export async function saveMentalModel(model: MentalModel): Promise<void> {
       keywords: extractKeywords(model),
       createdAt: model.createdAt,
       lastUpdatedAt: model.lastUpdatedAt,
-      beliefCount: model.beliefs.length,
-      openLoopCount: model.openLoops.filter(l => l.status === "open").length
+      beliefCount: (model.beliefs || []).length,
+      openLoopCount: (model.openLoops || []).filter(l => l.status === "open").length
     };
     if (existingIdx >= 0) {
       index.models[existingIdx] = entry;
@@ -149,6 +150,7 @@ export async function createMentalModel(
     constraints: [],
     relationships: [],
     conversations: [],
+    agents: [],
     createdAt: now,
     lastUpdatedAt: now,
     accessCount: 0
@@ -230,6 +232,15 @@ export async function addOpenLoop(
 ): Promise<OpenLoop | null> {
   const model = await getMentalModel(modelSlug);
   if (!model) return null;
+
+  // Dedup: skip if an existing loop has the same or very similar description
+  const duplicate = model.openLoops.some(existing =>
+    existing.status !== "resolved" && (
+      existing.description === description ||
+      computeWordOverlap(existing.description, description) >= 0.8
+    )
+  );
+  if (duplicate) return null;
 
   const loop: OpenLoop = {
     id: `loop_${nanoid(12)}`,

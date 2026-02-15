@@ -66,9 +66,111 @@ export const research: CoreToolDefinition[] = [
   },
 ];
 
+// Memory (server-routed to local agent via WebSocket)
+export const memoryTools: CoreToolDefinition[] = [
+  {
+    id: "memory.get_model_detail",
+    name: "get_model_detail",
+    description: "Read the full contents of a memory model by its slug. Returns beliefs, conversations, relationships, constraints, and open loops.",
+    category: "memory",
+    executor: "server",
+    platforms: ALL,
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "The model's slug identifier" },
+      },
+      required: ["slug"],
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    id: "memory.get_model_field",
+    name: "get_model_field",
+    description: "Fetch a single field from a memory model (e.g. conversations, relationships, beliefs, openLoops, constraints, questions, resolvedIssues). Returns only that field, not the whole model.",
+    category: "memory",
+    executor: "server",
+    platforms: ALL,
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "The model's slug identifier" },
+        field: { type: "string", description: "The field to retrieve", enum: ["conversations", "relationships", "beliefs", "openLoops", "constraints", "questions", "resolvedIssues", "metadata"] },
+      },
+      required: ["slug", "field"],
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    id: "memory.save_message",
+    name: "save_message_to_model",
+    description: "Save a message to a memory model's conversation history. If the model is archived, it will be automatically promoted back to active memory.",
+    category: "memory",
+    executor: "server",
+    platforms: ALL,
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "The slug of the model to save the message to" },
+      },
+      required: ["slug"],
+    },
+  },
+  {
+    id: "memory.create_model",
+    name: "create_model",
+    description: "Create a brand new memory model for a person, place, business, project, concept, or topic.",
+    category: "memory",
+    executor: "server",
+    platforms: ALL,
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Human-readable name" },
+        category: { type: "string", enum: ["person", "place", "business", "project", "concept", "topic"], description: "Category" },
+        description: { type: "string", description: "One-sentence description" },
+      },
+      required: ["name", "category", "description"],
+    },
+  },
+  {
+    id: "memory.search",
+    name: "search_memory_models",
+    description: "Search across memory models for relevant matches. Returns model names, categories, and match reasons.",
+    category: "memory",
+    executor: "server",
+    platforms: ALL,
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query" },
+      },
+      required: ["query"],
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    id: "memory.get_model_spine",
+    name: "get_model_spine",
+    description: "Get a structured summary of a memory model: rendered beliefs, open loops, constraints, questions, and a data shape showing counts for every key. Lighter than get_model_detail — use this to decide what's worth fetching in full.",
+    category: "memory",
+    executor: "server",
+    platforms: ALL,
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "The model's slug identifier" },
+      },
+      required: ["slug"],
+    },
+    annotations: { readOnlyHint: true },
+  },
+];
+
 /** All universal (ALL platforms) tools */
 export const UNIVERSAL_TOOLS: CoreToolDefinition[] = [
   ...knowledgeUniversal,
   ...schedule,
   ...research,
+  ...memoryTools,
 ];

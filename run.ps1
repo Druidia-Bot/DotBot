@@ -20,6 +20,24 @@ param(
     [switch]$Stop
 )
 
+# -- Self-elevate to administrator (DotBot needs full PC control) --
+
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    $argList = @("-ExecutionPolicy", "Bypass", "-NoExit", "-File", "`"$PSCommandPath`"")
+    if ($Server) { $argList += "-Server" }
+    if ($Agent)  { $argList += "-Agent" }
+    if ($Update) { $argList += "-Update" }
+    if ($Stop)   { $argList += "-Stop" }
+    try {
+        Start-Process powershell -Verb RunAs -ArgumentList $argList
+    } catch {
+        Write-Host "  [X] Administrator privileges required." -ForegroundColor Red
+        Write-Host "      Right-click PowerShell -> 'Run as administrator', then try again." -ForegroundColor Gray
+        exit 1
+    }
+    exit 0
+}
+
 $Root = $PSScriptRoot
 
 # -- Stop mode ------------------------------------------

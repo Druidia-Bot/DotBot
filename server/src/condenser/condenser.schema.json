@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "instructions": {
+      "type": "array",
+      "description": "Atomic operations to apply to the memory system",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "create_model", "update_model_meta", "update_keywords",
+              "add_belief", "update_belief", "remove_belief",
+              "add_constraint", "remove_constraint",
+              "add_open_loop", "close_loop",
+              "add_relationship",
+              "add_conversation_ref", "condense_thread", "archive_thread",
+              "identity_set_name", "identity_set_role",
+              "identity_add_trait", "identity_remove_trait",
+              "identity_add_ethic", "identity_remove_ethic",
+              "identity_add_conduct", "identity_remove_conduct",
+              "identity_set_property", "identity_remove_property",
+              "identity_add_instruction", "identity_remove_instruction",
+              "identity_add_communication_style", "identity_remove_communication_style"
+            ],
+            "description": "The type of memory operation to perform"
+          },
+          "modelSlug": {
+            "type": "string",
+            "description": "Target model slug (for model-scoped operations)"
+          },
+          "slug": { "type": "string", "description": "Slug for new models (create_model)" },
+          "name": { "type": "string" },
+          "category": { "type": "string" },
+          "description": { "type": "string" },
+          "updates": { "type": "object", "description": "Fields to update (update_model_meta, update_belief)" },
+          "keywords": { "type": "array", "items": { "type": "string" } },
+          "belief": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "attribute": { "type": "string" },
+              "value": {},
+              "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+              "formedAt": { "type": "string" },
+              "lastConfirmedAt": { "type": "string" }
+            }
+          },
+          "beliefId": { "type": "string" },
+          "reason": { "type": "string" },
+          "constraint": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "description": { "type": "string" },
+              "type": { "type": "string", "enum": ["hard", "soft"] },
+              "identifiedAt": { "type": "string" },
+              "source": { "type": "string" }
+            }
+          },
+          "constraintId": { "type": "string" },
+          "loop": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "description": { "type": "string" },
+              "importance": { "type": "string", "enum": ["low", "medium", "high"] },
+              "identifiedAt": { "type": "string" },
+              "resolutionCriteria": { "type": "string" },
+              "toolHint": { "type": "string", "enum": ["web_search", "email_lookup", "calendar_check", "none"] }
+            }
+          },
+          "loopId": { "type": "string" },
+          "resolution": { "type": "string" },
+          "relationship": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "targetSlug": { "type": "string" },
+              "direction": { "type": "string", "enum": ["outgoing", "incoming", "bidirectional"] },
+              "identifiedAt": { "type": "string" },
+              "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          },
+          "ref": {
+            "type": "object",
+            "properties": {
+              "timestamp": { "type": "string" },
+              "summary": { "type": "string" },
+              "keyPoints": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "threadId": { "type": "string" },
+          "summary": { "type": "string" },
+          "keyPoints": { "type": "array", "items": { "type": "string" } },
+          "preserveLastN": { "type": "integer", "minimum": 0 },
+          "value": { "type": "string" },
+          "key": { "type": "string" }
+        },
+        "required": ["action"]
+      }
+    },
+    "reasoning": {
+      "type": "string",
+      "description": "Brief explanation of the condensation decisions"
+    }
+  },
+  "required": ["instructions", "reasoning"]
+}

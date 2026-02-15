@@ -125,7 +125,7 @@ If the preferred provider's API key is missing, the selector falls back automati
 
 All LLM providers implement the same `ILLMClient` interface: `chat()` and `stream()`. Provider-specific details (Anthropic's system message separation, Gemini's `systemInstruction` field, tool format conversion, auth headers) are encapsulated in each client. Business logic never touches provider APIs directly.
 
-`resolveModelAndClient()` in `execution.ts` runs `selectModel()`, then either reuses the current client (if same provider) or creates a new one via `createClientForSelection()`. This means a single request pipeline can transparently switch providers mid-execution.
+`resolveModelAndClient()` in `llm/resolve.ts` runs `selectModel()`, then either reuses the current client (if same provider) or creates a new one via `createClientForSelection()`. This means a single request pipeline can transparently switch providers mid-execution.
 
 ---
 
@@ -235,6 +235,64 @@ This pattern — where certain tools execute server-side while most execute loca
 
 ---
 
+## Pipeline Module Structure
+
+The server pipeline is a linear chain of independent modules, each in its own folder:
+
+```
+Intake → Receptionist → Persona Picker → Planner → Step Executor
+```
+
+Each module follows the same structural conventions so new pipeline stages are easy to add and existing ones are easy to find.
+
+### Folder layout
+
+Every pipeline module is a folder under `server/src/` containing:
+
+- **`types.ts`** — Input, output, and internal interfaces shared across the module's files. The module's public contract lives here.
+- **`*.md`** — Prompt templates using `|* FieldName *|` placeholders, loaded at runtime by `loadPrompt()`. Prompts are never hardcoded in TypeScript.
+- **`*.schema.json`** — JSON schemas that constrain LLM output structure. Passed to the LLM via `responseSchema` so the model knows the exact shape expected.
+- **Orchestrator `.ts`** — The main entry point (e.g., `receptionist.ts`, `planner.ts`). Coordinates the module's workflow: load prompt, call LLM, parse response, produce typed output.
+- **Supporting `.ts` files** — Sub-concerns split into focused files: output builders, tool wrappers, data fetchers, formatters. Each file earns its existence by encapsulating a distinct responsibility.
+
+Simpler modules (like `intake/`) may omit `types.ts` or the schema file if they don't need them. The pattern scales up or down.
+
+### LLM call pattern
+
+All modules that call an LLM follow the same sequence:
+
+1. **Resolve model** — `resolveModelAndClient(llm, { explicitRole: "..." })` selects the right provider and model for the task
+2. **Load prompt + schema in parallel** — `Promise.all([loadPrompt(...), loadSchema(...)])` to avoid serial I/O
+3. **Inject context via placeholders** — Formatter functions produce strings for each `|* Field *|` in the template
+4. **Call LLM with structured output** — `responseFormat: "json_object"` + `responseSchema: { name, schema }` so the model returns validated JSON
+5. **Parse defensively** — Extract JSON with regex fallback, return typed result or graceful error
+
+### Formatter conventions
+
+- Formatters are standalone functions (not methods) that take typed input and return a string
+- Use `[...lines].join("\n")` for multi-line output, not template literals with embedded newlines
+- Extract complex inline chains into named variables for readability
+- Empty/missing data should produce a meaningful fallback string, not an empty string
+
+### Module boundaries
+
+Each module produces a typed result that feeds into the next module. Modules do not import each other's internals — they communicate through their public types. The pipeline orchestrator (`prompt-handler.ts`) is the only file that calls modules in sequence and threads results between them.
+
+WebSocket handlers are thin wrappers: dynamic-import the module, pass the payload, return the result. No business logic in handlers.
+
+### Prompt template guidelines
+
+- **Identity first** — Inject `|* Identity *|` at the top so the LLM knows who it is
+- **Context sections** — Use markdown headers (`## Thread`, `## Relevant Models`) to structure injected data
+- **Behavioral rules in the prompt, structure in the schema** — The `.md` file says *what* to do and *how* to think; the `.schema.json` says *what shape* to return. Don't duplicate the schema as prose in the prompt.
+- **Keep prompts focused** — Each prompt has one job. If a module needs two LLM calls with different instructions (like persona-picker's pick + write phases), use two separate `.md` files.
+
+### The condenser and sleep cycle
+
+The `condenser/` module follows the same pattern but runs outside the main pipeline — it's called by the local agent's sleep cycle via WebSocket. The condenser and loop-resolver are independent sub-modules (separate `.ts`, `.md`, and `.schema.json` files) that share types but not barrel exports.
+
+---
+
 ## Self-Improving Tool Catalog
 
 Tools aren't just built-in — the system can **discover, test, and save new tools at runtime**. When the model finds a useful free API, it can:
@@ -290,7 +348,8 @@ Don't create a class when a function will do. Don't create a function when inlin
 | Knowledge ingestion | Server-side Gemini processing | Client-side parsing | Handles binary (PDF, video, audio); uses server API keys |
 | Temp email provider | mail.tm (free, no API key, local-only) | Self-hosted SMTP / paid provider | Zero setup, no credentials, no server involvement; disposable by design |
 | Identity email relay | Separate repo (Cloudflare Worker) | Bundled in open-source DotBot | Central service with infrastructure costs shouldn't be in the OSS runtime |
+| Pipeline module structure | Folder per stage (types + prompt + schema + orchestrator) | Monolithic files | Prompts are editable without touching TS; schemas enforce structure; concerns stay separated |
 
 ---
 
-*Last Updated: February 10, 2026*
+*Last Updated: February 14, 2026*

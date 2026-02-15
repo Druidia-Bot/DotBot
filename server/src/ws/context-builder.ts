@@ -90,6 +90,10 @@ export async function buildRequestContext(
         action: "get_l0_index",
       } as MemoryRequest);
       if (fetched) l0Index = fetched;
+      log.info("L0 memory index fetched", {
+        modelCount: l0Index.models.length,
+        threadCount: l0Index.threads.length,
+      });
     } catch (err) {
       log.warn("Failed to fetch L0 memory index from local agent", { error: err });
     }

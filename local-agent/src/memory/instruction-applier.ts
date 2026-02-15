@@ -11,6 +11,7 @@
 import { nanoid } from "nanoid";
 import * as store from "./store.js";
 import * as identity from "./store-identity.js";
+import { computeWordOverlap } from "./sleep-llm.js";
 import type {
   CondenserInstruction,
   MentalModel,
@@ -243,6 +244,19 @@ async function handleAddOpenLoop(inst: Extract<CondenserInstruction, { action: "
   const model = await store.getMentalModel(inst.modelSlug);
   if (!model) return false;
 
+  // Dedup: skip if an existing loop has the same or very similar description + resolution criteria
+  const newText = loopComparisonText(inst.loop.description, inst.loop.resolutionCriteria);
+  const duplicate = model.openLoops.some(existing =>
+    existing.status !== "resolved" && loopTextsSimilar(
+      loopComparisonText(existing.description, existing.resolutionCriteria),
+      newText,
+    )
+  );
+  if (duplicate) {
+    console.log(`[InstructionApplier] Skipping duplicate open loop on ${inst.modelSlug}: "${inst.loop.description.slice(0, 80)}..."`);
+    return true; // Not an error — just a no-op
+  }
+
   const loop: OpenLoop = {
     ...inst.loop,
     id: inst.loop.id || `loop_${nanoid(8)}`,
@@ -254,6 +268,24 @@ async function handleAddOpenLoop(inst: Extract<CondenserInstruction, { action: "
   model.lastUpdatedAt = new Date().toISOString();
   await store.saveMentalModel(model);
   return true;
+}
+
+/**
+ * Build comparison text for an open loop (description + resolution criteria).
+ */
+function loopComparisonText(description: string, resolutionCriteria?: string): string {
+  return resolutionCriteria ? `${description} | ${resolutionCriteria}` : description;
+}
+
+/**
+ * Check if two loop texts are similar enough to be considered duplicates.
+ * Uses normalized word overlap — if 70%+ of words are shared, it's a dupe.
+ * Note: This is a cheap synchronous check for creation-time gating.
+ * The sleep cycle runs a deeper LLM-backed dedup pass later.
+ */
+function loopTextsSimilar(a: string, b: string): boolean {
+  if (a === b) return true;
+  return computeWordOverlap(a, b) >= 0.7;
 }
 
 async function handleCloseLoop(inst: Extract<CondenserInstruction, { action: "close_loop" }>): Promise<boolean> {
@@ -366,6 +398,7 @@ async function handleCreateModel(inst: Extract<CondenserInstruction, { action: "
     constraints: [],
     relationships: [],
     conversations: [],
+    agents: [],
     createdAt: now,
     lastUpdatedAt: now,
     accessCount: 0,

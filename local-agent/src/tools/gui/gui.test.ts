@@ -626,11 +626,11 @@ describe("integration — server recognizes gui category", () => {
     expect(toolsSource).toContain('"gui"');
   });
 
-  it("server tool-loop.ts has gui timeout category", () => {
+  it("server local-agent-proxy has gui timeout category", () => {
     const fs = require("fs");
     const path = require("path");
     const loopSource = fs.readFileSync(
-      path.resolve(__dirname, "../../../../server/src/agents/tool-loop.ts"),
+      path.resolve(__dirname, "../../../../server/src/tool-loop/handlers/local-agent-proxy.ts"),
       "utf-8"
     );
     expect(loopSource).toContain("gui:");
@@ -684,7 +684,7 @@ describe("gui category protection", () => {
     const fs = require("fs");
     const path = require("path");
     const manageSource = fs.readFileSync(
-      path.join(__dirname, "..", "tool-handlers-manage.ts"),
+      path.join(__dirname, "..", "tools-manage", "handler.ts"),
       "utf-8"
     );
     // The coreCategories array should include "gui"

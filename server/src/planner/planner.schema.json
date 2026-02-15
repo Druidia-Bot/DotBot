@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "approach": {
+      "type": "string",
+      "description": "1-2 sentence summary of the overall approach to this task"
+    },
+    "isSimpleTask": {
+      "type": "boolean",
+      "description": "True if this is a simple single-step task (e.g. 'what's the weather', 'tell me a joke'). False for multi-step tasks."
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Step identifier (e.g. 'step-1', 'step-2')"
+          },
+          "title": {
+            "type": "string",
+            "description": "Short step title (e.g. 'Research competitors')"
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed objective — what this step should accomplish and how"
+          },
+          "expectedOutput": {
+            "type": "string",
+            "description": "What success looks like (e.g. 'A markdown file with 5 competitor profiles saved to research/')"
+          },
+          "toolHints": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Suggested tool IDs from the catalog that this step will likely need"
+          },
+          "requiresExternalData": {
+            "type": "boolean",
+            "description": "Whether this step needs to fetch data from outside the workspace (web, APIs, email, etc.)"
+          },
+          "dependsOn": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Step IDs that must complete before this one. Empty for first step or independent steps."
+          }
+        },
+        "required": ["id", "title", "description", "expectedOutput", "toolHints", "requiresExternalData", "dependsOn"],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 10,
+      "description": "Ordered list of high-level steps to complete the task"
+    }
+  },
+  "required": ["approach", "isSimpleTask", "steps"],
+  "additionalProperties": false
+}

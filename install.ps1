@@ -563,6 +563,77 @@ function Install-Tesseract {
 }
 
 # ============================================
+# TIER 2: EVERYTHING SEARCH (Windows file search)
+# ============================================
+
+function Install-Everything {
+    Write-Step "5b/11" "Checking Everything Search..."
+
+    # Check if es.exe CLI is already available
+    $esPaths = @(
+        (Join-Path $BOT_DIR "bin\es.exe"),
+        "C:\Program Files\Everything\es.exe",
+        "C:\Program Files (x86)\Everything\es.exe"
+    )
+    $esFound = $esPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($esFound) {
+        Write-OK "Everything CLI found at $esFound"
+        Set-StepStatus -StepName "everything" -Status "success" -Tier 2 -Path $esFound
+        return
+    }
+
+    # Install Everything via winget
+    if (Test-Command "winget") {
+        try {
+            Write-Step "5b/11" "Installing Everything Search via winget..."
+            winget install --id voidtools.Everything -e --accept-source-agreements --accept-package-agreements --silent 2>$null | Out-Null
+            Write-OK "Everything installed"
+        } catch {
+            Write-Warn "Everything winget install failed: $($_.Exception.Message)"
+        }
+    }
+
+    # Download es.exe CLI to ~/.bot/bin/
+    $binDir = Join-Path $BOT_DIR "bin"
+    $esPath = Join-Path $binDir "es.exe"
+    if (-not (Test-Path $esPath)) {
+        try {
+            if (-not (Test-Path $binDir)) { New-Item -ItemType Directory -Force $binDir | Out-Null }
+            $zipUrl = "https://www.voidtools.com/ES-1.1.0.30.x64.zip"
+            $zipPath = Join-Path $env:TEMP "dotbot_es_cli.zip"
+            Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing
+            Expand-Archive -Path $zipPath -DestinationPath $binDir -Force
+            Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+            if (Test-Path $esPath) {
+                Write-OK "es.exe CLI downloaded to $binDir"
+                Set-StepStatus -StepName "everything" -Status "success" -Tier 2 -Path $esPath
+            } else {
+                Write-Warn "es.exe not found after download"
+                Set-StepStatus -StepName "everything" -Status "failed" -Tier 2 -ErrorMsg "es.exe not found after extract"
+            }
+        } catch {
+            Write-Warn "es.exe CLI download failed: $($_.Exception.Message)"
+            Set-StepStatus -StepName "everything" -Status "failed" -Tier 2 -ErrorMsg $_.Exception.Message
+        }
+    } else {
+        Write-OK "es.exe CLI already at $esPath"
+        Set-StepStatus -StepName "everything" -Status "success" -Tier 2 -Path $esPath
+    }
+
+    # Ensure Everything is running (it may need a kick after fresh install)
+    $running = Get-Process Everything -ErrorAction SilentlyContinue
+    if (-not $running) {
+        $exePaths = @("C:\Program Files\Everything\Everything.exe", "C:\Program Files (x86)\Everything\Everything.exe")
+        foreach ($p in $exePaths) {
+            if (Test-Path $p) {
+                try { Start-Process $p -ArgumentList "-startup" -WindowStyle Hidden } catch {}
+                break
+            }
+        }
+    }
+}
+
+# ============================================
 # TIER 1: CLONE REPO
 # ============================================
 
@@ -1072,6 +1143,7 @@ if (-not $nodeOK) {
 $pythonOK = Install-Python
 Install-PipPackages -PythonOK $pythonOK
 Install-Tesseract
+Install-Everything
 
 # Prompt for repo URL if not provided
 if (-not $RepoUrl) {

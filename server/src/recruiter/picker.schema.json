@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "selectedPersonas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The persona ID (e.g. 'senior-dev', 'researcher', or a local persona slug)"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Brief rationale for why this persona was chosen for this task"
+          }
+        },
+        "required": ["id", "reason"],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 10,
+      "description": "Top 1-3 personas best matched for this task (or all council members if a council is selected)"
+    },
+    "council": {
+      "type": ["string", "null"],
+      "description": "Council ID if the user explicitly requested a council, otherwise null"
+    },
+    "modelRole": {
+      "type": "string",
+      "enum": ["workhorse", "deep_context", "architect", "gui_fast"],
+      "description": "Recommended model role for task execution"
+    }
+  },
+  "required": ["selectedPersonas", "council", "modelRole"],
+  "additionalProperties": false
+}

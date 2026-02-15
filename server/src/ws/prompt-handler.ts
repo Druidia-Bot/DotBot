@@ -1,14 +1,12 @@
 /**
- * Prompt Handler — Orchestrator
- * 
- * Main prompt handler that acts as an orchestrator:
- * 1. System commands (flush memory) are handled directly
- * 2. If a background agent loop is running → inject the message as a correction
- * 3. Otherwise, classify the request via receptionist (fast, ~1-2s)
- * 4. If actionable → spawn a background agent loop, respond immediately
- * 5. If simple (CONVERSATIONAL) → handle inline
- * 
- * Extracted from server.ts to keep concerns separated.
+ * Prompt Handler — WebSocket Layer
+ *
+ * Handles WebSocket message routing for user prompts:
+ * - System commands (flush memory, clear threads)
+ * - Delegates to the pipeline for all other messages
+ * - Sends acks, responses, and error messages over WebSocket
+ *
+ * Business logic lives in pipeline/pipeline.ts.
  */
 
 import { nanoid } from "nanoid";
@@ -19,65 +17,13 @@ import {
   sendMessage,
   getDeviceForUser,
 } from "./devices.js";
-import {
-  sendMemoryRequest,
-} from "./device-bridge.js";
-import { buildRequestContext } from "./context-builder.js";
-import { createRunner } from "./runner-factory.js";
-import { executeV2Pipeline, MessageRouter } from "../agents/pipeline.js";
-import { filterManifest, mergeWithCoreRegistry } from "../tools/platform-filters.js";
-import { getMessageTracker } from "../agents/message-tracker.js";
+import { sendMemoryRequest, sendRunLog } from "./device-bridge.js";
+import { runPipeline } from "../pipeline/pipeline.js";
 
 const log = createComponentLogger("ws.prompt");
 
-// ============================================
-// MESSAGE TRACKER SETUP
-// ============================================
-
-/** Global message tracker with timeout alerts sent to users. */
-const tracker = getMessageTracker({
-  onTimeout: (alert) => {
-    log.error("Message timeout detected", {
-      messageId: alert.messageId,
-      userId: alert.userId,
-      stage: alert.stage,
-      elapsedMs: alert.elapsedMs,
-    });
-
-    // Send alert to user via WebSocket
-    const userDevice = Array.from(devices.values()).find(d => d.session.userId === alert.userId);
-    if (userDevice) {
-      sendMessage(userDevice.ws, {
-        type: "response",
-        id: alert.messageId,
-        timestamp: Date.now(),
-        payload: {
-          success: false,
-          response: `⚠️ **Message Timeout**\n\n${alert.message}\n\nYour message: "${alert.prompt.slice(0, 100)}${alert.prompt.length > 100 ? "..." : ""}"\n\nPlease try rephrasing or breaking your request into smaller parts.`,
-          classification: "CONVERSATIONAL" as const,
-          threadIds: [],
-          keyPoints: [],
-          error: "Message processing timeout",
-        }
-      });
-    }
-  }
-});
-
-/** Per-user V2 orchestrator results for session continuity (injection + follow-up routing). */
-const v2OrchestratorResults = new Map<string, import("../agents/orchestrator.js").OrchestratorResult>();
-
-
-/**
- * Clean up V2 orchestrator state for a disconnected user.
- * Called from server.ts when a user's last device disconnects.
- * Prevents memory leak from unbounded Map growth.
- */
-export function cleanupUserSession(userId: string): void {
-  const deleted = v2OrchestratorResults.delete(userId);
-  if (deleted) {
-    log.info("Cleaned up V2 orchestrator state for disconnected user", { userId });
-  }
+export function cleanupUserSession(_userId: string): void {
+  // no-op — reserved for future session cleanup
 }
 
 // ============================================
@@ -106,160 +52,100 @@ export async function handlePrompt(
 
   log.info(`Prompt from ${device.session.deviceName}`, { prompt });
 
-  // Track message for response monitoring
-  tracker.trackMessage(message.id, userId, prompt);
-
   // ── System commands ──
   const normalizedPrompt = prompt.toLowerCase().trim();
   if (normalizedPrompt === "flush session memory" || normalizedPrompt === "flush memory" || normalizedPrompt === "clear session memory") {
-    v2OrchestratorResults.delete(userId); // Clear V2 agent routing state on session reset
-    await handleFlushMemory(device, message, userId, tracker);
+    await handleFlushMemory(device, message, userId);
     return;
   }
   if (normalizedPrompt === "clear conversation history" || normalizedPrompt === "clear threads" || normalizedPrompt === "clear thread memory" || normalizedPrompt === "flush threads" || normalizedPrompt === "flush thread memory") {
-    await handleClearThreads(device, message, userId, tracker);
+    await handleClearThreads(device, message, userId);
     return;
   }
 
-  // ── V2 Pipeline (V1 removed) ──
+  // ── Full Pipeline ──
   try {
-    // Build enhanced request with context
-    const { enhancedRequest, toolManifest, platform, runtimeInfo } = await buildRequestContext(
-      deviceId,
-      userId,
-      prompt
-    );
-
-    // Create LLM client
     const { createLLMClient } = await import("../llm/providers.js");
     const llm = createLLMClient({
       provider: serverProvider as any,
       apiKey,
     });
 
-    // Filter tool manifest by platform
-    const availableRuntimes = (runtimeInfo || [])
-      .filter((r: any) => r.available)
-      .map((r: any) => r.name as string);
-    const v2Manifest = platform
-      ? mergeWithCoreRegistry(filterManifest(toolManifest, platform, availableRuntimes))
-      : mergeWithCoreRegistry(toolManifest);
-
-    // Build runner options from the factory's callback shape (reuse the same runner factory for callbacks)
-    const v2Runner = createRunner(apiKey, userId, v2Manifest, runtimeInfo, serverProvider);
-
-    // Reuse existing orchestrator result for injection + follow-up routing to active agents
-    const previousResult = v2OrchestratorResults.get(userId);
-    const existingRouter = previousResult?.router;
-
-    // ── Pre-classify for time estimation ──
-    // Run receptionist upfront so we can send acknowledgment for long-running tasks
-    tracker.updateStage(message.id, "receptionist");
-    const { runReceptionist } = await import("../agents/intake.js");
-    const classification = await runReceptionist(llm, v2Runner.options, enhancedRequest, userId);
-
-    // Send acknowledgment for actionable tasks
-    // Always notify for tasks that need execution so the user knows we're working on it.
-    // The ack goes to WebSocket (for the client UI) and as a task_acknowledged event
-    // (for Discord and other channels).
-    if (needsExecution(classification.classification)) {
-      const estimatedMs = classification.estimatedDurationMs || 30_000;
-      const estimatedLabel = formatDuration(estimatedMs);
-      const ackMessage = classification.acknowledgmentMessage
-        || `Working on it — estimated time: ~${estimatedLabel}`;
-
-      // WebSocket ack for client UI
-      sendMessage(responseWs, {
-        type: "response",
-        id: `${message.id}_ack`,
-        timestamp: Date.now(),
-        payload: {
-          success: true,
-          response: ackMessage,
-          classification: "CONVERSATIONAL" as const,
-          threadIds: [],
-          keyPoints: [],
-        }
-      });
-
-      // Dedicated event for Discord/other channels — always fires for actionable tasks
-      sendMessage(responseWs, {
-        type: "task_acknowledged",
-        id: `${message.id}_task_ack`,
-        timestamp: Date.now(),
-        payload: {
-          prompt: prompt.substring(0, 200),
-          classification: classification.classification,
-          estimatedDurationMs: estimatedMs,
-          estimatedLabel,
-          acknowledgment: ackMessage,
-        }
-      });
-
-      // Extend the message timeout — the ack proves the pipeline is alive.
-      // Supervisor handles stuck agents after this point (1-3 min thresholds).
-      tracker.extendTimeout(message.id, 600_000); // 10 minutes for agent tasks
-    }
-
-    // Execute V2 pipeline with precomputed classification to avoid calling receptionist twice
-    tracker.updateStage(message.id, "agent_spawned");
-    const result = await executeV2Pipeline(
+    const pipelineResult = await runPipeline({
       llm,
-      v2Runner.options, // AgentRunnerOptions with all callbacks wired
-      enhancedRequest,
       userId,
-      `session_v2_${nanoid()}`,
-      existingRouter,
-      classification, // Pass precomputed decision to skip redundant receptionist call
-      previousResult, // Pass previous orchestrator result for injection access
-      // Eager registration: store the orchestrator result as soon as agents spawn,
-      // so concurrent messages can find running agents and inject into them
-      // instead of waiting for the pipeline to complete.
-      (orchestratorResult) => {
-        v2OrchestratorResults.set(userId, orchestratorResult);
-        log.info("Orchestrator result registered eagerly", { userId, agents: orchestratorResult.router.getAgents().length });
+      deviceId,
+      prompt,
+      messageId: message.id,
+      source: message.payload?.source || "unknown",
+      onIntakeComplete: (intakeResult) => {
+        // Send immediate ack before heavy processing starts
+        const estimate = intakeResult.estimatedMinutes as number;
+        const directResponse = intakeResult.directResponse as string || "";
+        const estimateText = estimate < 1
+          ? "less than a minute"
+          : estimate === 1 ? "about 1 minute" : `about ${Math.round(estimate)} minutes`;
+        const ackText = `${directResponse}\n\n⏱️ *Estimated time: ${estimateText}*`;
+
+        // Send task_acknowledged to device WS — this reaches Discord #conversation + console
+        // via the message-router's task_acknowledged handler
+        sendMessage(device.ws, {
+          type: "task_acknowledged" as any,
+          id: `${message.id}_ack`,
+          timestamp: Date.now(),
+          payload: {
+            acknowledgment: ackText,
+            prompt: prompt.slice(0, 200),
+            estimatedLabel: estimateText,
+          }
+        });
+
+        // If response target is a browser (not the device), also send a response type
+        if (responseWs !== device.ws) {
+          sendMessage(responseWs, {
+            type: "response",
+            id: `${message.id}_ack`,
+            timestamp: Date.now(),
+            payload: {
+              success: true,
+              response: ackText,
+              classification: "CONVERSATIONAL" as const,
+              threadIds: [],
+              keyPoints: [],
+            }
+          });
+        }
       },
-    );
+    });
 
-    // Final store — updates the reference with completed response/success values
-    if (result.orchestratorResult) {
-      v2OrchestratorResults.set(userId, result.orchestratorResult);
-    }
-
-    // Check if multi-agent response (more than 1 completed agent)
-    const completedAgents = result.agentResults?.filter(r => r.status === "completed") || [];
-    const isMultiAgent = completedAgents.length > 1;
-
+    const finalResponse = pipelineResult.executionResponse
+      || (pipelineResult.intakeResult.directResponse as string)
+      || "";
     sendMessage(responseWs, {
       type: "response",
       id: message.id,
       timestamp: Date.now(),
       payload: {
-        success: result.success,
-        response: result.response,
-        classification: result.classification,
-        threadIds: result.threadIds,
-        keyPoints: result.keyPoints,
-        ...(result.error && { error: result.error }),
-        // V2: Include agent details for multi-agent responses
-        ...(isMultiAgent && {
-          multiAgent: true,
-          agents: completedAgents.map(a => ({
-            topic: a.topic,
-            response: a.response,
-          })),
-        }),
+        success: pipelineResult.executionSuccess ?? true,
+        response: finalResponse,
+        classification: (pipelineResult.intakeResult.requestType as string) || "CONVERSATIONAL",
+        threadIds: [],
+        keyPoints: [],
       }
     });
 
-    // Mark response as delivered
-    tracker.markResponseSent(message.id);
     return;
   } catch (error) {
-    log.error("V2 pipeline error", { error });
+    log.error("Pipeline error", { error });
 
-    // Mark message as failed
-    tracker.markFailed(message.id, error instanceof Error ? error.message : "Unknown error");
+    // Persist error to client run-logs so we can diagnose without server console
+    sendRunLog(userId, {
+      stage: "error",
+      messageId: message.id,
+      prompt: prompt.slice(0, 500),
+      error: error instanceof Error ? { message: error.message, stack: error.stack } : String(error),
+      timestamp: new Date().toISOString(),
+    });
 
     sendMessage(responseWs, {
       type: "response",
@@ -280,22 +166,6 @@ export async function handlePrompt(
 
 
 // ============================================
-// HELPERS
-// ============================================
-
-/** Check if classification type requires agent execution */
-function needsExecution(classification: string): boolean {
-  return ["ACTION", "INFO_REQUEST", "CONTINUATION", "CORRECTION", "COMPOUND"].includes(classification);
-}
-
-/** Format milliseconds as a human-readable duration string */
-function formatDuration(ms: number): string {
-  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
-  const minutes = Math.round(ms / 60_000);
-  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
-}
-
-// ============================================
 // SYSTEM COMMAND: FLUSH SESSION MEMORY
 // ============================================
 
@@ -303,7 +173,6 @@ async function handleFlushMemory(
   device: { ws: import("ws").WebSocket; session: { userId: string } },
   message: WSPromptMessage,
   userId: string,
-  tracker: ReturnType<typeof getMessageTracker>
 ): Promise<void> {
   log.info("Flush session memory triggered", { userId });
   const agentDeviceId = getDeviceForUser(userId);
@@ -312,7 +181,6 @@ async function handleFlushMemory(
       type: "response", id: message.id, timestamp: Date.now(),
       payload: { success: false, response: "No local agent connected — cannot flush memory.", classification: "CONVERSATIONAL" as const, threadIds: [], keyPoints: [] }
     });
-    tracker.markResponseSent(message.id);
     return;
   }
   try {
@@ -329,9 +197,7 @@ async function handleFlushMemory(
       type: "response", id: message.id, timestamp: Date.now(),
       payload: { success: true, response: summary, classification: "CONVERSATIONAL" as const, threadIds: [], keyPoints: [] }
     });
-    tracker.markResponseSent(message.id);
   } catch (err) {
-    tracker.markFailed(message.id, err instanceof Error ? err.message : String(err));
     sendMessage(device.ws, {
       type: "response", id: message.id, timestamp: Date.now(),
       payload: { success: false, response: `Failed to flush session memory: ${err instanceof Error ? err.message : err}`, classification: "CONVERSATIONAL" as const, threadIds: [], keyPoints: [] }
@@ -347,7 +213,6 @@ async function handleClearThreads(
   device: { ws: import("ws").WebSocket; session: { userId: string } },
   message: WSPromptMessage,
   userId: string,
-  tracker: ReturnType<typeof getMessageTracker>
 ): Promise<void> {
   log.info("Clear conversation threads triggered", { userId });
   const agentDeviceId = getDeviceForUser(userId);
@@ -356,7 +221,6 @@ async function handleClearThreads(
       type: "response", id: message.id, timestamp: Date.now(),
       payload: { success: false, response: "No local agent connected — cannot clear threads.", classification: "CONVERSATIONAL" as const, threadIds: [], keyPoints: [] }
     });
-    tracker.markResponseSent(message.id);
     return;
   }
   try {
@@ -369,9 +233,7 @@ async function handleClearThreads(
       type: "response", id: message.id, timestamp: Date.now(),
       payload: { success: true, response: summary, classification: "CONVERSATIONAL" as const, threadIds: [], keyPoints: [] }
     });
-    tracker.markResponseSent(message.id);
   } catch (err) {
-    tracker.markFailed(message.id, err instanceof Error ? err.message : String(err));
     sendMessage(device.ws, {
       type: "response", id: message.id, timestamp: Date.now(),
       payload: { success: false, response: `Failed to clear threads: ${err instanceof Error ? err.message : err}`, classification: "CONVERSATIONAL" as const, threadIds: [], keyPoints: [] }

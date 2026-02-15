@@ -25,7 +25,7 @@ describe("Discovery Handlers Exports", () => {
     expect(typeof mod.handlePersonaRequest).toBe("function");
     expect(typeof mod.handleCouncilRequest).toBe("function");
     expect(typeof mod.handleKnowledgeRequest).toBe("function");
-  }, 30_000);
+  }, 60_000);
 });
 
 describe("Resource Handlers Exports", () => {

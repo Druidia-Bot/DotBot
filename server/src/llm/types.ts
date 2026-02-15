@@ -56,6 +56,10 @@ export interface LLMRequestOptions {
   tools?: ToolDefinition[];
   /** Force structured JSON output from the model (supported by DeepSeek, OpenAI) */
   responseFormat?: "json_object" | "text";
+  /** JSON Schema for structured output. When provided alongside responseFormat: "json_object",
+   *  providers that support json_schema mode (OpenAI, xAI, DeepSeek) will enforce the schema.
+   *  The schema object should include { name: string, schema: Record<string, unknown> }. */
+  responseSchema?: { name: string; schema: Record<string, unknown> };
   /** Enable chain-of-thought thinking mode (DeepSeek). The model reasons before
    *  answering, producing a separate reasoning_content field. Temperature/top_p
    *  are ignored when thinking is enabled. */

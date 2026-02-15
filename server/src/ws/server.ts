@@ -5,7 +5,7 @@
  * 
  * Separated concerns:
  * - prompt-handler.ts — orchestrator logic for user prompts
- * - context-builder.ts — fetches memory, history, tools, personas for each prompt
+ * - ../context/context-builder.ts — fetches memory, history, tools, personas for each prompt
  * - runner-factory.ts — creates configured AgentRunner instances
  * - device-bridge.ts — request/response bridge to local agent
  * - condenser-handlers.ts — sleep cycle condense/resolve handlers
@@ -62,7 +62,7 @@ import {
   categorizeIncompleteTasks,
   cleanupWorkspace,
   type TaskJson,
-} from "../agents/pipeline.js";
+} from "../agents/workspace.js";
 import { setExecuteCallback, onSchedulerEvent } from "../scheduler/index.js";
 import type { DeferredTask } from "../scheduler/index.js";
 import {

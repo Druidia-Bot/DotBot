@@ -80,7 +80,18 @@ export class OpenAICompatibleClient implements ILLMClient {
     }
 
     if (options?.responseFormat === "json_object") {
-      body.response_format = { type: "json_object" };
+      if (options.responseSchema) {
+        body.response_format = {
+          type: "json_schema",
+          json_schema: {
+            name: options.responseSchema.name,
+            strict: true,
+            schema: options.responseSchema.schema,
+          },
+        };
+      } else {
+        body.response_format = { type: "json_object" };
+      }
     }
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {

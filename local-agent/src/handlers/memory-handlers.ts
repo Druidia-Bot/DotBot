@@ -138,6 +138,17 @@ export async function handleMemoryRequest(request: MemoryRequest, send: SendFn):
                   existing.conversations = existing.conversations.slice(-50);
                 }
               }
+              if (request.data.agents) {
+                existing.agents = existing.agents || [];
+                for (const agent of request.data.agents) {
+                  const idx = existing.agents.findIndex((a: any) => a.agentId === agent.agentId);
+                  if (idx >= 0) {
+                    existing.agents[idx] = { ...existing.agents[idx], ...agent, updatedAt: agent.updatedAt || new Date().toISOString() };
+                  } else {
+                    existing.agents.push(agent);
+                  }
+                }
+              }
               await memory.saveMentalModel(existing);
               result = existing;
             } else {
@@ -151,6 +162,7 @@ export async function handleMemoryRequest(request: MemoryRequest, send: SendFn):
               if (request.data.constraints) newModel.constraints = request.data.constraints;
               if (request.data.relationships) newModel.relationships = request.data.relationships;
               if (request.data.conversations) newModel.conversations = request.data.conversations;
+              if (request.data.agents) newModel.agents = request.data.agents;
               await memory.saveMentalModel(newModel);
               result = newModel;
             }
@@ -271,6 +283,14 @@ export async function handleMemoryRequest(request: MemoryRequest, send: SendFn):
       case "search_and_promote": {
         const promoted = await memory.searchAndPromote(request.query || "");
         result = { promoted };
+        break;
+      }
+
+      case "promote_model": {
+        if (request.modelSlug) {
+          const success = await memory.promoteModel(request.modelSlug);
+          result = { promoted: success, slug: request.modelSlug };
+        }
         break;
       }
     }

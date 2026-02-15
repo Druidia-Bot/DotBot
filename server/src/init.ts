@@ -22,7 +22,6 @@ const REQUIRED_DIRS = [
   "councils", 
   "memory",
   "server-data",
-  "server-logs"
 ];
 
 // ============================================

@@ -1,0 +1,213 @@
+/**
+ * System Tool Definitions
+ */
+
+import type { DotBotTool } from "../../memory/types.js";
+
+export const systemTools: DotBotTool[] = [
+  {
+    id: "system.process_list",
+    name: "process_list",
+    description: "List running processes with CPU and memory usage.",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "powershell",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filter: { type: "string", description: "Optional process name filter" },
+        top: { type: "number", description: "Number of top processes to show (default: 20)" },
+      },
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    id: "system.kill_process",
+    name: "kill_process",
+    description: "Kill a process by name or PID.",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "powershell",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Process name (e.g., 'notepad')" },
+        pid: { type: "number", description: "Process ID" },
+      },
+    },
+    annotations: { destructiveHint: true, requiresConfirmation: true },
+  },
+  {
+    id: "system.info",
+    name: "system_info",
+    description: "Get system information: OS, CPU, RAM, disk space, uptime.",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "powershell",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    id: "system.env_get",
+    name: "env_get",
+    description: "Get the value of an environment variable.",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Environment variable name" },
+      },
+      required: ["name"],
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    id: "system.env_set",
+    name: "env_set",
+    description: "Set an environment variable. Can set at process level (current session only) or user level (persists across sessions). Use for non-sensitive config (channel IDs, feature flags, PATH additions) and free API keys you discovered yourself. NEVER use this for user-provided API keys or tokens — those MUST go through secrets.prompt_user for server-side encryption.",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Environment variable name" },
+        value: { type: "string", description: "Value to set (empty string to clear)" },
+        level: { type: "string", description: "'process' (current session only, default) or 'user' (persists across sessions)" },
+      },
+      required: ["name", "value"],
+    },
+    annotations: { destructiveHint: true },
+  },
+  {
+    id: "system.service_list",
+    name: "service_list",
+    description: "List Windows services with their status. Filter by name or show only running/stopped services.",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        filter: { type: "string", description: "Optional name filter (partial match)" },
+        status: { type: "string", description: "Filter by status: 'running', 'stopped', or 'all' (default: 'all')" },
+      },
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    id: "system.service_manage",
+    name: "service_manage",
+    description: "Start, stop, or restart a Windows service. Requires the service name (not display name). Use service_list to find service names first.",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Service name (e.g., 'docker', 'wslservice', 'W3SVC')" },
+        action: { type: "string", description: "'start', 'stop', or 'restart'" },
+      },
+      required: ["name", "action"],
+    },
+    annotations: { destructiveHint: true },
+  },
+  {
+    id: "system.scheduled_task",
+    name: "scheduled_task",
+    description: "Create, list, or delete Windows Task Scheduler entries. Use for automating recurring tasks like updates, backups, health checks, or starting services at login.",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", description: "'create', 'list', or 'delete'" },
+        name: { type: "string", description: "Task name (required for create/delete)" },
+        command: { type: "string", description: "Command to run (required for create)" },
+        trigger: { type: "string", description: "When to run: 'daily HH:MM', 'weekly DAY HH:MM', 'hourly', 'onlogon', 'onstart', or 'once YYYY-MM-DD HH:MM' (required for create)" },
+        folder: { type: "string", description: "Task Scheduler folder (default: '\\DotBot')" },
+      },
+      required: ["action"],
+    },
+    annotations: { destructiveHint: true },
+  },
+  {
+    id: "system.notification",
+    name: "notify",
+    description: "Show a Windows toast notification. Use to alert the user when a long-running task completes, an error occurs, or attention is needed.",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Notification title" },
+        message: { type: "string", description: "Notification body text" },
+      },
+      required: ["title", "message"],
+    },
+    annotations: {},
+  },
+  {
+    id: "system.restart",
+    name: "restart_self",
+    description: "Gracefully restart the DotBot local agent. The agent process exits with a restart signal and the launcher automatically restarts it. Use when you need to pick up configuration changes, recover from a bad state, or after a self-update. Only works when running under the launcher (production mode) — in dev mode (tsx watch) the process will simply exit.",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        reason: { type: "string", description: "Why the restart is needed (logged for debugging)" },
+      },
+      required: ["reason"],
+    },
+    annotations: { destructiveHint: true, requiresConfirmation: true },
+  },
+  {
+    id: "system.health_check",
+    name: "health_check",
+    description: "Run a comprehensive health check of the DotBot installation. Checks Node.js, Git, Python, Tesseract, server connection, LLM API, Discord, Brave Search, memory system, and directory structure. Returns structured results with pass/fail for each component.",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    id: "system.update",
+    name: "update_self",
+    description: "Update DotBot to the latest version. Runs git pull in the install directory, rebuilds all packages, and restarts. Returns the git diff summary showing what changed. Only works when installed from git (not dev mode).",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        reason: { type: "string", description: "Why the update is being performed" },
+      },
+    },
+    annotations: { destructiveHint: true, requiresConfirmation: true },
+  },
+];

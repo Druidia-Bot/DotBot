@@ -9,6 +9,7 @@
 import express, { Request, Response } from 'express';
 import { randomBytes, createCipheriv, createDecipheriv } from 'crypto';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { createComponentLogger } from './logging.js';
 
 let _log: ReturnType<typeof createComponentLogger> | null = null;
@@ -77,7 +78,9 @@ export function startSetupServer(
   const wsUrl = serverUrl.replace(/^https?:\/\//, (match) => match === 'https://' ? 'wss://' : 'ws://') + '/ws';
 
   // Resolve local client directory for static serving
-  const clientDir = path.resolve('client');
+  // Use import.meta.url so this works regardless of CWD (dev mode runs from local-agent/)
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const clientDir = path.resolve(__dirname, '..', '..', 'client');
 
   // Serve dynamic config.js with device credentials (only after setup validation)
   let authenticated = false;

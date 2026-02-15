@@ -30,6 +30,7 @@ let llamaInstance: any = null;
 let loadedModel: any = null;
 let modelReady = false;
 let modelDownloading = false;
+let modelLoadingPromise: Promise<void> | null = null;
 
 // ============================================
 // INITIALIZATION
@@ -53,6 +54,12 @@ export async function probeLocalModel(): Promise<boolean> {
     modelPath = await resolveModelFile(MODEL_URI, { directory: MODELS_DIR, cli: false });
     modelReady = true;
     console.log(`[LocalLLM] Model ready: ${MODEL_NAME}`);
+
+    // Warm-load into RAM in the background (non-blocking)
+    ensureModelLoaded().catch(err =>
+      console.warn("[LocalLLM] Background warm-load failed:", err instanceof Error ? err.message : err)
+    );
+
     return true;
   } catch {
     console.log(`[LocalLLM] Model not yet downloaded (will download on first use)`);
@@ -90,18 +97,27 @@ async function downloadModel(): Promise<boolean> {
  */
 async function ensureModelLoaded(): Promise<void> {
   if (loadedModel) return;
+  if (modelLoadingPromise) return modelLoadingPromise;
 
-  if (!modelPath || !modelReady) {
-    const ok = await downloadModel();
-    if (!ok || !modelPath) {
-      throw new Error("Local model not available — download failed or not started");
+  modelLoadingPromise = (async () => {
+    if (!modelPath || !modelReady) {
+      const ok = await downloadModel();
+      if (!ok || !modelPath) {
+        throw new Error("Local model not available — download failed or not started");
+      }
     }
-  }
 
-  const { getLlama } = await import("node-llama-cpp");
-  llamaInstance = await getLlama();
-  loadedModel = await llamaInstance.loadModel({ modelPath });
-  console.log("[LocalLLM] Model loaded into memory");
+    const { getLlama } = await import("node-llama-cpp");
+    llamaInstance = await getLlama();
+    loadedModel = await llamaInstance.loadModel({ modelPath });
+    console.log("[LocalLLM] Model loaded into memory");
+  })();
+
+  try {
+    await modelLoadingPromise;
+  } finally {
+    modelLoadingPromise = null;
+  }
 }
 
 // ============================================
@@ -144,6 +160,10 @@ export async function queryLocalLLM(
 
 export function isLocalModelReady(): boolean {
   return modelReady;
+}
+
+export function isLocalModelLoaded(): boolean {
+  return loadedModel !== null;
 }
 
 export function getLocalModelName(): string {

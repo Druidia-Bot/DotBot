@@ -23,6 +23,23 @@ param(
     [string]$Command = "help"
 )
 
+# -- Self-elevate to administrator (DotBot needs full PC control) --
+
+$adminCommands = @("start", "stop", "restart", "update")
+if ($adminCommands -contains $Command.ToLower()) {
+    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        try {
+            Start-Process powershell -Verb RunAs -ArgumentList @(
+                "-ExecutionPolicy", "Bypass", "-NoExit", "-File", "`"$PSCommandPath`"", $Command
+            )
+        } catch {
+            Write-Host "  [X] Administrator privileges required for 'dotbot $Command'." -ForegroundColor Red
+            exit 1
+        }
+        exit 0
+    }
+}
+
 $BotDir = Join-Path $env:USERPROFILE ".bot"
 $LauncherLog = Join-Path $BotDir "launcher.log"
 $InstallDir = if ($env:DOTBOT_INSTALL_DIR) { $env:DOTBOT_INSTALL_DIR } else { "C:\Program Files\.bot" }

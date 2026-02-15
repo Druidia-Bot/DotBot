@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "resolved": {
+      "type": "boolean",
+      "description": "Whether the open loop was successfully resolved"
+    },
+    "resolution": {
+      "type": "string",
+      "description": "What was found or determined (if resolved)"
+    },
+    "blockedReason": {
+      "type": "string",
+      "description": "Why the loop could not be resolved (if not resolved)"
+    },
+    "notifyUser": {
+      "type": "boolean",
+      "description": "Whether the user should be notified about findings"
+    },
+    "notification": {
+      "type": "string",
+      "description": "User-facing notification message about the findings"
+    },
+    "newStatus": {
+      "type": "string",
+      "enum": ["resolved", "blocked", "investigating"],
+      "description": "Updated status for the open loop"
+    },
+    "sideEffects": {
+      "type": "array",
+      "description": "Optional additional CondenserInstructions if the research revealed new facts",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string" }
+        },
+        "required": ["action"]
+      }
+    }
+  },
+  "required": ["resolved", "notifyUser", "newStatus"]
+}

@@ -105,7 +105,7 @@ export async function getAllThreadSummaries(): Promise<{
  * Includes both mental model summaries and thread summaries.
  */
 export async function getL0MemoryIndex(): Promise<{
-  models: { slug: string; name: string; category: string; keywords: string[]; lastUpdatedAt: string }[];
+  models: { slug: string; name: string; category: string; description: string; keywords: string[]; lastUpdatedAt: string }[];
   threads: { id: string; topic: string; status: string; lastActiveAt: string; entities: string[]; keywords: string[] }[];
   sessionSummary: string | null;
 }> {
@@ -117,6 +117,7 @@ export async function getL0MemoryIndex(): Promise<{
       slug: m.slug,
       name: m.name,
       category: m.category,
+      description: m.description || "",
       keywords: m.keywords,
       lastUpdatedAt: m.lastUpdatedAt,
     })),

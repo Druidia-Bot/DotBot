@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "changed": {
+      "type": "boolean",
+      "description": "Whether the remaining plan was modified"
+    },
+    "reasoning": {
+      "type": "string",
+      "description": "Brief explanation of why the plan was changed (or 'No changes needed')"
+    },
+    "remainingSteps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Step identifier (e.g. 'step-2', 'step-3')"
+          },
+          "title": {
+            "type": "string",
+            "description": "Short step title"
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed objective for this step"
+          },
+          "expectedOutput": {
+            "type": "string",
+            "description": "What success looks like"
+          },
+          "toolHints": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Suggested tool IDs"
+          },
+          "requiresExternalData": {
+            "type": "boolean",
+            "description": "Whether this step needs external data"
+          },
+          "dependsOn": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Step IDs that must complete first"
+          }
+        },
+        "required": ["id", "title", "description", "expectedOutput", "toolHints", "requiresExternalData", "dependsOn"],
+        "additionalProperties": false
+      },
+      "description": "Updated remaining steps. Can add new steps, remove steps, or modify existing ones."
+    }
+  },
+  "required": ["changed", "reasoning", "remainingSteps"],
+  "additionalProperties": false
+}

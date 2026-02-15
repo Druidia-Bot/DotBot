@@ -284,12 +284,35 @@ export interface MentalModel {
   /** Conversation history relevant to this model */
   conversations: ConversationReference[];
   
+  /** Agents that have been assigned to work on tasks related to this model */
+  agents: AgentAssignment[];
+  
   /** When was this model created */
   createdAt: string;
   /** When was this model last updated */
   lastUpdatedAt: string;
   /** How many times has this model been accessed */
   accessCount: number;
+}
+
+export type AgentStatus = "queued" | "active" | "waiting_customer_input" | "failed" | "completed";
+
+/**
+ * Tracks an agent workspace assigned to work on this model
+ */
+export interface AgentAssignment {
+  /** Agent workspace ID (e.g. agent_XrJx46bt6OAr) */
+  agentId: string;
+  /** Path to the agent's workspace */
+  workspacePath: string;
+  /** Current status of the agent */
+  status: AgentStatus;
+  /** What the agent was asked to do */
+  prompt: string;
+  /** When the workspace was created */
+  createdAt: string;
+  /** When the workspace was last updated */
+  updatedAt: string;
 }
 
 /**

@@ -7,6 +7,26 @@
 
 param([switch]$Service)
 
+# -- Self-elevate to administrator (DotBot needs full PC control) --
+
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    if ($Service) {
+        $argList = @("-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "-Service")
+    } else {
+        $argList = @("-ExecutionPolicy", "Bypass", "-NoExit", "-File", "`"$PSCommandPath`"")
+    }
+    try {
+        Start-Process powershell -Verb RunAs -ArgumentList $argList
+    } catch {
+        if (-not $Service) {
+            Write-Host "  [X] Administrator privileges required." -ForegroundColor Red
+            Write-Host "      Right-click PowerShell -> 'Run as administrator', then try again." -ForegroundColor Gray
+        }
+        exit 1
+    }
+    exit 0
+}
+
 $Root = $PSScriptRoot
 $BotDir = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".bot"
 

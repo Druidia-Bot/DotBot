@@ -18,9 +18,12 @@
  */
 
 import type { Platform } from "../agents/tools.js";
+import type { ToolDefinition } from "../llm/types.js";
 import { WINDOWS_ONLY_TOOLS } from "./definitions/windows-only.js";
 import { CROSS_PLATFORM_TOOLS } from "./definitions/cross-platform.js";
 import { UNIVERSAL_TOOLS } from "./definitions/universal.js";
+
+export { memoryTools } from "./definitions/universal.js";
 
 // ============================================
 // TYPES
@@ -116,4 +119,23 @@ export function getPlatformStats() {
     universal: UNIVERSAL_TOOLS.length,
     total: CORE_TOOLS.length,
   };
+}
+
+/**
+ * Convert core tool definitions to native LLM ToolDefinition[] format.
+ * Tool IDs are sanitized (dots → __) to comply with function name restrictions.
+ */
+export function coreToolsToNative(tools: CoreToolDefinition[]): ToolDefinition[] {
+  return tools.map(t => ({
+    type: "function" as const,
+    function: {
+      name: t.id.replace(/\./g, "__"),
+      description: t.description,
+      parameters: {
+        type: "object",
+        properties: t.inputSchema?.properties || {},
+        required: t.inputSchema?.required || [],
+      },
+    },
+  }));
 }

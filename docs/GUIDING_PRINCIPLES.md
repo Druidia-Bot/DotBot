@@ -26,7 +26,19 @@ All data lives on the user's machine in `~/.bot/`. The cloud server is a process
 
 This is non-negotiable. The user's memory, preferences, mental models, and learned skills are theirs. Period.
 
-### 2. Additive by Design
+### 2. Accuracy and Consistency Over Speed
+
+Every design decision prioritizes **getting the right answer reliably** over getting a fast answer. This is the engineering value that underpins the entire system:
+
+- **Many specific tools over few general ones** — a `create_file(path, content)` call works every time; a `bash("echo '...' > file")` call works 80% of the time. We accept higher token cost for higher reliability.
+- **Structured output over free-form parsing** — JSON schemas and native function calling eliminate parse failures. The LLM returns validated structure, not prose we have to regex.
+- **Multi-pass pipelines over single-shot** — intake classifies, receptionist gathers context, persona picker selects expertise, planner decomposes, executor acts. Each pass adds accuracy. We don't skip passes to save time.
+- **Typed boundaries between modules** — every pipeline stage produces a typed result that the next stage consumes. Explicit contracts catch errors at boundaries, not three stages later.
+- **Defensive execution** — stuck detection, result-aware warnings, force-escalation, synthesis passes. The system monitors its own execution and intervenes when something isn't working rather than silently failing.
+
+Latency is a secondary concern. A response that takes 30 seconds and is correct is worth more than a response that takes 5 seconds and is wrong. Users trust systems that are reliably right; they stop trusting systems that are occasionally fast but unpredictable.
+
+### 3. Additive by Design
 
 Drop a `.md` file and the system picks it up. Remove it and it's gone. No config files to edit, no databases to migrate, no services to restart.
 
@@ -37,17 +49,17 @@ Drop a `.md` file and the system picks it up. Remove it and it's gone. No config
 
 The system discovers what exists on disk and adapts. This makes DotBot infinitely extensible without requiring code changes.
 
-### 3. Specialized Workers, Not One God Agent
+### 4. Specialized Workers, Not One God Agent
 
 Different tasks need different thinking. A code review requires different expertise than writing marketing copy or debugging a Docker container. DotBot uses specialized personas — each with its own system prompt, tool access, and model tier — rather than one monolithic agent trying to be everything.
 
 The receptionist classifies and routes. Workers execute. Councils optionally review. This separation produces better results than a single agent with a bloated system prompt.
 
-### 4. Intelligence is a Utility
+### 5. Intelligence is a Utility
 
 Users don't pick models. They don't configure temperature or max tokens. They describe what they want and the system **automatically selects the right model** based on what the task requires. The complexity is behind the curtain.
 
-#### Four Model Roles
+#### Five Model Roles
 
 | Role | Model | When It's Used |
 |------|-------|----------------|
@@ -67,7 +79,7 @@ The `selectModel()` function examines task characteristics — estimated token c
 
 Multiple providers are registered at startup. The system uses **all of them** simultaneously, routing each request to the best model for that specific task. This isn't provider-agnostic — it's provider-*optimal*. See [Coding Patterns — Task-Based Model Selection](./CODING_PATTERNS.md#task-based-model-selection).
 
-### 5. Memory Makes the Difference
+### 6. Memory Makes the Difference
 
 Stateless AI assistants forget everything between sessions. DotBot doesn't. Every conversation contributes to an evolving understanding of the user's world:
 
@@ -78,7 +90,7 @@ Stateless AI assistants forget everything between sessions. DotBot doesn't. Ever
 
 The sleep cycle condenses conversations into mental models. Over time, DotBot knows who Billy is, what the user's tech stack is, and how they prefer their code formatted — without being told twice.
 
-### 6. Knowledge Is Structured and Retrievable
+### 7. Knowledge Is Structured and Retrievable
 
 DotBot's knowledge system stores information as **structured JSON documents** — not flat text dumps. Each document is a JSON object where keys are meaningful concepts and values are exhaustive detail. A `_meta` key holds title, description, tags, source URL, and timestamp.
 
@@ -88,7 +100,7 @@ Knowledge can be **general** (available to all personas in `~/.bot/knowledge/`) 
 
 **Ingestion from any source.** The `knowledge.ingest` tool processes URLs, PDFs, images, video, and audio into structured JSON using the Gemini API. Binary content is uploaded to Gemini's Files API, processed, and immediately deleted. The result is a structured knowledge document ready to save — every fact, example, and edge case captured.
 
-### 7. Tools Are First-Class Citizens
+### 8. Tools Are First-Class Citizens
 
 DotBot doesn't just chat — it acts. 42+ core tools across filesystem, shell, network, search, browser, and more. The tool system is extensible:
 
@@ -99,7 +111,7 @@ DotBot doesn't just chat — it acts. 42+ core tools across filesystem, shell, n
 
 Personas declare which tool categories they can use. The system filters tools per-persona to avoid confusion and save tokens.
 
-### 8. The System Improves Itself
+### 9. The System Improves Itself
 
 DotBot is designed to be self-improving. In Admin Mode (with access to the source repository), DotBot can modify its own code — creating new personas, improving prompts, fixing bugs, adding features — following a safe git-based workflow with testing and rollback.
 
@@ -315,12 +327,13 @@ Skills are instruction sets, not code. They guide the LLM's behavior without req
 DotBot succeeds when:
 
 1. The user forgets they're talking to an AI because it remembers everything and just *knows* their context
-2. Adding a new capability is as simple as dropping a `.md` file
-3. The system gets better at its job every day — through learned skills, refined personas, growing knowledge bases, and evolving memory
-4. The user's data is theirs, always, completely, without compromise
-5. The developer can ask DotBot to improve itself, and it does — safely, with tests, with rollback
+2. The system gives the right answer consistently — even if it takes longer to get there
+3. Adding a new capability is as simple as dropping a `.md` file
+4. The system gets better at its job every day — through learned skills, refined personas, growing knowledge bases, and evolving memory
+5. The user's data is theirs, always, completely, without compromise
+6. The developer can ask DotBot to improve itself, and it does — safely, with tests, with rollback
 
 ---
 
-*Last Updated: February 2026*
-*Version: 1.1*
+*Last Updated: February 14, 2026*
+*Version: 1.2*

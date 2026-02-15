@@ -86,7 +86,14 @@ async function handleGenerate(
     result = await callOpenAIGenerate(prompt, args.size || mapAspectToOpenAISize(aspectRatio));
   }
 
-  if (!result) return { success: false, output: "", error: `${provider} image generation failed — no image returned` };
+  if (!result) {
+    const alt = provider === "gemini" ? "openai" : "gemini";
+    const altAvailable = alt === "gemini" ? !!GEMINI_API_KEY : !!OPENAI_API_KEY;
+    const fallbackHint = altAvailable
+      ? ` Try again with provider: '${alt}' to use the fallback.`
+      : "";
+    return { success: false, output: "", error: `${provider} image generation failed — no image returned.${fallbackHint}` };
+  }
 
   // Save to user's machine via execution bridge
   const savedPath = await saveImageToAgent(result.base64, result.mimeType, savePath, executeCommand, tempDir);
@@ -150,7 +157,14 @@ async function handleEdit(
     result = await callOpenAIGenerate(editPrompt, args.size || "1024x1024");
   }
 
-  if (!result) return { success: false, output: "", error: `${provider} image editing failed — no image returned` };
+  if (!result) {
+    const alt = provider === "gemini" ? "openai" : "gemini";
+    const altAvailable = alt === "gemini" ? !!GEMINI_API_KEY : !!OPENAI_API_KEY;
+    const fallbackHint = altAvailable
+      ? ` Try again with provider: '${alt}' to use the fallback.`
+      : "";
+    return { success: false, output: "", error: `${provider} image editing failed — no image returned.${fallbackHint}` };
+  }
 
   const savedPath = await saveImageToAgent(result.base64, result.mimeType, savePath, executeCommand, tempDir);
   if (!savedPath) return { success: false, output: "", error: "Failed to save edited image to user's machine" };

@@ -37,6 +37,10 @@ vi.mock("./store.js", () => ({
 vi.mock("./store-core.js", () => ({
   MODELS_DIR: "/tmp/models",
   DEEP_MEMORY_DIR: "/tmp/deep",
+  DOTBOT_DIR: "/tmp/dotbot",
+  fileExists: vi.fn(() => Promise.resolve(false)),
+  readJson: vi.fn(() => Promise.resolve(null)),
+  writeJson: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("./instruction-applier.js", () => ({
