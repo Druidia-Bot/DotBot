@@ -6,6 +6,7 @@
 
 import { readFileSync, writeFileSync } from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { loadDeviceCredentials } from "../auth/device-credentials.js";
 import { collectHardwareFingerprint } from "../auth/hw-fingerprint.js";
 
@@ -85,6 +86,8 @@ export const DEVICE_NAME = process.env.DEVICE_NAME || `Windows-${process.env.COM
 
 // Agent version — read from VERSION file at repo root
 export const AGENT_VERSION = (() => {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
   const installDir = process.env.DOTBOT_INSTALL_DIR || "C:\\.bot";
   const candidates = [
     path.resolve(installDir, "VERSION"),

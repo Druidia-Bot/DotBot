@@ -75,6 +75,7 @@ import { validateAndConsumeToken } from "../auth/invite-tokens.js";
 import { registerDevice, authenticateDevice, getRecentFailures, logAuthEvent, listDevices } from "../auth/device-store.js";
 import { readFileSync } from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 
 // Re-export for backwards compatibility
 export {
@@ -103,6 +104,8 @@ let serverModel: string = "unknown";
 
 // Server version — read from VERSION file at repo root
 const SERVER_VERSION = (() => {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
   const candidates = [
     path.resolve(__dirname, "..", "..", "VERSION"),       // dist/ws → repo root
     path.resolve(__dirname, "..", "..", "..", "VERSION"),  // deeper nesting
