@@ -7,6 +7,7 @@ import type { ToolExecResult } from "../_shared/types.js";
 import { getProtectedPids, matchesDangerousPattern } from "../_shared/security.js";
 import { sanitizeForPS, safeInt, runPowershell } from "../_shared/powershell.js";
 import { isRuntimeAvailable, runPreRestartHook } from "../tool-executor.js";
+import { AGENT_VERSION } from "../../core/config.js";
 
 export async function handleSystem(toolId: string, args: Record<string, any>): Promise<ToolExecResult> {
   switch (toolId) {
@@ -242,7 +243,7 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
       return { success: true, output: `Health Check: ${passed} passed, ${failed} failed\n\n${summary}` };
     }
     case "system.update": {
-      const installDir = join(process.env.DOTBOT_INSTALL_DIR || "C:\\Program Files\\.bot");
+      const installDir = join(process.env.DOTBOT_INSTALL_DIR || "C:\\.bot");
       const safeDir = installDir.replace(/'/g, "''");
       try {
         // Check if git repo exists
@@ -257,8 +258,19 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
         if (!pullResult.success) {
           return { success: false, output: pullResult.output, error: `git pull failed: ${pullResult.error}` };
         }
-        // Install deps + build (scoped to shared + local-agent only — server may not be present on client-only machines)
-        await runPowershell(`cd '${safeDir}'; npm install -w shared -w local-agent 2>&1; npm run build -w shared -w local-agent 2>&1`, 120_000);
+        // Install deps + build sequentially (separate commands are more reliable with spaces in paths)
+        const installResult = await runPowershell(`cd '${safeDir}'; npm install 2>&1`, 120_000);
+        if (!installResult.success) {
+          return { success: false, output: installResult.output, error: `npm install failed: ${installResult.error}` };
+        }
+        const buildShared = await runPowershell(`cd '${safeDir}'; npm run build -w shared 2>&1`, 60_000);
+        if (!buildShared.success) {
+          return { success: false, output: buildShared.output, error: `shared/ build failed: ${buildShared.error}` };
+        }
+        const buildAgent = await runPowershell(`cd '${safeDir}'; npm run build -w local-agent 2>&1`, 60_000);
+        if (!buildAgent.success) {
+          return { success: false, output: buildAgent.output, error: `local-agent/ build failed: ${buildAgent.error}` };
+        }
         // Get new commit
         const afterHash = await runPowershell(`cd '${safeDir}'; git rev-parse --short HEAD`, 5_000);
         // Get diff summary
@@ -283,6 +295,24 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
       } catch (err) {
         return { success: false, output: "", error: `Update failed: ${err instanceof Error ? err.message : String(err)}` };
       }
+    }
+    case "system.version": {
+      const installDir = process.env.DOTBOT_INSTALL_DIR || "C:\\.bot";
+      const uptime = process.uptime();
+      const hours = Math.floor(uptime / 3600);
+      const mins = Math.floor((uptime % 3600) / 60);
+      const uptimeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+      return {
+        success: true,
+        output: [
+          `Version: ${AGENT_VERSION}`,
+          `Platform: ${process.platform}`,
+          `Node.js: ${process.version}`,
+          `Install: ${installDir}`,
+          `Uptime: ${uptimeStr}`,
+          `PID: ${process.pid}`,
+        ].join("\n"),
+      };
     }
     default:
       return { success: false, output: "", error: `Unknown system tool: ${toolId}` };

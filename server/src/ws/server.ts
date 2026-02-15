@@ -73,6 +73,8 @@ import {
 import type { RecurringTask } from "../services/scheduler/index.js";
 import { validateAndConsumeToken } from "../auth/invite-tokens.js";
 import { registerDevice, authenticateDevice, getRecentFailures, logAuthEvent, listDevices } from "../auth/device-store.js";
+import { readFileSync } from "fs";
+import path from "path";
 
 // Re-export for backwards compatibility
 export {
@@ -98,6 +100,18 @@ const log = createComponentLogger("ws");
 // Server configuration (set by createWSServer)
 let serverProvider: string = "unknown";
 let serverModel: string = "unknown";
+
+// Server version — read from VERSION file at repo root
+const SERVER_VERSION = (() => {
+  const candidates = [
+    path.resolve(__dirname, "..", "..", "VERSION"),       // dist/ws → repo root
+    path.resolve(__dirname, "..", "..", "..", "VERSION"),  // deeper nesting
+  ];
+  for (const p of candidates) {
+    try { return readFileSync(p, "utf-8").trim(); } catch {}
+  }
+  return "unknown";
+})();
 
 // ============================================
 // SERVER INITIALIZATION
@@ -611,6 +625,31 @@ function handleAuth(ws: WebSocket, message: WSAuthMessage): string | null {
       model: serverModel,
     },
   });
+
+  // Version check: if agent is behind server, push an update command
+  if (isAgent) {
+    const agentVersion = message.payload.version;
+    if (agentVersion && SERVER_VERSION !== "unknown" && agentVersion !== SERVER_VERSION) {
+      log.info("Agent version mismatch — pushing update", {
+        deviceId,
+        agentVersion,
+        serverVersion: SERVER_VERSION,
+      });
+      // Small delay so the agent finishes its auth init before we trigger an update
+      setTimeout(() => {
+        sendMessage(ws, {
+          type: "system_update" as any,
+          id: nanoid(),
+          timestamp: Date.now(),
+          payload: {
+            serverVersion: SERVER_VERSION,
+            agentVersion,
+            reason: `Server updated to ${SERVER_VERSION}, agent is on ${agentVersion}`,
+          },
+        });
+      }, 5000);
+    }
+  }
 
   // V2: Check for incomplete agent workspaces (async, non-blocking) — agents only
   if (isAgent) {

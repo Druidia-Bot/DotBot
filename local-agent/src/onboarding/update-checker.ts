@@ -8,7 +8,7 @@
 import { execSync } from "child_process";
 import type { PeriodicTaskDef } from "../periodic/index.js";
 
-const INSTALL_DIR = process.env.DOTBOT_INSTALL_DIR || "C:\\Program Files\\.bot";
+const INSTALL_DIR = process.env.DOTBOT_INSTALL_DIR || "C:\\.bot";
 
 let notifyCallback: ((message: string) => void) | null = null;
 let lastNotifiedAt: number = 0;

@@ -28,7 +28,7 @@
 .PARAMETER RepoUrl
     Git clone URL (required -- no default, will prompt if not provided)
 .PARAMETER InstallDir
-    Where to clone DotBot (default: C:\Program Files\.bot)
+    Where to clone DotBot (default: C:\.bot)
 
 .NOTES
     This installer includes:
@@ -911,7 +911,7 @@ DOTBOT_INVITE_TOKEN=$Token
     Set-StepStatus -StepName "configure_env" -Status "success"
 
     # Write client/config.js now (while we have admin privileges)
-    # launch.ps1 may not have write access to Program Files later
+    # Write config.js while we have admin privileges
     $configJsPath = Join-Path $InstallDir "client\config.js"
     if (Test-Path (Split-Path $configJsPath -Parent)) {
         $escaped = $Url -replace "'", "\'"
@@ -952,10 +952,10 @@ function Install-Shortcuts {
     try {
         $shell = New-Object -ComObject WScript.Shell
         $startMenu = [Environment]::GetFolderPath("Programs")
-        $launcherPath = Join-Path $Dir "launch.ps1"
+        $runPath = Join-Path $Dir "run.ps1"
 
-        if (-not (Test-Path $launcherPath)) {
-            Write-Warn "launch.ps1 not found -- skipping shortcut creation"
+        if (-not (Test-Path $runPath)) {
+            Write-Warn "run.ps1 not found -- skipping shortcut creation"
             return
         }
 
@@ -963,7 +963,7 @@ function Install-Shortcuts {
         $lnkPath = Join-Path $startMenu "DotBot.lnk"
         $shortcut = $shell.CreateShortcut($lnkPath)
         $shortcut.TargetPath = "powershell.exe"
-        $shortcut.Arguments = "-ExecutionPolicy Bypass -NoExit -File `"$launcherPath`""
+        $shortcut.Arguments = "-ExecutionPolicy Bypass -NoExit -File `"$runPath`""
         $shortcut.WorkingDirectory = $Dir
         $shortcut.Description = "Start DotBot"
         $shortcut.Save()
@@ -995,7 +995,7 @@ function Install-Shortcuts {
             try {
                 $Action = New-ScheduledTaskAction `
                     -Execute "powershell.exe" `
-                    -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcherPath`" -Service" `
+                    -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$runPath`" -Service" `
                     -WorkingDirectory $Dir
 
                 $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
@@ -1023,7 +1023,7 @@ function Install-Shortcuts {
             }
         } else {
             Write-Host "    Skipped -- you can register later with:" -ForegroundColor DarkGray
-            Write-Host "    schtasks /create /tn DotBot /tr `"powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File '$launcherPath'`" /sc onlogon" -ForegroundColor DarkGray
+            Write-Host "    schtasks /create /tn DotBot /tr `"powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File '$runPath'`" /sc onlogon" -ForegroundColor DarkGray
         }
     } catch {
         Write-Warn "Could not create shortcuts: $($_.Exception.Message)"
@@ -1110,7 +1110,7 @@ if ($selectedMode -eq "agent" -or $selectedMode -eq "both") {
 
 # Determine install directory
 if (-not $InstallDir) {
-    $InstallDir = Join-Path $env:ProgramFiles ".bot"
+    $InstallDir = "C:\.bot"
 }
 
 # Ensure ~/.bot/ exists
@@ -1283,7 +1283,7 @@ Write-Host "  ========================================" -ForegroundColor Green
 Write-Host ""
 
 # Start DotBot as a hidden background service
-$launcherPath = Join-Path $InstallDir "launch.ps1"
+$runPath = Join-Path $InstallDir "run.ps1"
 $taskExists = $false
 try { $taskExists = [bool](Get-ScheduledTask -TaskName "DotBot" -ErrorAction SilentlyContinue) } catch {}
 
@@ -1295,10 +1295,10 @@ $deviceJsonFile = Join-Path $BOT_DIR "device.json"
 if ($taskExists) {
     Write-Host "  Starting DotBot service (hidden)..." -ForegroundColor Green
     Start-ScheduledTask -TaskName "DotBot" -ErrorAction SilentlyContinue
-} elseif (Test-Path $launcherPath) {
+} elseif (Test-Path $runPath) {
     Write-Host "  Starting DotBot service (hidden)..." -ForegroundColor Green
     Start-Process powershell -ArgumentList @(
-        "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $launcherPath, "-Service"
+        "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $runPath, "-Service"
     )
 }
 
@@ -1306,7 +1306,7 @@ if ($taskExists) {
 # The token file confirms: agent started, connected, and authenticated with server
 Write-Host "  Waiting for agent to connect and register..." -ForegroundColor Gray
 Write-Host "    (This may take up to 60 seconds for first connection)" -ForegroundColor DarkGray
-Start-Sleep -Seconds 3  # Grace period for node to start via launch.ps1
+Start-Sleep -Seconds 3  # Grace period for node to start
 $deadline = (Get-Date).AddSeconds(60)
 $registered = $false
 $lastProgress = (Get-Date)

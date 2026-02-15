@@ -205,7 +205,7 @@ Once installed, DotBot runs as a **background service** that starts automaticall
 **Managing DotBot on Windows:**
 
 ```powershell
-# From the install directory (default: C:\Program Files\.bot):
+# From the install directory (default: C:\.bot):
 .\run.ps1                # Start agent + server (dev) or agent-only (production)
 .\run.ps1 -Stop          # Stop all DotBot processes
 .\run.ps1 -Update        # Pull latest code + rebuild + restart
@@ -333,7 +333,7 @@ Remove-Item "$env:USERPROFILE\.bot\device.json"
 The update process only installs and builds `shared/` and `local-agent/`. If you see server build errors, you may be running an older version of the update tool. Pull the latest code manually:
 
 ```powershell
-cd "C:\Program Files\.bot"
+cd "C:\.bot"
 git pull
 npm install -w shared -w local-agent
 npm run build -w shared -w local-agent

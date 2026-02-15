@@ -83,6 +83,20 @@ function autoCorrectServerUrl(): string {
 export const SERVER_URL = autoCorrectServerUrl();
 export const DEVICE_NAME = process.env.DEVICE_NAME || `Windows-${process.env.COMPUTERNAME || "PC"}`;
 
+// Agent version — read from VERSION file at repo root
+export const AGENT_VERSION = (() => {
+  const installDir = process.env.DOTBOT_INSTALL_DIR || "C:\\.bot";
+  const candidates = [
+    path.resolve(installDir, "VERSION"),
+    path.resolve(__dirname, "..", "..", "..", "VERSION"),  // dev: local-agent/dist → repo root
+    path.resolve(__dirname, "..", "..", "..", "..", "VERSION"),  // deeper nesting fallback
+  ];
+  for (const p of candidates) {
+    try { return readFileSync(p, "utf-8").trim(); } catch {}
+  }
+  return "unknown";
+})();
+
 // Device credentials (loaded from ~/.bot/device.json after registration)
 export let deviceCredentials = loadDeviceCredentials();
 

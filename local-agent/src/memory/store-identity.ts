@@ -158,7 +158,7 @@ function buildExpectedPaths(): Record<string, string> {
     memoryModels: `${path.join(DOTBOT_DIR, "memory", "models")} | Hot (active) mental model JSON files`,
     deepMemory: `${path.join(DOTBOT_DIR, "memory", "deep")} | Demoted/archived mental models (cold storage)`,
     skills: `${path.join(DOTBOT_DIR, "skills")} | Reusable skill definitions (.md files)`,
-    sourceCode: `${process.env.DOTBOT_INSTALL_DIR || "C:\\Program Files\\.bot"} | DotBot source code repository (server + local-agent + client)`,
+    sourceCode: `${process.env.DOTBOT_INSTALL_DIR || "C:\\\\.bot"} | DotBot source code repository (server + local-agent + client)`,
   };
 }
 

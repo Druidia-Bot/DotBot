@@ -210,4 +210,18 @@ export const systemTools: DotBotTool[] = [
     },
     annotations: { destructiveHint: true, requiresConfirmation: true },
   },
+  {
+    id: "system.version",
+    name: "version_info",
+    description: "Get the current DotBot version, platform, Node.js version, install directory, and uptime. Use when the user asks 'what version are you?' or 'what version is this?'.",
+    source: "core",
+    category: "system",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    annotations: { readOnlyHint: true },
+  },
 ];

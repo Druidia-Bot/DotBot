@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Stop"
 $BotDir = Join-Path $env:USERPROFILE ".bot"
 $EnvFile = Join-Path $BotDir ".env"
-$InstallDir = "C:\Program Files\.bot"
+$InstallDir = "C:\.bot"
 
 Write-Host ""
 Write-Host "  DotBot -- Apply New Invite Token" -ForegroundColor Cyan
@@ -54,15 +54,15 @@ Write-Host "    DOTBOT_SERVER=$serverUrl" -ForegroundColor White
 Write-Host "    DOTBOT_INVITE_TOKEN=$token" -ForegroundColor White
 Write-Host ""
 
-# Launch agent hidden via launch.ps1
-$launcherPath = Join-Path $InstallDir "launch.ps1"
-if (-not (Test-Path $launcherPath)) {
-    Write-Host "  [X] launch.ps1 not found at $launcherPath" -ForegroundColor Red
+# Launch agent hidden via run.ps1 -Service
+$runPath = Join-Path $InstallDir "run.ps1"
+if (-not (Test-Path $runPath)) {
+    Write-Host "  [X] run.ps1 not found at $runPath" -ForegroundColor Red
     exit 1
 }
 
 Start-Process powershell -ArgumentList @(
-    "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $launcherPath, "-Service"
+    "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $runPath, "-Service"
 )
 
 # Wait for registration

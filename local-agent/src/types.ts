@@ -71,6 +71,7 @@ export type WSMessageType =
   | "admin_request"
   | "admin_response"
   | "task_acknowledged"
+  | "system_update"
   | "error"
   | "ping"
   | "pong";

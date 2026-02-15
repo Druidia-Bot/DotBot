@@ -455,6 +455,8 @@ export interface WSAuthMessage extends WSMessage {
     hwFingerprint: string;
     /** Client platform for V2 tool filtering. */
     platform?: "windows" | "linux" | "macos";
+    /** Agent version from VERSION file. */
+    version?: string;
   };
 }
 
@@ -468,6 +470,8 @@ export interface WSRegisterDeviceMessage extends WSMessage {
     tempDir?: string;
     /** Client platform for V2 tool filtering. */
     platform?: "windows" | "linux" | "macos";
+    /** Agent version from VERSION file. */
+    version?: string;
   };
 }
 

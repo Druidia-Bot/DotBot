@@ -6,7 +6,7 @@
 
 import { nanoid } from "nanoid";
 import { TEMP_DIR } from "../memory/store-core.js";
-import { DEVICE_NAME, deviceCredentials, hwFingerprint, SERVER_URL } from "./config.js";
+import { AGENT_VERSION, DEVICE_NAME, deviceCredentials, hwFingerprint, SERVER_URL } from "./config.js";
 import type { WSMessage } from "../types.js";
 
 /**
@@ -35,6 +35,7 @@ export function authenticate(send: (msg: WSMessage) => void): void {
         tempDir: TEMP_DIR,
         hwFingerprint,
         platform,
+        version: AGENT_VERSION,
       },
     });
   } else {
@@ -57,6 +58,7 @@ export function authenticate(send: (msg: WSMessage) => void): void {
         capabilities,
         tempDir: TEMP_DIR,
         platform,
+        version: AGENT_VERSION,
       },
     });
   }

@@ -7,7 +7,7 @@
 
 import { nanoid } from "nanoid";
 import type { WSMessage } from "../types.js";
-import { DEVICE_NAME, SERVER_URL, deviceCredentials, setDeviceCredentials } from "./config.js";
+import { AGENT_VERSION, DEVICE_NAME, SERVER_URL, deviceCredentials, setDeviceCredentials } from "./config.js";
 import { send, handlePendingResponse } from "./ws-client.js";
 import { cleanConsumedInviteToken } from "./env.js";
 import { initializeAfterAuth, notifyActivity } from "./post-auth-init.js";
@@ -306,6 +306,30 @@ export async function handleMessage(message: WSMessage): Promise<void> {
       // Persist execution trace to disk for diagnostics
       await handleRunLog(message.payload);
       break;
+
+    case "system_update": {
+      // Server pushed an update — agent version doesn't match server version
+      const { serverVersion, agentVersion, reason } = message.payload;
+      console.log(`[Agent] Server pushed update: ${reason}`);
+      console.log(`[Agent]   Server: ${serverVersion}, Agent: ${AGENT_VERSION}`);
+      sendToUpdatesChannel(`🔄 **Auto-update triggered** — server is on v${serverVersion}, agent is on v${agentVersion}. Updating now...`);
+      sendToLogsChannel(`🔄 Server pushed system_update: ${reason}`);
+
+      // Trigger the same update flow as system.update tool
+      // Import dynamically to avoid circular dependency
+      import("../tools/system/handler.js").then(async ({ handleSystem }) => {
+        const result = await handleSystem("system.update", { reason: `Server-pushed: ${reason}` });
+        if (!result.success) {
+          console.error(`[Agent] Server-pushed update failed: ${result.error}`);
+          sendToUpdatesChannel(`❌ **Auto-update failed:** ${result.error}`);
+        }
+        // handleSystem("system.update") already calls process.exit(42) on success
+      }).catch(err => {
+        console.error("[Agent] Failed to run server-pushed update:", err);
+        sendToUpdatesChannel(`❌ **Auto-update failed:** ${err instanceof Error ? err.message : String(err)}`);
+      });
+      break;
+    }
 
     case "pong":
       // Heartbeat response
