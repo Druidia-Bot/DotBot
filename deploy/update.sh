@@ -78,12 +78,21 @@ fi
 # Restart
 echo "Restarting server..."
 systemctl restart dotbot
-sleep 2
+sleep 3
 
 if systemctl is-active --quiet dotbot; then
   log "DotBot server restarted successfully"
+  # Show migration output if any
+  MIGRATION_LOG=$(journalctl -u dotbot --since "10 seconds ago" --no-pager -o cat 2>/dev/null | grep -i "\[DB\]" || true)
+  if [ -n "$MIGRATION_LOG" ]; then
+    echo ""
+    echo -e "${CYAN}Database migrations:${NC}"
+    echo "$MIGRATION_LOG"
+  fi
   echo ""
   echo "  Check logs: journalctl -u dotbot -f"
 else
+  echo -e "${RED}Server failed to start! Recent logs:${NC}"
+  journalctl -u dotbot -n 30 --no-pager 2>/dev/null || true
   err "Server failed to start! Check: journalctl -u dotbot -n 50"
 fi

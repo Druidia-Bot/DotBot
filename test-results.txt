@@ -1,0 +1,1897 @@
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mC:/01_web_projects_personal/DotBot/server[39m
+
+[90mstdout[2m | src/ws/heartbeat-handler.test.ts[2m > [22m[2mPersonal Assistant Persona[2m > [22m[2mloads personal-assistant persona from disk
+[22m[39m[Personas] Loading server-side personas...
+[Personas] Loaded 3 intake agents, 15 internal personas
+
+ [32mΓ£ô[39m src/auth/device-store.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 86[2mms[22m[39m
+ [32mΓ£ô[39m src/auth/invite-tokens.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 64[2mms[22m[39m
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMental Model Management[2m > [22m[2mcreates a mental model with all required fields
+[22m[39m21:10:07 INF [server.memory] Created mental model: Billy (person/child)
+{
+  "modelId": "mm_RLCmrE8r6j9Memj2kSO_6"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMental Model Management[2m > [22m[2mretrieves model by ID
+[22m[39m21:10:07 INF [server.memory] Created mental model: Project X (concept)
+{
+  "modelId": "mm_jfIO6qzM4r6OS2y5IC1ap"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMental Model Management[2m > [22m[2mlists all models for a user
+[22m[39m21:10:07 INF [server.memory] Created mental model: Alice (person)
+{
+  "modelId": "mm_oGtj79Ixg9qu1E1emFY0r"
+}
+21:10:07 INF [server.memory] Created mental model: Bob (person)
+{
+  "modelId": "mm_18E6q5dDe6-oK-ySZEyP6"
+}
+21:10:07 INF [server.memory] Created mental model: Charlie (person)
+{
+  "modelId": "mm_7k_CSzez_vtx_gqpox7zO"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMental Model Management[2m > [22m[2mfinds model by entity name (case-insensitive)
+[22m[39m21:10:07 INF [server.memory] Created mental model: Billy (person)
+{
+  "modelId": "mm_IXcCcGSMp7HoAfoN6tR7d"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMental Model Management[2m > [22m[2mlinks model to thread
+[22m[39m21:10:07 INF [server.memory] Created mental model: Entity (concept)
+{
+  "modelId": "mm_MtpvCfV4MicvCWA8PT01e"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMemory Delta Application[2m > [22m[2mcreates a new model when delta references unknown entity
+[22m[39m21:10:07 INF [server.memory] Created mental model: New Entity (concept)
+{
+  "modelId": "mm__IVIJJbbZ0aEbL6T0n7Lc"
+}
+21:10:07 INF [server.memory] New model created from delta: New Entity
+{
+  "modelId": "mm__IVIJJbbZ0aEbL6T0n7Lc"
+}
+21:10:07 INF [server.memory] Delta applied to New Entity
+{
+  "modelId": "mm__IVIJJbbZ0aEbL6T0n7Lc",
+  "schemaAdded": 0,
+  "attrsAdded": 1,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMemory Delta Application[2m > [22m[2mupdates existing model by entity match
+[22m[39m21:10:07 INF [server.memory] Created mental model: Billy (person)
+{
+  "modelId": "mm_33QpkTGNdA7Gq3UbGl3AS"
+}
+21:10:07 INF [server.memory] Delta applied to Billy
+{
+  "modelId": "mm_33QpkTGNdA7Gq3UbGl3AS",
+  "schemaAdded": 0,
+  "attrsAdded": 1,
+  "beliefsAdded": 1,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMemory Delta Application[2m > [22m[2madds schema fields
+[22m[39m21:10:07 INF [server.memory] Created mental model: Person (person)
+{
+  "modelId": "mm_lqHts_pJViIq3B-opOlLU"
+}
+21:10:07 DBG [server.memory] Schema field added: age on Person
+21:10:07 INF [server.memory] Delta applied to Person
+{
+  "modelId": "mm_lqHts_pJViIq3B-opOlLU",
+  "schemaAdded": 1,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMemory Delta Application[2m > [22m[2mmarks schema field as populated when attribute set
+[22m[39m21:10:07 INF [server.memory] Created mental model: Item (concept)
+{
+  "modelId": "mm_tBAPP_ZWaK69-wsBASRJd"
+}
+21:10:07 DBG [server.memory] Schema field added: color on Item
+21:10:07 INF [server.memory] Delta applied to Item
+{
+  "modelId": "mm_tBAPP_ZWaK69-wsBASRJd",
+  "schemaAdded": 1,
+  "attrsAdded": 1,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMemory Delta Application[2m > [22m[2madds relationships without duplicates
+[22m[39m21:10:07 INF [server.memory] Created mental model: Alice (person)
+{
+  "modelId": "mm_C2giyWib5u2L1k9DVys1t"
+}
+21:10:07 INF [server.memory] Delta applied to Alice
+{
+  "modelId": "mm_C2giyWib5u2L1k9DVys1t",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Alice
+{
+  "modelId": "mm_C2giyWib5u2L1k9DVys1t",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMemory Delta Application[2m > [22m[2madds open loops with IDs
+[22m[39m21:10:07 INF [server.memory] Created mental model: Project (concept)
+{
+  "modelId": "mm_XUcYqHz2z89czJ4BgL1GS"
+}
+21:10:07 INF [server.memory] Delta applied to Project
+{
+  "modelId": "mm_XUcYqHz2z89czJ4BgL1GS",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 1,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMemory Delta Application[2m > [22m[2mdeducts schema keys and their attributes
+[22m[39m21:10:07 INF [server.memory] Created mental model: Entity (concept)
+{
+  "modelId": "mm_FS-O2iUAG2h1NCqIi8uag"
+}
+21:10:07 DBG [server.memory] Schema fields removed: temp from Entity
+21:10:07 INF [server.memory] Delta applied to Entity
+{
+  "modelId": "mm_FS-O2iUAG2h1NCqIi8uag",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 1,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMemory Delta Application[2m > [22m[2mcloses open loops via deductions
+[22m[39m21:10:07 INF [server.memory] Created mental model: Task (concept)
+{
+  "modelId": "mm_9nlWFKpLxYDYkUdo8BzAd"
+}
+21:10:07 INF [server.memory] Delta applied to Task
+{
+  "modelId": "mm_9nlWFKpLxYDYkUdo8BzAd",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 1
+  },
+  "reasoning": "test"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMemory Delta Application[2m > [22m[2mremoves beliefs by ID
+[22m[39m21:10:07 INF [server.memory] Created mental model: X (concept)
+{
+  "modelId": "mm__yX4VKV_Y3Zbm8NOGc7TL"
+}
+21:10:07 INF [server.memory] Delta applied to X
+{
+  "modelId": "mm__yX4VKV_Y3Zbm8NOGc7TL",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 1,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMemory Delta Application[2m > [22m[2mapplies multiple deltas in sequence
+[22m[39m21:10:07 INF [server.memory] Created mental model: A (concept)
+{
+  "modelId": "mm_Y-84N1J8b245f2PLIvBWI"
+}
+21:10:07 INF [server.memory] New model created from delta: A
+{
+  "modelId": "mm_Y-84N1J8b245f2PLIvBWI"
+}
+21:10:07 INF [server.memory] Delta applied to A
+{
+  "modelId": "mm_Y-84N1J8b245f2PLIvBWI",
+  "schemaAdded": 0,
+  "attrsAdded": 1,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Created mental model: B (concept)
+{
+  "modelId": "mm_POq146nEs7LOtLPSz6UAi"
+}
+21:10:07 INF [server.memory] New model created from delta: B
+{
+  "modelId": "mm_POq146nEs7LOtLPSz6UAi"
+}
+21:10:07 INF [server.memory] Delta applied to B
+{
+  "modelId": "mm_POq146nEs7LOtLPSz6UAi",
+  "schemaAdded": 0,
+  "attrsAdded": 1,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMemory Delta Application[2m > [22m[2mkeeps recentDialog bounded at 20
+[22m[39m21:10:07 INF [server.memory] Created mental model: Chatty (person)
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+21:10:07 INF [server.memory] Delta applied to Chatty
+{
+  "modelId": "mm_iA26Amz8pMIurwlLih-8F",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mMemory Delta Application[2m > [22m[2mincreases confidence on each delta
+[22m[39m21:10:07 INF [server.memory] Created mental model: Conf (concept)
+{
+  "modelId": "mm_WMZYuxwO8Or0A15DL0BTu"
+}
+21:10:07 INF [server.memory] Delta applied to Conf
+{
+  "modelId": "mm_WMZYuxwO8Or0A15DL0BTu",
+  "schemaAdded": 0,
+  "attrsAdded": 0,
+  "beliefsAdded": 0,
+  "loopsAdded": 0,
+  "deductions": {
+    "schemaRemoved": 0,
+    "attrsRemoved": 0,
+    "beliefsClosed": 0,
+    "loopsClosed": 0
+  },
+  "reasoning": "test"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mSession Memory[2m > [22m[2mcreates a session on first access
+[22m[39m21:10:07 INF [server.memory] New session created for user test_user_1
+{
+  "sessionId": "session_DjqOI5a-8JB4oWwiWyFsV"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mSession Memory[2m > [22m[2mreturns same session on subsequent access
+[22m[39m21:10:07 INF [server.memory] New session created for user test_user_1
+{
+  "sessionId": "session_wfNBpc45gOC67xr5aL4Gh"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mSession Memory[2m > [22m[2madds entries and keeps bounded at 100
+[22m[39m21:10:07 INF [server.memory] New session created for user test_user_1
+{
+  "sessionId": "session_wcgZLMbByGnPxKa3ReixT"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mSession Memory[2m > [22m[2mentry has correct structure
+[22m[39m21:10:07 INF [server.memory] New session created for user test_user_1
+{
+  "sessionId": "session_DlMZ9V4jIsOCNmpocW5do"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mSession Memory[2m > [22m[2mupdates session context
+[22m[39m21:10:07 INF [server.memory] New session created for user test_user_1
+{
+  "sessionId": "session_-X5TGvt3_CYOmwp-YpgDu"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mSession Memory[2m > [22m[2mmerges entityIds without duplicates
+[22m[39m21:10:07 INF [server.memory] New session created for user test_user_1
+{
+  "sessionId": "session_yax8qWd0vuOMjb30ovN7V"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mSession Memory[2m > [22m[2mrestores session from snapshot
+[22m[39m21:10:07 INF [server.memory] Session restored from disk for user test_user_1
+{
+  "sessionId": "session_restored",
+  "entryCount": 1
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mSession Memory[2m > [22m[2mdoes not overwrite existing session on restore
+[22m[39m21:10:07 INF [server.memory] New session created for user test_user_1
+{
+  "sessionId": "session_1dGv3feUB8AGGFnvCf1LA"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mSession Memory[2m > [22m[2mhasActiveSession returns correct status
+[22m[39m21:10:07 INF [server.memory] New session created for user test_user_1
+{
+  "sessionId": "session_Zip4mfX9lQwUgILEuaOkb"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mSession Memory[2m > [22m[2mgetRecentSessionEntries returns last N entries
+[22m[39m21:10:07 INF [server.memory] New session created for user test_user_1
+{
+  "sessionId": "session_Sv0zEpeKpRZVFzVNzRARA"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mContext Builder[2m > [22m[2mbuilds context with threads, models, and session
+[22m[39m21:10:07 INF [server.memory] Created mental model: React (concept)
+{
+  "modelId": "mm_MUxtlGjA1zM7kzTP9W2rh"
+}
+21:10:07 INF [server.memory] New session created for user test_user_1
+{
+  "sessionId": "session_gEvvqyY0SFRtTczsnls3N"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mContext Builder[2m > [22m[2mreturns empty context for new user
+[22m[39m21:10:07 INF [server.memory] New session created for user new_user
+{
+  "sessionId": "session_xPd6_INRjvW44siDXabL5"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mExport & Clear[2m > [22m[2mexports all user memory
+[22m[39m21:10:07 INF [server.memory] Created mental model: Model (concept)
+{
+  "modelId": "mm_SeER9tLbHzTebZNocWbUT"
+}
+21:10:07 INF [server.memory] New session created for user test_user_1
+{
+  "sessionId": "session_kd-WROCQCbeFFpoaQbwfE"
+}
+
+[90mstdout[2m | src/memory/manager.test.ts[2m > [22m[2mExport & Clear[2m > [22m[2mclears all user memory
+[22m[39m21:10:07 INF [server.memory] Created mental model: Model (concept)
+{
+  "modelId": "mm_iKOJ1vcU7QiMGlwsf8qJH"
+}
+21:10:07 INF [server.memory] New session created for user test_user_1
+{
+  "sessionId": "session_9UN3X3dhScaHBIslneojN"
+}
+
+ [32mΓ£ô[39m src/memory/manager.test.ts [2m([22m[2m44 tests[22m[2m)[22m[32m 80[2mms[22m[39m
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient chat()[2m > [22m[2mfalls back on 429 rate limit
+[22m[39m21:10:07 INF [server.llm.resilient] Attempting runtime fallback
+{
+  "from": "gemini",
+  "to": "anthropic",
+  "model": "claude-opus-4-6",
+  "role": "deep_context"
+}
+
+stderr | src/llm/__tests__/resilient-client.test.ts > ResilientLLMClient chat() > falls back on 429 rate limit
+21:10:07 WRN [server.llm.resilient] Primary provider failed with retryable error, trying fallbacks
+{
+  "provider": "gemini",
+  "role": "deep_context",
+  "error": "Gemini API error: 429 Rate limit exceeded"
+}
+
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient chat()[2m > [22m[2mfalls back on 429 rate limit
+[22m[39m21:10:07 INF [server.llm.resilient] Runtime fallback succeeded
+{
+  "provider": "anthropic",
+  "model": "claude-opus-4-6",
+  "role": "deep_context"
+}
+
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient chat()[2m > [22m[2mfalls back on 500 server error
+[22m[39m21:10:07 INF [server.llm.resilient] Attempting runtime fallback
+{
+  "from": "deepseek",
+  "to": "gemini",
+  "model": "gemini-2.5-flash",
+  "role": "workhorse"
+}
+
+stderr | src/llm/__tests__/resilient-client.test.ts > ResilientLLMClient chat() > falls back on 500 server error
+21:10:07 WRN [server.llm.resilient] Primary provider failed with retryable error, trying fallbacks
+{
+  "provider": "deepseek",
+  "role": "workhorse",
+  "error": "DeepSeek API error: 500 Internal Server Error"
+}
+
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient chat()[2m > [22m[2mfalls back on 500 server error
+[22m[39m21:10:07 INF [server.llm.resilient] Runtime fallback succeeded
+{
+  "provider": "gemini",
+  "model": "gemini-2.5-flash",
+  "role": "workhorse"
+}
+
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient chat()[2m > [22m[2mfalls back on network error (fetch failed)
+[22m[39m21:10:07 INF [server.llm.resilient] Attempting runtime fallback
+{
+  "from": "deepseek",
+  "to": "gemini",
+  "model": "gemini-2.5-flash",
+  "role": "workhorse"
+}
+
+stderr | src/llm/__tests__/resilient-client.test.ts > ResilientLLMClient chat() > falls back on network error (fetch failed)
+21:10:07 WRN [server.llm.resilient] Primary provider failed with retryable error, trying fallbacks
+{
+  "provider": "deepseek",
+  "role": "workhorse",
+  "error": "fetch failed"
+}
+
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient chat()[2m > [22m[2mfalls back on network error (fetch failed)
+[22m[39m21:10:07 INF [server.llm.resilient] Runtime fallback succeeded
+{
+  "provider": "gemini",
+  "model": "gemini-2.5-flash",
+  "role": "workhorse"
+}
+
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient chat()[2m > [22m[2mtries multiple fallbacks if first fallback also fails
+[22m[39m21:10:07 INF [server.llm.resilient] Attempting runtime fallback
+{
+  "from": "deepseek",
+  "to": "gemini",
+  "model": "gemini-2.5-flash",
+  "role": "workhorse"
+}
+
+stderr | src/llm/__tests__/resilient-client.test.ts > ResilientLLMClient chat() > tries multiple fallbacks if first fallback also fails
+21:10:07 WRN [server.llm.resilient] Primary provider failed with retryable error, trying fallbacks
+{
+  "provider": "deepseek",
+  "role": "workhorse",
+  "error": "DeepSeek API error: 429"
+}
+
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient chat()[2m > [22m[2mtries multiple fallbacks if first fallback also fails
+[22m[39m21:10:07 INF [server.llm.resilient] Attempting runtime fallback
+{
+  "from": "deepseek",
+  "to": "openai",
+  "model": "gpt-4o-mini",
+  "role": "workhorse"
+}
+
+stderr | src/llm/__tests__/resilient-client.test.ts > ResilientLLMClient chat() > tries multiple fallbacks if first fallback also fails
+21:10:07 WRN [server.llm.resilient] Fallback provider also failed
+{
+  "provider": "gemini",
+  "error": "Gemini API error: 503"
+}
+
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient chat()[2m > [22m[2mtries multiple fallbacks if first fallback also fails
+[22m[39m21:10:07 INF [server.llm.resilient] Runtime fallback succeeded
+{
+  "provider": "openai",
+  "model": "gpt-4o-mini",
+  "role": "workhorse"
+}
+
+stderr | src/llm/__tests__/resilient-client.test.ts > ResilientLLMClient chat() > throws original error when all fallbacks fail
+21:10:07 WRN [server.llm.resilient] Primary provider failed with retryable error, trying fallbacks
+{
+  "provider": "gemini",
+  "role": "deep_context",
+  "error": "Gemini API error: 429 Rate limit"
+}
+
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient chat()[2m > [22m[2mskips fallback providers without API keys
+[22m[39m21:10:07 INF [server.llm.resilient] Attempting runtime fallback
+{
+  "from": "deepseek",
+  "to": "local",
+  "model": "qwen2.5-0.5b-instruct-q4_k_m",
+  "role": "workhorse"
+}
+
+stderr | src/llm/__tests__/resilient-client.test.ts > ResilientLLMClient chat() > skips fallback providers without API keys
+21:10:07 WRN [server.llm.resilient] Primary provider failed with retryable error, trying fallbacks
+{
+  "provider": "deepseek",
+  "role": "workhorse",
+  "error": "DeepSeek API error: 429"
+}
+
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient chat()[2m > [22m[2mskips fallback providers without API keys
+[22m[39m21:10:07 INF [server.llm.resilient] Runtime fallback succeeded
+{
+  "provider": "local",
+  "model": "qwen2.5-0.5b-instruct-q4_k_m",
+  "role": "workhorse"
+}
+
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient chat()[2m > [22m[2mpreserves caller's options in fallback call
+[22m[39m21:10:07 INF [server.llm.resilient] Attempting runtime fallback
+{
+  "from": "gemini",
+  "to": "anthropic",
+  "model": "claude-opus-4-6",
+  "role": "deep_context"
+}
+
+stderr | src/llm/__tests__/resilient-client.test.ts > ResilientLLMClient chat() > preserves caller's options in fallback call
+21:10:07 WRN [server.llm.resilient] Primary provider failed with retryable error, trying fallbacks
+{
+  "provider": "gemini",
+  "role": "deep_context",
+  "error": "Gemini API error: 429"
+}
+
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient chat()[2m > [22m[2mpreserves caller's options in fallback call
+[22m[39m21:10:07 INF [server.llm.resilient] Runtime fallback succeeded
+{
+  "provider": "anthropic",
+  "model": "claude-opus-4-6",
+  "role": "deep_context"
+}
+
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient stream()[2m > [22m[2mfalls back on stream error
+[22m[39m21:10:07 INF [server.llm.resilient] Attempting runtime fallback (stream)
+{
+  "from": "gemini",
+  "to": "anthropic",
+  "model": "claude-opus-4-6",
+  "role": "deep_context"
+}
+
+stderr | src/llm/__tests__/resilient-client.test.ts > ResilientLLMClient stream() > falls back on stream error
+21:10:07 WRN [server.llm.resilient] Primary provider stream failed with retryable error, trying fallbacks
+{
+  "provider": "gemini",
+  "role": "deep_context",
+  "error": "Gemini API error: 429"
+}
+
+[90mstdout[2m | src/llm/__tests__/resilient-client.test.ts[2m > [22m[2mResilientLLMClient stream()[2m > [22m[2mfalls back on stream error
+[22m[39m21:10:07 INF [server.llm.resilient] Runtime fallback stream succeeded
+{
+  "provider": "anthropic",
+  "model": "claude-opus-4-6"
+}
+
+ [32mΓ£ô[39m src/llm/__tests__/resilient-client.test.ts [2m([22m[2m36 tests[22m[2m)[22m[32m 119[2mms[22m[39m
+ [32mΓ£ô[39m src/credentials/proxy.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 57[2mms[22m[39m
+ [32mΓ£ô[39m src/credentials/crypto.test.ts [2m([22m[2m30 tests[22m[2m)[22m[32m 68[2mms[22m[39m
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mdefaults to workhorse (DeepSeek) with no criteria
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mdefaults to workhorse (DeepSeek) with no criteria
+[22m[39m21:10:08 INF [server.model-selector] Model selected: workhorse
+{
+  "provider": "deepseek",
+  "model": "deepseek-chat",
+  "reason": "default ΓåÆ DeepSeek V3.2 workhorse"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mroutes to deep_context for large file tasks
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mroutes to deep_context for large file tasks
+[22m[39m21:10:08 INF [server.model-selector] Model selected: deep_context
+{
+  "provider": "gemini",
+  "model": "gemini-3-pro-preview",
+  "reason": "large files detected (video/PDF/codebase) ΓåÆ 1M context"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mroutes to deep_context when estimated tokens exceed threshold
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mroutes to deep_context when estimated tokens exceed threshold
+[22m[39m21:10:08 INF [server.model-selector] Model selected: deep_context
+{
+  "provider": "gemini",
+  "model": "gemini-3-pro-preview",
+  "reason": "estimated 60000 tokens exceeds 50000 threshold ΓåÆ 1M context"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mstays workhorse when tokens are under threshold
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mstays workhorse when tokens are under threshold
+[22m[39m21:10:08 INF [server.model-selector] Model selected: workhorse
+{
+  "provider": "deepseek",
+  "model": "deepseek-chat",
+  "reason": "default ΓåÆ DeepSeek V3.2 workhorse"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mroutes to architect for complex design tasks
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mroutes to architect for complex design tasks
+[22m[39m21:10:08 INF [server.model-selector] Model selected: architect
+{
+  "provider": "anthropic",
+  "model": "claude-opus-4-6",
+  "reason": "complex system design / architecture task"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mroutes to architect for second opinions
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mroutes to architect for second opinions
+[22m[39m21:10:08 INF [server.model-selector] Model selected: architect
+{
+  "provider": "anthropic",
+  "model": "claude-opus-4-6",
+  "reason": "second opinion / review requested"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mroutes to local when offline
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mroutes to local when offline
+[22m[39m21:10:08 INF [server.model-selector] Model selected: local
+{
+  "provider": "local",
+  "model": "qwen2.5-0.5b-instruct-q4_k_m",
+  "reason": "system is offline ΓåÆ local fallback"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mhonors explicit role override
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mhonors explicit role override
+[22m[39m21:10:08 INF [server.model-selector] Model selected: architect
+{
+  "provider": "anthropic",
+  "model": "claude-opus-4-6",
+  "reason": "explicit override: architect"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mexplicit role overrides other criteria
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mexplicit role overrides other criteria
+[22m[39m21:10:08 INF [server.model-selector] Model selected: workhorse
+{
+  "provider": "deepseek",
+  "model": "deepseek-chat",
+  "reason": "explicit override: workhorse"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mroutes to intake role with xAI Grok
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö core routing[2m > [22m[2mroutes to intake role with xAI Grok
+[22m[39m21:10:08 INF [server.model-selector] Model selected: intake
+{
+  "provider": "xai",
+  "model": "grok-4-1-fast-non-reasoning",
+  "reason": "explicit override: intake"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö priority order[2m > [22m[2mdeep_context wins over architect when both triggered
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö priority order[2m > [22m[2mdeep_context wins over architect when both triggered
+[22m[39m21:10:08 INF [server.model-selector] Model selected: deep_context
+{
+  "provider": "gemini",
+  "model": "gemini-3-pro-preview",
+  "reason": "large files detected (video/PDF/codebase) ΓåÆ 1M context"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö priority order[2m > [22m[2moffline wins over everything else
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö priority order[2m > [22m[2moffline wins over everything else
+[22m[39m21:10:08 INF [server.model-selector] Model selected: local
+{
+  "provider": "local",
+  "model": "qwen2.5-0.5b-instruct-q4_k_m",
+  "reason": "system is offline ΓåÆ local fallback"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö fallbacks when providers are unavailable[2m > [22m[2mfalls back from DeepSeek to Gemini Flash when DeepSeek unavailable
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+stderr | src/llm/__tests__/model-selector.test.ts > selectModel ΓÇö fallbacks when providers are unavailable > falls back from DeepSeek to Gemini Flash when DeepSeek unavailable
+21:10:08 WRN [server.model-selector] Falling back from deepseek to gemini
+{
+  "role": "workhorse",
+  "reason": "default ΓåÆ DeepSeek V3.2 workhorse [FALLBACK: deepseek unavailable ΓåÆ gemini]"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö fallbacks when providers are unavailable[2m > [22m[2mfalls back from DeepSeek to Gemini Flash when DeepSeek unavailable
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "anthropic",
+    "gemini",
+    "openai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö fallbacks when providers are unavailable[2m > [22m[2mfalls back from Gemini to Anthropic for deep_context
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+stderr | src/llm/__tests__/model-selector.test.ts > selectModel ΓÇö fallbacks when providers are unavailable > falls back from Gemini to Anthropic for deep_context
+21:10:08 WRN [server.model-selector] Falling back from gemini to anthropic
+{
+  "role": "deep_context",
+  "reason": "large files detected (video/PDF/codebase) ΓåÆ 1M context [FALLBACK: gemini unavailable ΓåÆ anthropic]"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö fallbacks when providers are unavailable[2m > [22m[2mfalls back from Gemini to Anthropic for deep_context
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö fallbacks when providers are unavailable[2m > [22m[2mfalls back from Anthropic to DeepSeek Reasoner for architect
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö fallbacks when providers are unavailable[2m > [22m[2mfalls back from Anthropic to DeepSeek Reasoner for architect
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek"
+  ]
+}
+
+stderr | src/llm/__tests__/model-selector.test.ts > selectModel ΓÇö fallbacks when providers are unavailable > falls back from Anthropic to DeepSeek Reasoner for architect
+21:10:08 WRN [server.model-selector] Falling back from anthropic to deepseek
+{
+  "role": "architect",
+  "reason": "complex system design / architecture task [FALLBACK: anthropic unavailable ΓåÆ deepseek]"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö fallbacks when providers are unavailable[2m > [22m[2mlocal stays on local provider (no key needed)
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö fallbacks when providers are unavailable[2m > [22m[2mlocal stays on local provider (no key needed)
+[22m[39m21:10:08 INF [server.model-selector] Model selected: local
+{
+  "provider": "local",
+  "model": "qwen2.5-0.5b-instruct-q4_k_m",
+  "reason": "system is offline ΓåÆ local fallback"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö fallbacks when providers are unavailable[2m > [22m[2mfalls back from xAI to Gemini Flash for intake
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+stderr | src/llm/__tests__/model-selector.test.ts > selectModel ΓÇö fallbacks when providers are unavailable > falls back from xAI to Gemini Flash for intake
+21:10:08 WRN [server.model-selector] Falling back from xai to gemini
+{
+  "role": "intake",
+  "reason": "explicit override: intake [FALLBACK: xai unavailable ΓåÆ gemini]"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö fallbacks when providers are unavailable[2m > [22m[2mfalls back from xAI to Gemini Flash for intake
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö fallbacks when providers are unavailable[2m > [22m[2mfalls back from xAI to DeepSeek for intake when Gemini also unavailable
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö fallbacks when providers are unavailable[2m > [22m[2mfalls back from xAI to DeepSeek for intake when Gemini also unavailable
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic"
+  ]
+}
+
+stderr | src/llm/__tests__/model-selector.test.ts > selectModel ΓÇö fallbacks when providers are unavailable > falls back from xAI to DeepSeek for intake when Gemini also unavailable
+21:10:08 WRN [server.model-selector] Falling back from xai to deepseek
+{
+  "role": "intake",
+  "reason": "explicit override: intake [FALLBACK: xai unavailable ΓåÆ deepseek]"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö always returns valid result[2m > [22m[2mreturns a result even with no API keys
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+stderr | src/llm/__tests__/model-selector.test.ts > selectModel ΓÇö always returns valid result > returns a result even with no API keys
+21:10:08 WRN [server.model-selector] Falling back from deepseek to local
+{
+  "role": "workhorse",
+  "reason": "default ΓåÆ DeepSeek V3.2 workhorse [FALLBACK: deepseek unavailable ΓåÆ local]"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö always returns valid result[2m > [22m[2mreturns a result even with no API keys
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": []
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö always returns valid result[2m > [22m[2mreason is always a non-empty string
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mselectModel ΓÇö always returns valid result[2m > [22m[2mreason is always a non-empty string
+[22m[39m21:10:08 INF [server.model-selector] Model selected: workhorse
+{
+  "provider": "deepseek",
+  "model": "deepseek-chat",
+  "reason": "default ΓåÆ DeepSeek V3.2 workhorse"
+}
+21:10:08 INF [server.model-selector] Model selected: deep_context
+{
+  "provider": "gemini",
+  "model": "gemini-3-pro-preview",
+  "reason": "large files detected (video/PDF/codebase) ΓåÆ 1M context"
+}
+21:10:08 INF [server.model-selector] Model selected: architect
+{
+  "provider": "anthropic",
+  "model": "claude-opus-4-6",
+  "reason": "complex system design / architecture task"
+}
+21:10:08 INF [server.model-selector] Model selected: local
+{
+  "provider": "local",
+  "model": "qwen2.5-0.5b-instruct-q4_k_m",
+  "reason": "system is offline ΓåÆ local fallback"
+}
+21:10:08 INF [server.model-selector] Model selected: deep_context
+{
+  "provider": "gemini",
+  "model": "gemini-3-pro-preview",
+  "reason": "estimated 100000 tokens exceeds 50000 threshold ΓåÆ 1M context"
+}
+21:10:08 INF [server.model-selector] Model selected: workhorse
+{
+  "provider": "deepseek",
+  "model": "deepseek-chat",
+  "reason": "explicit override: workhorse"
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mestimateTokens[2m > [22m[2mestimates ~4 chars per token
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mdetectLargeFileContext[2m > [22m[2mdetects video file references
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mdetectLargeFileContext[2m > [22m[2mdetects PDF analysis requests
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mdetectLargeFileContext[2m > [22m[2mdetects whole codebase references
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mdetectLargeFileContext[2m > [22m[2mdetects large page counts
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mdetectLargeFileContext[2m > [22m[2mdoes not trigger on normal requests
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mdetectLargeFileContext[2m > [22m[2mdoes not trigger on incidental file mentions
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mdetectArchitectTask[2m > [22m[2mdetects architecture requests
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mdetectArchitectTask[2m > [22m[2mdetects second opinion requests
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mdetectArchitectTask[2m > [22m[2mdetects full-system refactoring
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mdetectArchitectTask[2m > [22m[2mdetects trade-off analysis
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/model-selector.test.ts[2m > [22m[2mdetectArchitectTask[2m > [22m[2mdoes not trigger on normal requests
+[22m[39m21:10:08 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai",
+    "xai"
+  ]
+}
+
+[90mstdout[2m | src/personas/loader.test.ts[2m > [22m[2mPersona Loading[2m > [22m[2mloads receptionist persona
+[22m[39m[Personas] Loading server-side personas...
+[Personas] Loaded 3 intake agents, 15 internal personas
+
+ [32mΓ£ô[39m src/personas/loader.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 43[2mms[22m[39m
+ [32mΓ£ô[39m src/llm/__tests__/model-selector.test.ts [2m([22m[2m32 tests[22m[2m)[22m[32m 81[2mms[22m[39m
+[90mstdout[2m | src/llm/__tests__/local-llm.test.ts[2m > [22m[2mLocalLLMClient[2m > [22m[2mis returned by createClientForSelection for local role (wrapped in ResilientLLMClient)
+[22m[39m21:10:09 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek"
+  ]
+}
+21:10:09 INF [server.model-selector] Model selected: local
+{
+  "provider": "local",
+  "model": "qwen2.5-0.5b-instruct-q4_k_m",
+  "reason": "system is offline ΓåÆ local fallback"
+}
+
+[90mstdout[2m | src/llm/__tests__/local-llm.test.ts[2m > [22m[2mselectModel ΓÇö local routing[2m > [22m[2mroutes to local when offline
+[22m[39m21:10:09 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/local-llm.test.ts[2m > [22m[2mselectModel ΓÇö local routing[2m > [22m[2mroutes to local when offline
+[22m[39m21:10:09 INF [server.model-selector] Model selected: local
+{
+  "provider": "local",
+  "model": "qwen2.5-0.5b-instruct-q4_k_m",
+  "reason": "system is offline ΓåÆ local fallback"
+}
+
+[90mstdout[2m | src/llm/__tests__/local-llm.test.ts[2m > [22m[2mselectModel ΓÇö local routing[2m > [22m[2mroutes to local with explicit 'local' role
+[22m[39m21:10:09 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai"
+  ]
+}
+
+[90mstdout[2m | src/llm/__tests__/local-llm.test.ts[2m > [22m[2mselectModel ΓÇö local routing[2m > [22m[2mroutes to local with explicit 'local' role
+[22m[39m21:10:09 INF [server.model-selector] Model selected: local
+{
+  "provider": "local",
+  "model": "qwen2.5-0.5b-instruct-q4_k_m",
+  "reason": "explicit override: local"
+}
+
+[90mstdout[2m | src/llm/__tests__/local-llm.test.ts[2m > [22m[2mselectModel ΓÇö local routing[2m > [22m[2mworkhorse fallback chain includes local as last resort
+[22m[39m21:10:09 INF [server.model-selector] Registered API keys
+{
+  "providers": [
+    "deepseek",
+    "anthropic",
+    "gemini",
+    "openai"
+  ]
+}
+
+stderr | src/llm/__tests__/local-llm.test.ts > selectModel ΓÇö local routing > workhorse fallback chain includes local as last resort
+21:10:09 WRN [server.model-selector] Falling back from deepseek to local
+{
+  "role": "workhorse",
+  "reason": "default ΓåÆ DeepSeek V3.2 workhorse [FALLBACK: deepseek unavailable ΓåÆ local]"
+}
+
+[90mstdout[2m | src/llm/__tests__/local-llm.test.ts[2m > [22m[2mselectModel ΓÇö local routing[2m > [22m[2mworkhorse fallback chain includes local as last resort
+[22m[39m21:10:09 INF [server.model-selector] Registered API keys
+{
+  "providers": []
+}
+
+ [32mΓ£ô[39m src/tools/tools.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+[90mstdout[2m | src/ws/devices.test.ts[2m > [22m[2mgetDeviceForUser[2m > [22m[2mreturns device ID for connected user
+[22m[39m21:10:09 DBG [server.ws.devices] getDeviceForUser(user_demo) ΓåÆ Test PC (dev_1)
+{
+  "capabilities": [
+    "powershell",
+    "memory"
+  ],
+  "wsState": 1
+}
+
+[90mstdout[2m | src/ws/devices.test.ts[2m > [22m[2mgetDeviceForUser[2m > [22m[2mprefers device with 'memory' capability (local-agent)
+[22m[39m21:10:09 DBG [server.ws.devices] getDeviceForUser(user_demo) ΓåÆ Agent (agent_1)
+{
+  "capabilities": [
+    "powershell",
+    "memory"
+  ],
+  "wsState": 1
+}
+
+[90mstdout[2m | src/ws/devices.test.ts[2m > [22m[2mgetDeviceForUser[2m > [22m[2mskips devices with non-OPEN WebSocket
+[22m[39m21:10:09 DBG [server.ws.devices] Skipping device dev_1 ΓÇö ws not open (state=3)
+
+ [32mΓ£ô[39m src/llm/__tests__/local-llm.test.ts [2m([22m[2m14 tests[22m[2m)[22m[33m 759[2mms[22m[39m
+   [33m[2mΓ£ô[22m[39m isCloudReachable[2m > [22mreturns a boolean [33m 726[2mms[22m[39m
+ [32mΓ£ô[39m src/ws/devices.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 41[2mms[22m[39m
+ [32mΓ£ô[39m src/credentials/sessions.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö OK flow[2m > [22m[2mproduces a structured ok result when LLM returns HEARTBEAT_OK
+[22m[39m[Personas] Loading server-side personas...
+[Personas] Loaded 3 intake agents, 15 internal personas
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö OK flow[2m > [22m[2mproduces a structured ok result when LLM returns HEARTBEAT_OK
+[22m[39m21:10:10 DBG [server.heartbeat.tools] Could not fetch tools for heartbeat, falling back to LLM-only
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö OK flow[2m > [22m[2mproduces a structured ok result when LLM returns HEARTBEAT_OK
+[22m[39m21:10:10 DBG [server.ws.heartbeat] Heartbeat response sent
+{
+  "status": "ok",
+  "durationMs": 2409,
+  "model": "deepseek-chat"
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö OK flow[2m > [22m[2mproduces a structured ok result when LLM returns HEARTBEAT_OK
+[22m[39m21:10:10 DBG [server.agent-recovery] Could not list agent workspaces for dead agent scan
+{
+  "error": {}
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö OK flow[2m > [22m[2mstrips HEARTBEAT_OK from content and preserves trailing text
+[22m[39m21:10:10 DBG [server.heartbeat.tools] Could not fetch tools for heartbeat, falling back to LLM-only
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö OK flow[2m > [22m[2mstrips HEARTBEAT_OK from content and preserves trailing text
+[22m[39m21:10:10 DBG [server.ws.heartbeat] Heartbeat response sent
+{
+  "status": "ok",
+  "durationMs": 3,
+  "model": "deepseek-chat"
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö OK flow[2m > [22m[2mstrips HEARTBEAT_OK from content and preserves trailing text
+[22m[39m21:10:10 DBG [server.agent-recovery] Could not list agent workspaces for dead agent scan
+{
+  "error": {}
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Alert flow[2m > [22m[2mproduces a structured alert result when LLM returns non-OK text
+[22m[39m21:10:10 DBG [server.heartbeat.tools] Could not fetch tools for heartbeat, falling back to LLM-only
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Alert flow[2m > [22m[2mproduces a structured alert result when LLM returns non-OK text
+[22m[39m21:10:10 DBG [server.ws.heartbeat] Heartbeat response sent
+{
+  "status": "alert",
+  "durationMs": 5,
+  "model": "deepseek-chat"
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Alert flow[2m > [22m[2mproduces a structured alert result when LLM returns non-OK text
+[22m[39m21:10:10 DBG [server.agent-recovery] Could not list agent workspaces for dead agent scan
+{
+  "error": {}
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Error handling[2m > [22m[2mproduces a structured error result when LLM throws
+[22m[39m21:10:10 DBG [server.heartbeat.tools] Could not fetch tools for heartbeat, falling back to LLM-only
+
+stderr | src/ws/heartbeat-integration.test.ts > Heartbeat Integration ΓÇö Error handling > produces a structured error result when LLM throws
+21:10:10 ERR [server.ws.heartbeat] Heartbeat request failed
+Unknown: [object Object]
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Context injection[2m > [22m[2mincludes idle duration in LLM prompt
+[22m[39m21:10:10 DBG [server.heartbeat.tools] Could not fetch tools for heartbeat, falling back to LLM-only
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Context injection[2m > [22m[2mincludes idle duration in LLM prompt
+[22m[39m21:10:10 DBG [server.ws.heartbeat] Heartbeat response sent
+{
+  "status": "ok",
+  "durationMs": 5,
+  "model": "deepseek-chat"
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Context injection[2m > [22m[2mincludes idle duration in LLM prompt
+[22m[39m21:10:10 DBG [server.agent-recovery] Could not list agent workspaces for dead agent scan
+{
+  "error": {}
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Context injection[2m > [22m[2mincludes consecutive failures in LLM prompt
+[22m[39m21:10:10 DBG [server.heartbeat.tools] Could not fetch tools for heartbeat, falling back to LLM-only
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Context injection[2m > [22m[2mincludes consecutive failures in LLM prompt
+[22m[39m21:10:10 DBG [server.ws.heartbeat] Heartbeat response sent
+{
+  "status": "ok",
+  "durationMs": 2,
+  "model": "deepseek-chat"
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Context injection[2m > [22m[2mincludes consecutive failures in LLM prompt
+[22m[39m21:10:10 DBG [server.agent-recovery] Could not list agent workspaces for dead agent scan
+{
+  "error": {}
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Context injection[2m > [22m[2momits idle info when idleDurationMs is zero
+[22m[39m21:10:10 DBG [server.heartbeat.tools] Could not fetch tools for heartbeat, falling back to LLM-only
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Context injection[2m > [22m[2momits idle info when idleDurationMs is zero
+[22m[39m21:10:10 DBG [server.ws.heartbeat] Heartbeat response sent
+{
+  "status": "ok",
+  "durationMs": 2,
+  "model": "deepseek-chat"
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Context injection[2m > [22m[2momits idle info when idleDurationMs is zero
+[22m[39m21:10:10 DBG [server.agent-recovery] Could not list agent workspaces for dead agent scan
+{
+  "error": {}
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Prompt[2m > [22m[2mincludes checklist, timezone, and timestamp in LLM prompt
+[22m[39m21:10:10 DBG [server.heartbeat.tools] Could not fetch tools for heartbeat, falling back to LLM-only
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Prompt[2m > [22m[2mincludes checklist, timezone, and timestamp in LLM prompt
+[22m[39m21:10:10 DBG [server.ws.heartbeat] Heartbeat response sent
+{
+  "status": "ok",
+  "durationMs": 6,
+  "model": "deepseek-chat"
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Prompt[2m > [22m[2mincludes checklist, timezone, and timestamp in LLM prompt
+[22m[39m21:10:10 DBG [server.agent-recovery] Could not list agent workspaces for dead agent scan
+{
+  "error": {}
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Prompt[2m > [22m[2muses fast model tier for heartbeat
+[22m[39m21:10:10 DBG [server.heartbeat.tools] Could not fetch tools for heartbeat, falling back to LLM-only
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Prompt[2m > [22m[2muses fast model tier for heartbeat
+[22m[39m21:10:10 DBG [server.ws.heartbeat] Heartbeat response sent
+{
+  "status": "ok",
+  "durationMs": 3,
+  "model": "deepseek-chat"
+}
+
+[90mstdout[2m | src/ws/heartbeat-integration.test.ts[2m > [22m[2mHeartbeat Integration ΓÇö Prompt[2m > [22m[2muses fast model tier for heartbeat
+[22m[39m21:10:10 DBG [server.agent-recovery] Could not list agent workspaces for dead agent scan
+{
+  "error": {}
+}
+
+ [32mΓ£ô[39m src/ws/heartbeat-integration.test.ts [2m([22m[2m10 tests[22m[2m)[22m[33m 2494[2mms[22m[39m
+   [33m[2mΓ£ô[22m[39m Heartbeat Integration ΓÇö OK flow[2m > [22mproduces a structured ok result when LLM returns HEARTBEAT_OK [33m 2429[2mms[22m[39m
+ [32mΓ£ô[39m src/llm/__tests__/providers.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32mΓ£ô[39m src/ws/heartbeat-handler.test.ts [2m([22m[2m21 tests[22m[2m)[22m[33m 4763[2mms[22m[39m
+   [33m[2mΓ£ô[22m[39m Heartbeat Handler Export[2m > [22mexports handleHeartbeatRequest as a function [33m 2587[2mms[22m[39m
+   [33m[2mΓ£ô[22m[39m Server WS Routing[2m > [22mserver.ts imports heartbeat handler [33m 2137[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m15 passed[39m[22m[90m (15)[39m
+[2m      Tests [22m [1m[32m310 passed[39m[22m[90m (310)[39m
+[2m   Start at [22m 16:10:05
+[2m   Duration [22m 6.32s[2m (transform 6.32s, setup 0ms, collect 10.17s, tests 8.71s, environment 8ms, prepare 6.95s)[22m
+

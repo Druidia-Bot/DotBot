@@ -5,11 +5,12 @@
  * and the recurring task scheduler (daily/weekly/hourly/interval).
  */
 
-// Deferred tasks (one-shot retries)
+// Shared types
 export * from "./types.js";
-export * from "./service.js";
+export * from "./recurring-types.js";
+
+// Deferred tasks (one-shot retries)
+export * from "./deferred/index.js";
 
 // Recurring tasks (user-defined recurring schedules)
-export * from "./recurring-types.js";
-export * from "./recurring.js";
-
+export * from "./recurring/index.js";

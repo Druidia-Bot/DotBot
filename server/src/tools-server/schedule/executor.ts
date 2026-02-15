@@ -20,8 +20,8 @@ import {
   cancelRecurringTask,
   pauseRecurringTask,
   resumeRecurringTask,
-} from "../../services/scheduler/recurring.js";
-import type { TaskSchedule } from "../../services/scheduler/recurring-types.js";
+} from "../../services/scheduler/index.js";
+import type { TaskSchedule } from "../../services/scheduler/index.js";
 
 const log = createComponentLogger("schedule-tools");
 

@@ -8,15 +8,12 @@ import Database from "better-sqlite3";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
-import { fileURLToPath } from "url";
 import { nanoid } from "nanoid";
+import { runMigrations } from "./migrations.js";
 
 // ============================================
 // DATABASE SETUP
 // ============================================
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const DB_DIR = process.env.DB_DIR || path.join(os.homedir(), ".bot", "server-data");
 const DB_PATH = path.join(DB_DIR, "dotbot.db");
@@ -39,151 +36,8 @@ export function initDatabase(): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   
-  // Run schema
-  const schemaPath = path.join(__dirname, "schema.sql");
-  if (fs.existsSync(schemaPath)) {
-    const schema = fs.readFileSync(schemaPath, "utf-8");
-    db.exec(schema);
-  } else {
-    // Inline schema if file not found (for compiled builds)
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS tasks (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        session_id TEXT NOT NULL,
-        thread_id TEXT,
-        description TEXT NOT NULL,
-        persona_id TEXT,
-        status TEXT DEFAULT 'pending',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        started_at DATETIME,
-        estimated_duration_ms INTEGER,
-        timeout_at DATETIME,
-        completed_at DATETIME,
-        depends_on TEXT,
-        checkpoint TEXT,
-        attempt_count INTEGER DEFAULT 0,
-        max_attempts INTEGER DEFAULT 3,
-        result TEXT,
-        error TEXT
-      );
-      
-      CREATE TABLE IF NOT EXISTS task_assets (
-        id TEXT PRIMARY KEY,
-        task_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        asset_type TEXT,
-        original_filename TEXT,
-        client_temp_path TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        expires_at DATETIME,
-        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
-      );
-      
-      CREATE TABLE IF NOT EXISTS task_timers (
-        id TEXT PRIMARY KEY,
-        task_id TEXT NOT NULL,
-        check_at DATETIME NOT NULL,
-        check_type TEXT,
-        executed INTEGER DEFAULT 0,
-        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
-      );
-      
-      CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        device_id TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        last_active_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        status TEXT DEFAULT 'active'
-      );
-      
-      CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
-      CREATE INDEX IF NOT EXISTS idx_tasks_session_id ON tasks(session_id);
-      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-      CREATE INDEX IF NOT EXISTS idx_task_timers_check_at ON task_timers(check_at) WHERE executed = 0;
-
-      CREATE TABLE IF NOT EXISTS user_credits (
-        user_id TEXT PRIMARY KEY,
-        balance INTEGER NOT NULL DEFAULT 50,
-        lifetime_earned INTEGER NOT NULL DEFAULT 50,
-        lifetime_spent INTEGER NOT NULL DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS credit_transactions (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        amount INTEGER NOT NULL,
-        balance_after INTEGER NOT NULL,
-        reason TEXT NOT NULL,
-        tool_id TEXT,
-        metadata TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_credit_transactions_user ON credit_transactions(user_id);
-
-      CREATE TABLE IF NOT EXISTS devices (
-        id TEXT PRIMARY KEY,
-        secret_hash TEXT NOT NULL,
-        hw_fingerprint TEXT NOT NULL,
-        label TEXT NOT NULL,
-        status TEXT DEFAULT 'active',
-        is_admin INTEGER DEFAULT 0,
-        registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        last_auth_at DATETIME,
-        last_ip TEXT,
-        revoked_at DATETIME,
-        revoke_reason TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS invite_tokens (
-        id TEXT PRIMARY KEY,
-        token_hash TEXT NOT NULL UNIQUE,
-        created_by TEXT DEFAULT 'admin',
-        max_uses INTEGER DEFAULT 1,
-        used_count INTEGER DEFAULT 0,
-        expires_at DATETIME NOT NULL,
-        label TEXT,
-        status TEXT DEFAULT 'active',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS auth_events (
-        id TEXT PRIMARY KEY,
-        event_type TEXT NOT NULL,
-        device_id TEXT,
-        ip TEXT,
-        reason TEXT,
-        metadata TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_devices_status ON devices(status);
-      CREATE INDEX IF NOT EXISTS idx_invite_tokens_hash ON invite_tokens(token_hash);
-      CREATE INDEX IF NOT EXISTS idx_invite_tokens_status ON invite_tokens(status);
-      CREATE INDEX IF NOT EXISTS idx_auth_events_type ON auth_events(event_type);
-      CREATE INDEX IF NOT EXISTS idx_auth_events_ip ON auth_events(ip);
-      CREATE INDEX IF NOT EXISTS idx_auth_events_created ON auth_events(created_at);
-
-      CREATE TABLE IF NOT EXISTS token_usage (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        device_id TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
-        model TEXT NOT NULL,
-        role TEXT NOT NULL,
-        input_tokens INTEGER NOT NULL,
-        output_tokens INTEGER NOT NULL,
-        agent_id TEXT
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_token_usage_device ON token_usage(device_id);
-      CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage(timestamp);
-      CREATE INDEX IF NOT EXISTS idx_token_usage_agent ON token_usage(agent_id);
-    `);
-  }
+  // Run migrations (creates tables on fresh DB, evolves schema on existing DB)
+  runMigrations(db);
   
   console.log(`[DB] Database initialized at ${DB_PATH}`);
   return db;
