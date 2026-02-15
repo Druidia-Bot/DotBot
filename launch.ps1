@@ -84,10 +84,21 @@ if ($Service) {
     }
 
     if ($hasAgent) {
-        $proc = Start-Process -FilePath "node" -ArgumentList "local-agent/dist/index.js" `
-            -WorkingDirectory $Root -NoNewWindow -PassThru `
-            -RedirectStandardOutput $logFile -RedirectStandardError (Join-Path $BotDir "agent-error.log")
-        $proc.WaitForExit()
+        $restartCount = 0
+        while ($true) {
+            $proc = Start-Process -FilePath "node" -ArgumentList "local-agent/dist/index.js" `
+                -WorkingDirectory $Root -NoNewWindow -PassThru `
+                -RedirectStandardOutput $logFile -RedirectStandardError (Join-Path $BotDir "agent-error.log")
+            $proc.WaitForExit()
+            if ($proc.ExitCode -eq 42) {
+                $restartCount = 0
+                Start-Sleep -Seconds 1
+                continue
+            }
+            $restartCount++
+            if ($restartCount -ge 10) { break }
+            Start-Sleep -Seconds ([math]::Min(2 * $restartCount, 30))
+        }
     } elseif ($hasServer) {
         $proc = Start-Process -FilePath "node" -ArgumentList "server/dist/index.js" `
             -WorkingDirectory $Root -NoNewWindow -PassThru `
@@ -130,7 +141,20 @@ if ($hasAgent) {
     Write-Host "  Press Ctrl+C to stop" -ForegroundColor Gray
     Write-Host ""
     Set-Location $Root
-    node local-agent/dist/index.js
+    $restartCount = 0
+    while ($true) {
+        node local-agent/dist/index.js
+        if ($LASTEXITCODE -eq 42) {
+            Write-Host "  Restarting agent (update/restart signal)..." -ForegroundColor Yellow
+            $restartCount = 0
+            Start-Sleep -Seconds 1
+            continue
+        }
+        $restartCount++
+        if ($restartCount -ge 10) { Write-Host "  [X] Agent crashed too many times" -ForegroundColor Red; break }
+        Write-Host "  Agent exited (code $LASTEXITCODE). Restarting in $([math]::Min(2*$restartCount,30))s..." -ForegroundColor Yellow
+        Start-Sleep -Seconds ([math]::Min(2*$restartCount, 30))
+    }
 } elseif ($hasServer) {
     $Host.UI.RawUI.WindowTitle = "DotBot Server"
     Write-Host "  DotBot Server" -ForegroundColor Cyan

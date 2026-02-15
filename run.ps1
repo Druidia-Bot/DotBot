@@ -181,15 +181,47 @@ $hasAgentDist = Test-Path (Join-Path $Root "local-agent\dist\index.js")
 $hasServerDist = Test-Path (Join-Path $Root "server\dist\index.js")
 
 function Start-Agent {
-    if ($hasTsx) {
-        Set-Location "$Root\local-agent"
-        npm run dev
-    } elseif ($hasAgentDist) {
-        Set-Location $Root
-        node local-agent/dist/index.js
-    } else {
+    if (-not $hasTsx -and -not $hasAgentDist) {
         Write-Host "  [X] Local agent not built. Run: npm run build -w shared -w local-agent" -ForegroundColor Red
         exit 1
+    }
+
+    # Restart loop: exit code 42 = intentional restart (system.update / system.restart)
+    $restartCount = 0
+    $maxRestarts = 10
+    while ($true) {
+        $startTime = Get-Date
+        if ($hasTsx) {
+            Set-Location "$Root\local-agent"
+            npm run dev
+        } else {
+            Set-Location $Root
+            node local-agent/dist/index.js
+        }
+        $exitCode = $LASTEXITCODE
+        $runSeconds = ((Get-Date) - $startTime).TotalSeconds
+
+        if ($exitCode -eq 42) {
+            Write-Host "" -ForegroundColor Yellow
+            Write-Host "  Restarting agent (update/restart signal)..." -ForegroundColor Yellow
+            Write-Host "" -ForegroundColor Yellow
+            $restartCount = 0
+            Start-Sleep -Seconds 1
+            continue
+        }
+
+        # If it ran for 5+ minutes, reset crash counter
+        if ($runSeconds -gt 300) { $restartCount = 0 }
+
+        $restartCount++
+        if ($restartCount -ge $maxRestarts) {
+            Write-Host "  [X] Agent crashed $maxRestarts times -- giving up" -ForegroundColor Red
+            break
+        }
+
+        $backoff = [math]::Min(2 * $restartCount, 30)
+        Write-Host "  Agent exited (code $exitCode). Restarting in ${backoff}s..." -ForegroundColor Yellow
+        Start-Sleep -Seconds $backoff
     }
 }
 
