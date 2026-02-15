@@ -27,8 +27,24 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit 0
 }
 
-$Root = $PSScriptRoot
 $BotDir = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".bot"
+
+# Resolve install root — $PSScriptRoot can be empty when launched via shortcut + UAC elevation
+$Root = $PSScriptRoot
+if (-not $Root -or -not (Test-Path (Join-Path $Root "package.json"))) {
+    # Fallback chain: env var → default install path → working directory
+    $candidates = @(
+        $env:DOTBOT_INSTALL_DIR,
+        "C:\Program Files\.bot",
+        (Get-Location).Path
+    )
+    foreach ($c in $candidates) {
+        if ($c -and (Test-Path (Join-Path $c "package.json"))) {
+            $Root = $c
+            break
+        }
+    }
+}
 
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
 

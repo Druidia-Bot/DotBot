@@ -38,7 +38,21 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit 0
 }
 
+# Resolve install root — $PSScriptRoot can be empty when launched via shortcut + UAC elevation
 $Root = $PSScriptRoot
+if (-not $Root -or -not (Test-Path (Join-Path $Root "package.json"))) {
+    $candidates = @(
+        $env:DOTBOT_INSTALL_DIR,
+        "C:\Program Files\.bot",
+        (Get-Location).Path
+    )
+    foreach ($c in $candidates) {
+        if ($c -and (Test-Path (Join-Path $c "package.json"))) {
+            $Root = $c
+            break
+        }
+    }
+}
 
 # -- Stop mode ------------------------------------------
 
