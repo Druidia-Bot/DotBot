@@ -68,15 +68,15 @@ if (Test-Path $_envFile) {
 # Resolve install root — $PSScriptRoot can be empty when launched via shortcut + UAC
 $Root = $PSScriptRoot
 if (-not $Root -or -not (Test-Path (Join-Path $Root "package.json"))) {
-    foreach ($c in @($env:DOTBOT_INSTALL_DIR, "C:\.bot", (Get-Location).Path)) {
+    foreach ($c in @($env:DOTBOT_INSTALL_DIR, 'C:\.bot', (Get-Location).Path)) {
         if ($c -and (Test-Path (Join-Path $c "package.json"))) { $Root = $c; break }
     }
 }
 
 # Migrate from old install location (C:\Program Files\.bot → C:\.bot)
 $OldInstallDir = Join-Path $env:ProgramFiles ".bot"
-if ((Test-Path (Join-Path $OldInstallDir "package.json")) -and -not (Test-Path (Join-Path "C:\.bot" "package.json"))) {
-    Write-Host "  Migrating install from '$OldInstallDir' to 'C:\.bot'..." -ForegroundColor Yellow
+if ((Test-Path (Join-Path $OldInstallDir 'package.json')) -and -not (Test-Path (Join-Path 'C:\.bot' 'package.json'))) {
+    Write-Host "  Migrating install from '$OldInstallDir' to 'C:\.bot'..."  -ForegroundColor Yellow
     try {
         # Stop any running DotBot processes first
         Get-Process -Name "node" -ErrorAction SilentlyContinue | ForEach-Object {
@@ -90,17 +90,17 @@ if ((Test-Path (Join-Path $OldInstallDir "package.json")) -and -not (Test-Path (
         Start-Sleep -Seconds 1
 
         # Move the directory
-        Move-Item -Path $OldInstallDir -Destination "C:\.bot" -Force
-        $Root = "C:\.bot"
+        Move-Item -Path $OldInstallDir -Destination 'C:\.bot' -Force
+        $Root = 'C:\.bot'
 
         # Update scheduled task if it exists
         try {
             $task = Get-ScheduledTask -TaskName "DotBot" -ErrorAction SilentlyContinue
             if ($task) {
-                $runPath = Join-Path "C:\.bot" "run.ps1"
+                $runPath = Join-Path 'C:\.bot' 'run.ps1'
                 $Action = New-ScheduledTaskAction -Execute "powershell.exe" `
                     -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$runPath`" -Service" `
-                    -WorkingDirectory "C:\.bot"
+                    -WorkingDirectory 'C:\.bot'
                 Set-ScheduledTask -TaskName "DotBot" -Action $Action | Out-Null
                 Write-Host "  [OK] Updated scheduled task to new location" -ForegroundColor Green
             }
@@ -113,12 +113,12 @@ if ((Test-Path (Join-Path $OldInstallDir "package.json")) -and -not (Test-Path (
                 $shell = New-Object -ComObject WScript.Shell
                 $shortcut = $shell.CreateShortcut($lnkPath)
                 $shortcut.Arguments = "-ExecutionPolicy Bypass -NoExit -File `"$(Join-Path 'C:\.bot' 'run.ps1')`""
-                $shortcut.WorkingDirectory = "C:\.bot"
+                $shortcut.WorkingDirectory = 'C:\.bot'
                 $shortcut.Save()
             }
         } catch {}
 
-        Write-Host "  [OK] Migrated to C:\.bot" -ForegroundColor Green
+        Write-Host '  [OK] Migrated to C:\.bot' -ForegroundColor Green
     } catch {
         Write-Host "  [X] Migration failed: $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "      DotBot will continue from the old location." -ForegroundColor Gray
@@ -185,7 +185,8 @@ if ($Status) {
     # Scheduled task
     $task = Get-ScheduledTask -TaskName "DotBot" -ErrorAction SilentlyContinue
     if ($task) {
-        Write-Host "Service:  $($task.State)" -ForegroundColor $(if ($task.State -eq "Running") { "Green" } else { "Yellow" })
+        $stateColor = "Yellow"; if ($task.State -eq "Running") { $stateColor = "Green" }
+        Write-Host "Service:  $($task.State)" -ForegroundColor $stateColor
     } else {
         Write-Host "Service:  Not registered" -ForegroundColor Red
     }
@@ -351,14 +352,14 @@ function Start-AgentLoop {
 
         $restartCount++
         if ($restartCount -ge $maxRestarts) {
-            Write-Log "Max restarts ($maxRestarts) reached — giving up" "ERROR"
-            if (-not $Service) { Write-Host "  [X] Agent crashed $maxRestarts times — giving up" -ForegroundColor Red }
+            Write-Log "Max restarts ($maxRestarts) reached - giving up" "ERROR"
+            if (-not $Service) { Write-Host "  [X] Agent crashed $maxRestarts times - giving up" -ForegroundColor Red }
             break
         }
 
         $backoff = [math]::Min(2 * $restartCount, 30)
-        Write-Log "Restarting in ${backoff}s..."
-        if (-not $Service) { Write-Host "  Agent exited (code $exitCode). Restarting in ${backoff}s..." -ForegroundColor Yellow }
+        Write-Log "Restarting in $($backoff)s..."
+        if (-not $Service) { Write-Host "  Agent exited (code $exitCode). Restarting in $($backoff)s..." -ForegroundColor Yellow }
         Start-Sleep -Seconds $backoff
     }
 }
