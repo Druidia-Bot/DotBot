@@ -43,19 +43,31 @@ export async function runDot(opts: DotOptions): Promise<DotResult> {
 
   log.info("Dot handling message", { messageId, promptLength: prompt.length });
 
+  const dotStartTime = Date.now();
+
   // ── Step 1: Build context + fetch model spines in parallel ──
   const [{ enhancedRequest, toolManifest, platform }, modelSpines] = await Promise.all([
     buildRequestContext(deviceId, userId, prompt),
     fetchAllModelSpines(deviceId),
   ]);
 
+  const contextMs = Date.now() - dotStartTime;
+
   // Persist run-log
   sendRunLog(userId, {
     stage: "dot-start",
     messageId,
+    source,
     prompt: prompt.slice(0, 500),
     memoryModelCount: modelSpines.length,
     historyCount: enhancedRequest.recentHistory?.length || 0,
+    threadId: enhancedRequest.activeThreadId || null,
+    hasIdentity: !!enhancedRequest.agentIdentity,
+    taskCount: enhancedRequest.activeTasks?.length || 0,
+    historyPreview: enhancedRequest.recentHistory?.slice(-2).map(
+      (h: any) => `[${h.role}] ${(h.content || "").slice(0, 80)}`
+    ),
+    contextMs,
     timestamp: new Date().toISOString(),
   });
 
@@ -156,16 +168,27 @@ export async function runDot(opts: DotOptions): Promise<DotResult> {
   });
 
   const response = loopResult.finalContent || "(Dot had nothing to say)";
+  const totalMs = Date.now() - dotStartTime;
 
   // ── Step 9: Persist run-log ──
   sendRunLog(userId, {
     stage: "dot-complete",
     messageId,
+    source,
+    model: selectedModel.model,
+    provider: selectedModel.provider,
     toolCallCount: loopResult.toolCallsMade.length,
-    tools: loopResult.toolCallsMade.map(t => t.tool),
+    tools: loopResult.toolCallsMade.map(t => ({
+      id: t.tool,
+      ok: t.success,
+      len: t.result?.length || 0,
+    })),
     dispatched: !!dispatchResult,
     iterations: loopResult.iterations,
     responseLength: response.length,
+    responsePreview: response.slice(0, 200),
+    contextMs,
+    totalMs,
     timestamp: new Date().toISOString(),
   });
 

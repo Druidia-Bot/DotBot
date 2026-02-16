@@ -2,7 +2,8 @@
  * System Tool Handler
  */
 
-import { join } from "path";
+import fs from "fs";
+import { join, dirname } from "path";
 import type { ToolExecResult } from "../_shared/types.js";
 import { getProtectedPids, matchesDangerousPattern } from "../_shared/security.js";
 import { sanitizeForPS, safeInt, runPowershell } from "../_shared/powershell.js";
@@ -203,6 +204,26 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
     }
     case "system.restart": {
       const reason = args.reason || "No reason provided";
+
+      // Cooldown: prevent restart loops (e.g. Dot repeatedly calling restart)
+      const RESTART_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+      const lastRestartPath = join(process.env.USERPROFILE || process.env.HOME || "", ".bot", ".last-restart");
+      try {
+        const stat = fs.statSync(lastRestartPath);
+        const elapsed = Date.now() - stat.mtimeMs;
+        if (elapsed < RESTART_COOLDOWN_MS) {
+          const remainSec = Math.ceil((RESTART_COOLDOWN_MS - elapsed) / 1000);
+          console.log(`[System] Restart blocked — cooldown active (${remainSec}s remaining). Reason: ${reason}`);
+          return { success: false, output: `Restart blocked: the agent restarted ${Math.round(elapsed / 1000)}s ago. Cooldown is ${RESTART_COOLDOWN_MS / 1000}s. The system is already running — do NOT restart again. If something isn't working, diagnose the issue instead.` };
+        }
+      } catch { /* file doesn't exist = no recent restart */ }
+
+      // Write restart timestamp
+      try {
+        fs.mkdirSync(dirname(lastRestartPath), { recursive: true });
+        fs.writeFileSync(lastRestartPath, new Date().toISOString(), "utf-8");
+      } catch { /* non-fatal */ }
+
       console.log(`[System] Restart requested: ${reason}`);
       // Cancel server-side tasks before exiting so they don't run against a dead agent
       setTimeout(async () => {
