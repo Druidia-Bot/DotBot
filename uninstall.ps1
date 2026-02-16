@@ -140,38 +140,44 @@ function Find-DotBotPids {
 }
 
 # ============================================
-# DETECT INSTALL DIRECTORY
+# DETECT INSTALL DIRECTORIES
 # ============================================
 
-function Find-InstallDir {
-    if ($InstallDir -and (Test-Path (Join-Path $InstallDir "package.json"))) {
-        return $InstallDir
+function Find-InstallDirs {
+    $dirs = @()
+
+    # Explicit override
+    if ($InstallDir -and (Test-Path $InstallDir)) {
+        $dirs += $InstallDir
     }
 
-    # Check common locations
-    foreach ($candidate in @("C:\.bot", (Join-Path $env:ProgramFiles ".bot"))) {
-        if (Test-Path (Join-Path $candidate "package.json")) {
-            return $candidate
-        }
-    }
+    # All known locations (current + legacy)
+    $candidates = @(
+        "C:\.bot",
+        (Join-Path $env:ProgramFiles ".bot")
+    )
 
     # Check scheduled task for working directory
     try {
         $task = Get-ScheduledTask -TaskName "DotBot" -ErrorAction SilentlyContinue
         if ($task) {
             $taskDir = $task.Actions[0].WorkingDirectory
-            if ($taskDir -and (Test-Path (Join-Path $taskDir "package.json"))) {
-                return $taskDir
-            }
+            if ($taskDir) { $candidates += $taskDir }
         }
     } catch {}
 
     # Check DOTBOT_INSTALL_DIR env var
-    if ($env:DOTBOT_INSTALL_DIR -and (Test-Path (Join-Path $env:DOTBOT_INSTALL_DIR "package.json"))) {
-        return $env:DOTBOT_INSTALL_DIR
+    if ($env:DOTBOT_INSTALL_DIR) {
+        $candidates += $env:DOTBOT_INSTALL_DIR
     }
 
-    return $null
+    foreach ($candidate in $candidates) {
+        if ((Test-Path $candidate) -and ($dirs -notcontains $candidate)) {
+            $dirs += $candidate
+        }
+    }
+
+    return $dirs
 }
 
 # ============================================
@@ -180,14 +186,21 @@ function Find-InstallDir {
 
 Write-Banner
 
-$detectedInstallDir = Find-InstallDir
+$detectedInstallDirs = @(Find-InstallDirs)
 
 # Show what we found
 Write-Host "  Detected installation:" -ForegroundColor White
 Write-Host ""
 
-if ($detectedInstallDir) {
-    Write-Host "    Install directory:  $detectedInstallDir" -ForegroundColor White
+if ($detectedInstallDirs.Count -gt 0) {
+    foreach ($dir in $detectedInstallDirs) {
+        $dirSize = 0
+        try {
+            $dirSize = (Get-ChildItem -Path $dir -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+        } catch {}
+        $dirSizeMB = [math]::Round($dirSize / 1MB, 1)
+        Write-Host "    Install directory:  $dir ($dirSizeMB MB)" -ForegroundColor White
+    }
 } else {
     Write-Host "    Install directory:  (not found)" -ForegroundColor DarkGray
 }
@@ -227,7 +240,7 @@ if (Test-Path $PLAYWRIGHT_DIR) {
 
 Write-Host ""
 
-if (-not $detectedInstallDir -and -not (Test-Path $BOT_DIR) -and -not $taskExists) {
+if ($detectedInstallDirs.Count -eq 0 -and -not (Test-Path $BOT_DIR) -and -not $taskExists) {
     Write-Host "  Nothing to uninstall -- DotBot does not appear to be installed." -ForegroundColor Yellow
     Write-Host ""
     exit 0
@@ -337,37 +350,26 @@ if ($userPath -and $userPath -match [regex]::Escape($BOT_DIR)) {
 # STEP 5: Remove install directory
 # ============================================
 
-Write-Host "  [5/8] Removing install directory..." -ForegroundColor Yellow
+Write-Host "  [5/8] Removing install directories..." -ForegroundColor Yellow
 
-if ($detectedInstallDir -and (Test-Path $detectedInstallDir)) {
-    if (-not $WhatIf) {
-        try {
-            Remove-Item -Path $detectedInstallDir -Recurse -Force -ErrorAction Stop
-            Write-Action "Removed install directory: $detectedInstallDir"
-        } catch {
-            Write-Warn "Could not fully remove $detectedInstallDir (files may be locked)"
-            Write-Host "    Try again after reboot, or delete manually." -ForegroundColor Gray
+if ($detectedInstallDirs.Count -gt 0) {
+    foreach ($dir in $detectedInstallDirs) {
+        if (Test-Path $dir) {
+            if (-not $WhatIf) {
+                try {
+                    Remove-Item -Path $dir -Recurse -Force -ErrorAction Stop
+                    Write-Action "Removed install directory: $dir"
+                } catch {
+                    Write-Warn "Could not fully remove $dir (files may be locked)"
+                    Write-Host "    Try again after reboot, or delete manually." -ForegroundColor Gray
+                }
+            } else {
+                Write-Action "Would remove install directory: $dir"
+            }
         }
-    } else {
-        Write-Action "Would remove install directory: $detectedInstallDir"
     }
 } else {
-    Write-Skip "Install directory not found"
-}
-
-# Also check the other common location
-$otherDir = if ($detectedInstallDir -eq "C:\.bot") { Join-Path $env:ProgramFiles ".bot" } else { "C:\.bot" }
-if ($otherDir -ne $detectedInstallDir -and (Test-Path (Join-Path $otherDir "package.json"))) {
-    if (-not $WhatIf) {
-        try {
-            Remove-Item -Path $otherDir -Recurse -Force -ErrorAction Stop
-            Write-Action "Removed old install directory: $otherDir"
-        } catch {
-            Write-Warn "Could not remove old install directory: $otherDir"
-        }
-    } else {
-        Write-Action "Would remove old install directory: $otherDir"
-    }
+    Write-Skip "No install directories found"
 }
 
 # ============================================
