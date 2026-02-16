@@ -287,6 +287,33 @@ sudo systemctl restart dotbot
 
 ---
 
+## Uninstalling
+
+### Uninstalling the Agent (Windows PC)
+
+```powershell
+# From the install directory (default: C:\.bot):
+.\uninstall.ps1                # Interactive — confirms each step
+.\uninstall.ps1 -Force         # Remove everything without prompting
+.\uninstall.ps1 -KeepData      # Remove app but keep ~/.bot/ (memory, credentials, settings)
+.\uninstall.ps1 -WhatIf        # Dry run — show what would be removed
+```
+
+This removes: running processes, scheduled task, Start Menu shortcut, CLI wrapper, user PATH entry, install directory, user data (`~/.bot/`), and Playwright browsers. Git, Node.js, Python, Everything Search, and Tesseract are **not** removed (uninstall them separately via Settings > Apps if desired).
+
+### Uninstalling the Server (Linux)
+
+```bash
+sudo bash uninstall.sh              # Interactive
+sudo bash uninstall.sh --force      # No prompts
+sudo bash uninstall.sh --keep-data  # Preserve /home/dotbot/.bot/
+sudo bash uninstall.sh --dry-run    # Show what would be removed
+```
+
+This removes: systemd service, Caddy DotBot config, deploy directory (`/opt/.bot`), `dotbot` system user, logrotate config, and access logs. Node.js, Caddy, and UFW rules are **not** removed.
+
+---
+
 ## Troubleshooting
 
 ### Connection Issues

@@ -44,7 +44,7 @@ export async function runDot(opts: DotOptions): Promise<DotResult> {
   log.info("Dot handling message", { messageId, promptLength: prompt.length });
 
   // ── Step 1: Build context + fetch model spines in parallel ──
-  const [{ enhancedRequest, toolManifest }, modelSpines] = await Promise.all([
+  const [{ enhancedRequest, toolManifest, platform }, modelSpines] = await Promise.all([
     buildRequestContext(deviceId, userId, prompt),
     fetchAllModelSpines(deviceId),
   ]);
@@ -60,7 +60,7 @@ export async function runDot(opts: DotOptions): Promise<DotResult> {
   });
 
   // ── Step 2: Build Dot's system prompt (with pre-rendered model spines) ──
-  const systemPrompt = await buildDotSystemPrompt(enhancedRequest, modelSpines);
+  const systemPrompt = await buildDotSystemPrompt(enhancedRequest, modelSpines, platform);
 
   // ── Step 3: Select model (assistant — fast, non-reasoning) ──
   const { selectedModel, client } = await resolveModelAndClient(llm, { explicitRole: "assistant" }, deviceId);
@@ -193,6 +193,7 @@ const MAX_MEMORY_MODELS = 50;
 async function buildDotSystemPrompt(
   request: EnhancedPromptRequest,
   modelSpines: { model: any; spine: string }[],
+  platform?: "windows" | "linux" | "macos" | "web",
 ): Promise<string> {
   const identity = request.agentIdentity || "Name: Dot\nRole: Personal AI Assistant";
 
@@ -221,9 +222,15 @@ async function buildDotSystemPrompt(
     timeZoneName: "short",
   });
 
+  const platformLabel = platform === "windows" ? "Windows"
+    : platform === "macos" ? "macOS"
+    : platform === "linux" ? "Linux"
+    : "Unknown";
+
   const fields: Record<string, string> = {
     "Identity": identity,
     "DateTime": dateTime,
+    "Platform": platformLabel,
     "MemoryModels": memoryModels,
   };
 
