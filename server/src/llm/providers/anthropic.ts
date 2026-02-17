@@ -124,7 +124,8 @@ export class AnthropicClient implements ILLMClient {
         "x-api-key": this.apiKey,
         "anthropic-version": "2023-06-01"
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120_000),
     });
     
     if (!response.ok) {
@@ -187,7 +188,8 @@ export class AnthropicClient implements ILLMClient {
         temperature: options?.temperature ?? 0.5,
         max_tokens: options?.maxTokens ?? 4096,
         stream: true
-      })
+      }),
+      signal: AbortSignal.timeout(120_000),
     });
     
     if (!response.ok) {

@@ -53,6 +53,10 @@ temp/
 
 # Test output
 test-output.txt
+test-results.txt
+tsc-check.txt
+tsc-check-agent.txt
+tsc-errors.txt
 
 # Database files
 *.db

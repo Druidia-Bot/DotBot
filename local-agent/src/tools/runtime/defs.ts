@@ -20,7 +20,7 @@ export const runtimeTools: DotBotTool[] = [
       },
       required: ["name"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "runtime.install",
@@ -38,6 +38,6 @@ export const runtimeTools: DotBotTool[] = [
       },
       required: ["name"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
 ];

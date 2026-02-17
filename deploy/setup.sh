@@ -336,9 +336,16 @@ $DOMAIN {
         reverse_proxy localhost:3000
     }
 
-    # WebSocket connections
+    # WebSocket connections — long-lived, needs generous timeouts
     handle /ws {
-        reverse_proxy localhost:3001
+        reverse_proxy localhost:3001 {
+            transport http {
+                keepalive 30s
+                keepalive_idle_conns 10
+            }
+            # Prevent Caddy from killing idle WS connections during sleep cycle / LLM calls
+            flush_interval -1
+        }
     }
 
     # Logging

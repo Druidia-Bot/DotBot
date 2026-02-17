@@ -47,6 +47,12 @@ vi.mock("./instruction-applier.js", () => ({
   applyInstructions: vi.fn(),
 }));
 
+vi.mock("./sleep-phases.js", () => ({
+  condenseThread: vi.fn(async () => ({ applied: 0 })),
+  resolveLoop: vi.fn(async () => ({ applied: 0, notified: false, newStatus: "open" })),
+  pruneIndex: vi.fn(async () => undefined),
+}));
+
 vi.mock("./store-agent-work.js", () => ({
   cleanupExpiredAgentWork: vi.fn(),
 }));
@@ -75,6 +81,9 @@ import {
   notifyActivity,
   CYCLE_INTERVAL_MS,
 } from "./sleep-cycle.js";
+import * as store from "./store.js";
+import { condenseThread } from "./sleep-phases.js";
+import { promises as fsPromises } from "fs";
 
 // ============================================
 // SETUP
@@ -158,6 +167,44 @@ describe("Sleep Cycle Execution", () => {
     await executeSleepCycle();
     // The cycle ran (even if it found no threads to process)
     expect(isSleepCycleRunning()).toBe(false);
+  });
+
+  it("processes uncondensed threads even when older than lastCycleAt", async () => {
+    const sender = vi.fn().mockResolvedValue({});
+    initSleepCycle(sender);
+
+    vi.mocked(store.getAllThreadSummaries).mockResolvedValueOnce([
+      {
+        id: "conversation",
+        topic: "New Thread",
+        status: "active",
+        lastActiveAt: "2026-02-17T11:57:30.552Z",
+        condensedAt: "",
+        entities: [],
+        keywords: [],
+      },
+    ]);
+    vi.mocked(store.getL0MemoryIndex).mockResolvedValueOnce({ models: [], threads: [], sessionSummary: null } as any);
+    vi.mocked(store.getAllMentalModels).mockResolvedValueOnce([] as any);
+    vi.mocked(condenseThread).mockResolvedValueOnce({ applied: 1 } as any);
+
+    (fsPromises.readFile as any).mockResolvedValueOnce(JSON.stringify({
+      lastCycleAt: "2026-02-17T13:31:55.898Z",
+      lastCycleDurationMs: 9,
+      threadsProcessed: 0,
+      loopsInvestigated: 0,
+      instructionsApplied: 0,
+    }));
+
+    await executeSleepCycle();
+
+    expect(condenseThread).toHaveBeenCalledTimes(1);
+    expect(condenseThread).toHaveBeenCalledWith(
+      sender,
+      expect.objectContaining({ id: "conversation" }),
+      expect.anything(),
+      null,
+    );
   });
 
   it("executeSleepCycle does not throw on cycle errors", async () => {

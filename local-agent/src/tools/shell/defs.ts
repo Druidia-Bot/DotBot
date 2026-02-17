@@ -23,7 +23,7 @@ export const shellTools: DotBotTool[] = [
       },
       required: ["command"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "shell.node",
@@ -40,7 +40,7 @@ export const shellTools: DotBotTool[] = [
       },
       required: ["script"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "shell.bash",
@@ -58,7 +58,7 @@ export const shellTools: DotBotTool[] = [
       },
       required: ["command"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "shell.python",
@@ -75,7 +75,7 @@ export const shellTools: DotBotTool[] = [
       },
       required: ["script"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "shell.npm_dev_server",
@@ -97,6 +97,6 @@ export const shellTools: DotBotTool[] = [
       },
       required: ["project_directory"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
 ];

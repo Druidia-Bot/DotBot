@@ -38,7 +38,7 @@ export async function handleHttp(toolId: string, args: Record<string, any>): Pro
           ? textContent.substring(0, 80_000) + "\n...[truncated at 80K chars]"
           : textContent;
 
-        return {
+        const result: ToolExecResult = {
           success: true,
           output: JSON.stringify({
             url: state.url || args.url,
@@ -48,6 +48,8 @@ export async function handleHttp(toolId: string, args: Record<string, any>): Pro
             char_count: textContent.length,
           }, null, 2),
         };
+
+        return result;
       } catch (err: any) {
         return { success: false, output: "", error: `Browser render failed: ${err.message || String(err)}` };
       }
@@ -81,11 +83,13 @@ export async function handleHttp(toolId: string, args: Record<string, any>): Pro
         const text = await response.text();
         const truncated = text.length > 50_000 ? text.substring(0, 50_000) + "\n...[truncated]" : text;
 
-        return {
+        const result: ToolExecResult = {
           success: response.ok,
           output: `HTTP ${response.status} ${response.statusText}\n\n${truncated}`,
           error: response.ok ? undefined : `HTTP ${response.status}`,
         };
+
+        return result;
       } catch (err: any) {
         return { success: false, output: "", error: err.message || String(err) };
       }

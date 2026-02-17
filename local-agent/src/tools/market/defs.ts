@@ -21,7 +21,8 @@ export const marketTools: DotBotTool[] = [
       },
       required: ["query"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "market.polymarket_event",
@@ -38,7 +39,8 @@ export const marketTools: DotBotTool[] = [
         condition_id: { type: "string", description: "Alternative: condition ID from search results" },
       },
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
+    cache: { mode: "enrich", type: "api_response" },
   },
   {
     id: "market.stock_quote",
@@ -56,7 +58,8 @@ export const marketTools: DotBotTool[] = [
       },
       required: ["symbol"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "market.stock_profile",
@@ -74,7 +77,8 @@ export const marketTools: DotBotTool[] = [
       },
       required: ["symbol"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
+    cache: { mode: "enrich", type: "api_response" },
   },
   {
     id: "market.xai_sentiment",
@@ -92,7 +96,8 @@ export const marketTools: DotBotTool[] = [
       },
       required: ["topic"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
+    cache: { mode: "enrich", type: "api_response" },
   },
   {
     id: "market.reddit_buzz",
@@ -111,7 +116,8 @@ export const marketTools: DotBotTool[] = [
       },
       required: ["query"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
+    cache: { mode: "raw", type: "web_search" },
   },
   {
     id: "market.fear_greed",
@@ -125,7 +131,8 @@ export const marketTools: DotBotTool[] = [
       type: "object",
       properties: {},
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "market.insider_trades",
@@ -145,6 +152,7 @@ export const marketTools: DotBotTool[] = [
       },
       required: ["symbol"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
+    cache: { mode: "raw", type: "api_response" },
   },
 ];

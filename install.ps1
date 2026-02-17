@@ -953,17 +953,23 @@ function Install-Shortcuts {
         $shell = New-Object -ComObject WScript.Shell
         $startMenu = [Environment]::GetFolderPath("Programs")
         $runPath = Join-Path $Dir "run.ps1"
+        $trayPath = Join-Path $Dir "tray.ps1"
 
         if (-not (Test-Path $runPath)) {
             Write-Warn "run.ps1 not found -- skipping shortcut creation"
             return
         }
 
-        # Start Menu shortcut
+        # Start Menu shortcut — launches tray icon (invisible background service)
         $lnkPath = Join-Path $startMenu "DotBot.lnk"
         $shortcut = $shell.CreateShortcut($lnkPath)
         $shortcut.TargetPath = "powershell.exe"
-        $shortcut.Arguments = "-ExecutionPolicy Bypass -NoExit -File `"$runPath`""
+        if (Test-Path $trayPath) {
+            $shortcut.Arguments = "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$trayPath`""
+        } else {
+            # Fallback to run.ps1 -Service if tray.ps1 not present (older install)
+            $shortcut.Arguments = "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$runPath`" -Service"
+        }
         $shortcut.WorkingDirectory = $Dir
         $shortcut.Description = "Start DotBot"
         $shortcut.Save()
@@ -993,9 +999,16 @@ function Install-Shortcuts {
         $autoStart = Read-Host "  Start DotBot automatically on login? (Y/n)"
         if ($autoStart -ne "n" -and $autoStart -ne "N") {
             try {
+                # Use tray.ps1 for scheduled task so user gets tray icon on login
+                $taskScript = if (Test-Path $trayPath) { $trayPath } else { $runPath }
+                $taskArgs = if (Test-Path $trayPath) {
+                    "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$taskScript`""
+                } else {
+                    "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$taskScript`" -Service"
+                }
                 $Action = New-ScheduledTaskAction `
                     -Execute "powershell.exe" `
-                    -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$runPath`" -Service" `
+                    -Argument $taskArgs `
                     -WorkingDirectory $Dir
 
                 $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
@@ -1282,8 +1295,9 @@ Write-Host "  [OK] DotBot installation complete!" -ForegroundColor Green
 Write-Host "  ========================================" -ForegroundColor Green
 Write-Host ""
 
-# Start DotBot as a hidden background service
+# Start DotBot as a hidden background service (prefer tray.ps1 for tray icon)
 $runPath = Join-Path $InstallDir "run.ps1"
+$trayPath = Join-Path $InstallDir "tray.ps1"
 $taskExists = $false
 try { $taskExists = [bool](Get-ScheduledTask -TaskName "DotBot" -ErrorAction SilentlyContinue) } catch {}
 
@@ -1295,6 +1309,11 @@ $deviceJsonFile = Join-Path $BOT_DIR "device.json"
 if ($taskExists) {
     Write-Host "  Starting DotBot service (hidden)..." -ForegroundColor Green
     Start-ScheduledTask -TaskName "DotBot" -ErrorAction SilentlyContinue
+} elseif (Test-Path $trayPath) {
+    Write-Host "  Starting DotBot (tray icon)..." -ForegroundColor Green
+    Start-Process powershell -ArgumentList @(
+        "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $trayPath
+    )
 } elseif (Test-Path $runPath) {
     Write-Host "  Starting DotBot service (hidden)..." -ForegroundColor Green
     Start-Process powershell -ArgumentList @(
@@ -1412,16 +1431,19 @@ if ($registered) {
 Write-Host ""
 Write-Host "  ----------------------------------------" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "  DotBot is running as a background service." -ForegroundColor Green
+Write-Host "  DotBot is running in the background." -ForegroundColor Green
+Write-Host "  Look for the DotBot icon in your system tray (bottom-right)." -ForegroundColor Gray
 Write-Host "  It will start automatically on login." -ForegroundColor Gray
 Write-Host ""
-Write-Host "  To open the browser UI:" -ForegroundColor White
-Write-Host "    Search 'DotBot' in Start Menu -- opens console + browser automatically" -ForegroundColor Gray
+Write-Host "  Tray icon menu:" -ForegroundColor White
+Write-Host "    Right-click tray icon  -- Status, Open UI, View Logs, Shutdown" -ForegroundColor Gray
+Write-Host "    Double-click tray icon -- Open browser UI" -ForegroundColor Gray
 Write-Host ""
-Write-Host "  Other commands:" -ForegroundColor Gray
-Write-Host "    schtasks /run /tn DotBot          -- start the background service" -ForegroundColor Gray
-Write-Host "    schtasks /end /tn DotBot          -- stop the background service" -ForegroundColor Gray
-Write-Host "    Get-Content ~\.bot\agent.log -Tail 50  -- view logs" -ForegroundColor Gray
+Write-Host "  CLI commands:" -ForegroundColor Gray
+Write-Host "    dotbot status                         -- check what's running" -ForegroundColor Gray
+Write-Host "    dotbot open                           -- open browser UI" -ForegroundColor Gray
+Write-Host "    dotbot stop                           -- stop all DotBot processes" -ForegroundColor Gray
+Write-Host "    Get-Content ~\.bot\launcher.log -Tail 50  -- view logs" -ForegroundColor Gray
 Write-Host ""
 
 $failedSteps = $installStatus.steps.GetEnumerator() | Where-Object { $_.Value.status -eq "failed" }

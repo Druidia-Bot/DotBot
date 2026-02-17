@@ -25,7 +25,8 @@ export const httpTools: DotBotTool[] = [
       },
       required: ["url"],
     },
-    annotations: {},
+    annotations: { mutatingHint: true },
+    cache: { mode: "enrich", type: "web_page" },
   },
   {
     id: "http.render",
@@ -44,7 +45,8 @@ export const httpTools: DotBotTool[] = [
       },
       required: ["url"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
+    cache: { mode: "enrich", type: "web_page" },
   },
   {
     id: "http.download",
@@ -62,6 +64,6 @@ export const httpTools: DotBotTool[] = [
       },
       required: ["url", "path"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
 ];

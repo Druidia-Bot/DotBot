@@ -24,6 +24,6 @@ export const npmTools: DotBotTool[] = [
       },
       required: ["command"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
 ];

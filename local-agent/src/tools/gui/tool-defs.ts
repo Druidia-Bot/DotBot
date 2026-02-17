@@ -50,6 +50,8 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: true,
+      verificationHint: true,
+      mutatingHint: false,
     },
   },
 
@@ -77,6 +79,7 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: false,
+      mutatingHint: true,
     },
   },
 
@@ -129,6 +132,7 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: false,
+      mutatingHint: true,
     },
   },
 
@@ -164,6 +168,7 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: false,
+      mutatingHint: true,
     },
   },
 
@@ -191,6 +196,7 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: false,
+      mutatingHint: true,
     },
   },
 
@@ -214,6 +220,7 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: false,
+      mutatingHint: true,
     },
   },
 
@@ -251,6 +258,8 @@ export const guiTools: DotBotTool[] = [
     annotations: {
       readOnlyHint: true,
       longRunningHint: true,
+      verificationHint: true,
+      mutatingHint: false,
     },
   },
 
@@ -291,6 +300,8 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: true,
+      verificationHint: true,
+      mutatingHint: false,
     },
   },
 
@@ -319,6 +330,7 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: false,
+      mutatingHint: true,
     },
   },
 
@@ -364,6 +376,7 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: false,
+      mutatingHint: true,
     },
   },
 
@@ -395,6 +408,7 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: false,
+      mutatingHint: true,
     },
   },
 
@@ -440,6 +454,7 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: false,
+      mutatingHint: true,
     },
   },
 
@@ -484,6 +499,8 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: true,
+      verificationHint: true,
+      mutatingHint: false,
     },
   },
 
@@ -511,6 +528,7 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: false,
+      mutatingHint: true,
     },
   },
 
@@ -529,6 +547,7 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: false,
+      mutatingHint: true,
     },
   },
 
@@ -547,6 +566,8 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: true,
+      verificationHint: true,
+      mutatingHint: false,
     },
   },
 
@@ -574,6 +595,8 @@ export const guiTools: DotBotTool[] = [
     },
     annotations: {
       readOnlyHint: true,
+      verificationHint: true,
+      mutatingHint: false,
     },
   },
 ];

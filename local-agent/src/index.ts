@@ -9,7 +9,7 @@
  *   core/auth.ts            — Device authentication / registration
  *   core/message-router.ts  — Message dispatch (thin switch)
  *   core/post-auth-init.ts  — Post-auth subsystem wiring (periodic, Discord, hooks)
- *   core/run-log.ts         — Execution trace persistence
+ *   core/client-log.ts      — Generic log persistence to ~/.bot/{subfolder}/
  *   core/restart-queue.ts   — Pre-restart prompt preservation
  *   core/cli.ts             — Interactive terminal prompt
  *

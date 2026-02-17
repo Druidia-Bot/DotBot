@@ -17,7 +17,7 @@ export const clipboardTools: DotBotTool[] = [
       type: "object",
       properties: {},
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "clipboard.write",
@@ -34,6 +34,6 @@ export const clipboardTools: DotBotTool[] = [
       },
       required: ["content"],
     },
-    annotations: {},
+    annotations: { mutatingHint: true },
   },
 ];

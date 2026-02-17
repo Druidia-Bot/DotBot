@@ -45,6 +45,8 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
   let escalationReason: string | undefined;
   let neededToolCategories: string[] | undefined;
   let infrastructureDown = false;
+  let dotNeedsVerification = false;
+  const knownNativeToolIds = new Set(tools.map(t => unsanitizeToolName(t.function.name)));
 
   const toolCallsMade: ToolLoopResult["toolCallsMade"] = [];
   const stuckState = createStuckState();
@@ -117,8 +119,39 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
       tools: toolCalls.map(c => unsanitizeToolName(c.function.name)),
     });
 
-    // ── No tool calls → check skill nudge or exit ──
+    // ── No tool calls → check for fake tool calls in text, skill nudge, or exit ──
     if (toolCalls.length === 0) {
+      // Detect fake tool-call syntax in text (model outputting tool calls as text instead of using function calling)
+      const fakeTextToolNames = textContent ? findTextToolNames(textContent) : [];
+      const unknownFakeTextToolNames = fakeTextToolNames.filter(name => !knownNativeToolIds.has(name));
+      if (textContent && fakeTextToolNames.length > 0 && iteration < maxIterations) {
+        log.warn("Fake tool calls detected in text response — nudging to use function calling", {
+          personaId,
+          iteration,
+          fakeTextToolNames,
+          unknownFakeTextToolNames,
+        });
+        messages.push({ role: "assistant", content: textContent });
+        messages.push({
+          role: "user",
+          content: unknownFakeTextToolNames.length > 0
+            ? `⚠️ You wrote tool-call text instead of using function calling, and some names do not exist: ${unknownFakeTextToolNames.join(", ")}. Text tool calls do NOT execute. Use only real available tools through the function calling API and do NOT claim actions unless you got tool results.`
+            : "⚠️ You wrote tool calls as text instead of using the function calling API. Text tool calls do NOT execute — they do nothing. Use the actual function calling mechanism to call tools. Do NOT claim actions were completed unless you receive a tool result. Try again — make the actual tool calls now.",
+        });
+        continue;
+      }
+
+      // Dot-specific verification gate: after mutating actions, require explicit verification
+      if (personaId === "dot" && dotNeedsVerification && iteration < maxIterations) {
+        log.warn("Dot attempted to finalize without verification — nudging verification loop", { iteration });
+        messages.push({ role: "assistant", content: textContent });
+        messages.push({
+          role: "user",
+          content: "Before you say something is done, you MUST verify it with a read/list/get/status tool call. Example: after creating a file, call filesystem.read_file or filesystem.exists and confirm the result. Do not claim completion until verification succeeds.",
+        });
+        continue;
+      }
+
       if (options.skillMatched && iteration <= 2 && toolCallsMade.length === 0) {
         log.warn("Skill matched but LLM responded with text only — nudging to execute", { personaId });
         messages.push({ role: "assistant", content: textContent });
@@ -175,6 +208,8 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
 
     // ── Execute each tool call ──
     let batchBroken = false;
+    let iterationMutatingSuccess = false;
+    let iterationVerificationSuccess = false;
 
     for (let callIdx = 0; callIdx < toolCalls.length; callIdx++) {
       const call = toolCalls[callIdx];
@@ -190,6 +225,10 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
 
       log.info(`Executing tool: ${toolId}`, { personaId, argKeys: Object.keys(args) });
       options.onToolCall?.(toolId, args);
+
+      // Set current toolId so dynamic server-side handlers (imagegen, premium, schedule)
+      // always see the correct ID — not a stale value from a previous proxy call.
+      context.state._currentToolId = toolId;
 
       const handler = handlers.get(toolId);
       let handlerResult: ToolHandlerResult;
@@ -223,6 +262,13 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
       toolCallsMade.push({ tool: toolId, args, result: handlerResult.content, success });
       options.onToolResult?.(toolId, handlerResult.content, success);
       recordToolResult(stuckState, toolId, handlerResult.content, success);
+
+      if (success && isVerificationToolCall(toolId, options.toolHintsById)) {
+        iterationVerificationSuccess = true;
+      }
+      if (success && isMutatingToolCall(toolId, options.toolHintsById)) {
+        iterationMutatingSuccess = true;
+      }
 
       // Add tool result message
       const toolMsg: LLMMessage = {
@@ -273,6 +319,21 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
       escalationReason = context.state.escalationReason;
       neededToolCategories = context.state.neededToolCategories;
       break;
+    }
+
+    // Dot-specific: require a verification loop after successful mutating actions.
+    if (personaId === "dot") {
+      if (iterationVerificationSuccess) {
+        dotNeedsVerification = false;
+      } else if (iterationMutatingSuccess) {
+        dotNeedsVerification = true;
+        if (iteration < maxIterations) {
+          messages.push({
+            role: "user",
+            content: "Verification required: you just performed a mutating action. Now verify the outcome with read/list/get/status/check tools before claiming success.",
+          });
+        }
+      }
     }
 
     // ── Inject stuck/duplicate warnings AFTER tool results ──
@@ -352,4 +413,46 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
     neededToolCategories,
     conversationLog,
   };
+}
+
+// ── Fake Tool Call Detection ─────────────────────────────────────────
+
+/**
+ * Detect tool-call-like syntax in text content.
+ * The model sometimes outputs tool calls as text (e.g. `system__restart reason="..."`)
+ * instead of using the native function calling API. These do nothing but mislead the user.
+ *
+ * Pattern: word__word (the sanitized tool ID format used in function calling)
+ * followed by optional arguments, typically inside a code block.
+ */
+const FAKE_TOOL_CALL_NAME_PATTERN = /\b(\w+__\w+)\b/g;
+
+function findTextToolNames(text: string): string[] {
+  const names = new Set<string>();
+  for (const match of text.matchAll(FAKE_TOOL_CALL_NAME_PATTERN)) {
+    const raw = match[1];
+    if (!raw) continue;
+    names.add(unsanitizeToolName(raw));
+  }
+  return [...names];
+}
+
+function isMutatingToolCall(
+  toolId: string,
+  toolHintsById?: Record<string, { mutating?: boolean; verification?: boolean }>,
+): boolean {
+  const explicit = toolHintsById?.[toolId]?.mutating;
+  if (explicit !== undefined) return explicit;
+  // No hint → assume mutating (safe default)
+  return true;
+}
+
+function isVerificationToolCall(
+  toolId: string,
+  toolHintsById?: Record<string, { mutating?: boolean; verification?: boolean }>,
+): boolean {
+  const explicit = toolHintsById?.[toolId]?.verification;
+  if (explicit !== undefined) return explicit;
+  // No hint → assume not a verification tool
+  return false;
 }

@@ -68,7 +68,7 @@ If persona_slug is provided, saves to that persona's knowledge directory. Otherw
       },
       required: ["title", "content"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "knowledge.list",
@@ -84,7 +84,7 @@ If persona_slug is provided, saves to that persona's knowledge directory. Otherw
         persona_slug: { type: "string", description: "Optional: list knowledge for a specific persona instead of general knowledge" },
       },
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "knowledge.read",
@@ -103,7 +103,7 @@ If persona_slug is provided, saves to that persona's knowledge directory. Otherw
       },
       required: ["filename"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "knowledge.search",
@@ -121,7 +121,7 @@ If persona_slug is provided, saves to that persona's knowledge directory. Otherw
       },
       required: ["query"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "knowledge.delete",
@@ -139,6 +139,6 @@ If persona_slug is provided, saves to that persona's knowledge directory. Otherw
       },
       required: ["filename"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
 ];

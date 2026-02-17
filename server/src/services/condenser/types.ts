@@ -6,8 +6,8 @@ import type { ExecutionCommand } from "../../types.js";
 import type { ToolManifestEntry } from "#tools/types.js";
 
 export interface CondenserOptions {
-  apiKey: string;
-  provider?: "deepseek" | "anthropic" | "openai";
+  // No longer needs apiKey/provider — uses createClientForSelection
+  // with full fallback chains via the resilient client system.
 }
 
 export interface CondenserRequest {

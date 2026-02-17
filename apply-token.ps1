@@ -68,7 +68,7 @@ Start-Process powershell -ArgumentList @(
 # Wait for registration
 $tokenFile = Join-Path $BotDir "web-auth-token"
 Write-Host "  Waiting for agent to register..." -ForegroundColor Gray
-Start-Sleep -Seconds 3  # Grace period for node to start via launch.ps1
+Start-Sleep -Seconds 3  # Grace period for node to start
 $deadline = (Get-Date).AddSeconds(60)  # INSTALL-13: 60s timeout (was 20s)
 $registered = $false
 while ((Get-Date) -lt $deadline) {

@@ -10,10 +10,8 @@
  */
 
 import WebSocket from "ws";
-
-// ============================================
-// DISCORD GATEWAY OPCODES
-// ============================================
+import type { GatewayCallbacks } from "./types.js";
+import { parseMessageCreate, parseInteractionCreate } from "./event-parsers.js";
 
 const GatewayOp = {
   DISPATCH: 0,        // Server → Client: event dispatched
@@ -32,52 +30,6 @@ const GATEWAY_INTENTS = (1 << 0) | (1 << 9) | (1 << 15); // 33281
 const GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json";
 const MAX_RECONNECT_DELAY_MS = 60_000;
 const MAX_RECONNECT_ATTEMPTS = 20;
-
-// ============================================
-// TYPES
-// ============================================
-
-export interface DiscordMessage {
-  id: string;
-  channel_id: string;
-  guild_id?: string;
-  author: {
-    id: string;
-    username: string;
-    bot?: boolean;
-  };
-  content: string;
-  timestamp: string;
-}
-
-export interface DiscordInteraction {
-  id: string;
-  token: string;
-  type: number;           // 3 = MESSAGE_COMPONENT
-  channel_id: string;
-  guild_id?: string;
-  message?: any;          // The original message with the component
-  data: {
-    custom_id: string;    // The button's custom_id
-    component_type: number; // 2 = Button
-  };
-  user: {
-    id: string;
-    username: string;
-  };
-}
-
-export interface GatewayCallbacks {
-  onMessage: (message: DiscordMessage) => void | Promise<void>;
-  onInteraction?: (interaction: DiscordInteraction) => void;
-  onReady: (botUserId: string) => void;
-  onDisconnect: () => void;
-  onError: (error: string) => void;
-}
-
-// ============================================
-// GATEWAY CLIENT
-// ============================================
 
 export class DiscordGateway {
   private token: string;
@@ -184,6 +136,16 @@ export class DiscordGateway {
     return this.botUserId;
   }
 
+  getStatus(): { connected: boolean; destroyed: boolean; sessionId: string | null; reconnectAttempts: number; botUserId: string | null } {
+    return {
+      connected: this.ws !== null && this.ws.readyState === WebSocket.OPEN,
+      destroyed: this.destroyed,
+      sessionId: this.sessionId,
+      reconnectAttempts: this.reconnectAttempts,
+      botUserId: this.botUserId,
+    };
+  }
+
   // ── Gateway Message Handling ──
 
   private handleGatewayMessage(payload: any): void {
@@ -252,44 +214,18 @@ export class DiscordGateway {
         break;
 
       case "MESSAGE_CREATE":
-        Promise.resolve(this.callbacks.onMessage({
-          id: data.id,
-          channel_id: data.channel_id,
-          guild_id: data.guild_id,
-          author: {
-            id: data.author.id,
-            username: data.author.username,
-            bot: data.author.bot || false,
-          },
-          content: data.content,
-          timestamp: data.timestamp,
-        })).catch(err => {
+        Promise.resolve(this.callbacks.onMessage(parseMessageCreate(data))).catch(err => {
           console.error("[Discord] Error in message handler:", err);
         });
         break;
 
-      case "INTERACTION_CREATE":
-        if (this.callbacks.onInteraction && data.type === 3) {
-          // type 3 = MESSAGE_COMPONENT (buttons, selects)
-          const user = data.member?.user || data.user;
-          this.callbacks.onInteraction({
-            id: data.id,
-            token: data.token,
-            type: data.type,
-            channel_id: data.channel_id,
-            guild_id: data.guild_id,
-            message: data.message,
-            data: {
-              custom_id: data.data?.custom_id,
-              component_type: data.data?.component_type,
-            },
-            user: {
-              id: user?.id || "unknown",
-              username: user?.username || "unknown",
-            },
-          });
+      case "INTERACTION_CREATE": {
+        const interaction = parseInteractionCreate(data);
+        if (this.callbacks.onInteraction && interaction) {
+          this.callbacks.onInteraction(interaction);
         }
         break;
+      }
 
       default:
         // Ignore other events

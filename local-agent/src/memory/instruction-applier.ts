@@ -136,6 +136,11 @@ async function applySingle(instruction: CondenserInstruction): Promise<boolean> 
 // ============================================
 
 async function handleAddBelief(inst: Extract<CondenserInstruction, { action: "add_belief" }>): Promise<boolean> {
+  if (!inst.modelSlug || typeof inst.belief !== "object" || !inst.belief?.attribute || !inst.belief?.value) {
+    console.warn(`[InstructionApplier] Rejecting add_belief with missing modelSlug, attribute, or value`);
+    return false;
+  }
+
   const model = await store.getMentalModel(inst.modelSlug);
   if (!model) return false;
 
@@ -207,6 +212,11 @@ async function handleRemoveBelief(inst: Extract<CondenserInstruction, { action: 
 // ============================================
 
 async function handleAddConstraint(inst: Extract<CondenserInstruction, { action: "add_constraint" }>): Promise<boolean> {
+  if (!inst.modelSlug || typeof inst.constraint !== "object" || !inst.constraint?.description) {
+    console.warn(`[InstructionApplier] Rejecting add_constraint with missing modelSlug or description`);
+    return false;
+  }
+
   const model = await store.getMentalModel(inst.modelSlug);
   if (!model) return false;
 
@@ -241,6 +251,11 @@ async function handleRemoveConstraint(inst: Extract<CondenserInstruction, { acti
 // ============================================
 
 async function handleAddOpenLoop(inst: Extract<CondenserInstruction, { action: "add_open_loop" }>): Promise<boolean> {
+  if (!inst.modelSlug || typeof inst.loop !== "object" || !inst.loop?.description) {
+    console.warn(`[InstructionApplier] Rejecting add_open_loop with missing modelSlug or description`);
+    return false;
+  }
+
   const model = await store.getMentalModel(inst.modelSlug);
   if (!model) return false;
 
@@ -371,6 +386,11 @@ async function handleRemoveRelationship(inst: Extract<CondenserInstruction, { ac
 // ============================================
 
 async function handleCreateModel(inst: Extract<CondenserInstruction, { action: "create_model" }>): Promise<boolean> {
+  if (!inst.slug || !inst.name) {
+    console.warn(`[InstructionApplier] Rejecting create_model with missing slug or name`);
+    return false;
+  }
+
   // Check if model already exists
   const existing = await store.getMentalModel(inst.slug);
   if (existing) return false; // Don't overwrite
@@ -422,8 +442,19 @@ async function handleUpdateModelMeta(inst: Extract<CondenserInstruction, { actio
 }
 
 async function handleAddConversationRef(inst: Extract<CondenserInstruction, { action: "add_conversation_ref" }>): Promise<boolean> {
+  if (!inst.modelSlug) {
+    console.warn(`[InstructionApplier] Rejecting add_conversation_ref with missing modelSlug`);
+    return false;
+  }
+
   const model = await store.getMentalModel(inst.modelSlug);
   if (!model) return false;
+
+  // Reject refs with no meaningful summary — they'd produce useless context
+  if (!inst.ref?.summary || inst.ref.summary.length < 10) {
+    console.warn(`[InstructionApplier] Skipping empty/short conversation ref for ${inst.modelSlug}`);
+    return false;
+  }
 
   const ref: ConversationReference = {
     timestamp: inst.ref.timestamp || new Date().toISOString(),
@@ -443,15 +474,21 @@ async function handleAddConversationRef(inst: Extract<CondenserInstruction, { ac
 }
 
 async function handleUpdateKeywords(inst: Extract<CondenserInstruction, { action: "update_keywords" }>): Promise<boolean> {
-  // Keywords are stored in the index, not in the model file directly.
-  // We'll handle this during rebuildMemoryIndex by updating the index entry.
-  // For now, store them as a metadata field on the model.
+  if (!inst.modelSlug) {
+    console.warn(`[InstructionApplier] Rejecting update_keywords with missing modelSlug`);
+    return false;
+  }
+
   const model = await store.getMentalModel(inst.modelSlug);
   if (!model) return false;
 
-  // Store keywords in model description as a workaround until we add a dedicated field
-  // The rebuildMemoryIndex will pick them up from beliefs/relationships
-  // TODO: Add a `keywords` field to MentalModel
+  // Merge new keywords with existing, dedup, cap at 30
+  const existing = new Set(model.keywords || []);
+  for (const kw of inst.keywords || []) {
+    existing.add(kw.toLowerCase());
+  }
+  model.keywords = Array.from(existing).slice(0, 30);
+
   model.lastUpdatedAt = new Date().toISOString();
   await store.saveMentalModel(model);
   return true;

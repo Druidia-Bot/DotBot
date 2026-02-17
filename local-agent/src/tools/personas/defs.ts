@@ -30,7 +30,7 @@ The persona will be available for the receptionist to route tasks to. Give it a 
       },
       required: ["name", "role", "system_prompt"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "personas.list",
@@ -44,7 +44,7 @@ The persona will be available for the receptionist to route tasks to. Give it a 
       type: "object",
       properties: {},
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "personas.read",
@@ -61,6 +61,6 @@ The persona will be available for the receptionist to route tasks to. Give it a 
       },
       required: ["slug"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
 ];

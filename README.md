@@ -196,19 +196,20 @@ Enter the server URL and invite token when prompted. (Same security note applies
 
 ### Step 4 — Use It
 
-Once installed, DotBot runs as a **background service** that starts automatically on login. You can also launch it manually:
+Once installed, DotBot runs as a **background service** that starts automatically on login. A small system tray icon appears so you know it's running — right-click it for status, Open UI, or Shutdown.
 
-- **Start Menu** — search "DotBot" to launch with a visible console
-- **Browser** — open `client/index.html` from the install directory for the web UI
+- **Start Menu** — search "DotBot" to launch (runs invisibly with a tray icon)
+- **Browser** — open the web UI via the tray icon or `.\run.ps1 -Open`
 - **Discord** — ask DotBot: _"set up Discord"_ to connect your Discord server
 
 **Managing DotBot on Windows:**
 
 ```powershell
 # From the install directory (default: C:\.bot):
-.\run.ps1                # Start agent + server (dev) or agent-only (production)
+.\run.ps1                # Start agent + server (dev) with visible console
 .\run.ps1 -Stop          # Stop all DotBot processes
 .\run.ps1 -Update        # Pull latest code + rebuild + restart
+.\run.ps1 -Status        # Check what's running
 ```
 
 **Managing the Linux server:**
@@ -372,6 +373,24 @@ npm run build -w shared -w local-agent
 - **Auto-rollback:** If the agent crashes within 10 seconds of an update, the launcher restores the previous build automatically
 - **Manual rollback:** Copy `~/.bot/workspace/dist-backup/` back to `local-agent/dist/`
 - **Nuclear option:** Delete the install directory, re-run the installer with a new invite token
+
+### Customizing Default Skills
+
+DotBot ships with built-in skills in `~/.bot/skills/`. On startup, the agent checks each skill's `.version` file against the source version — if the source is newer, it **overwrites** the installed `SKILL.md`.
+
+**If you've customized a default skill and want to keep your changes**, set its version file to a high number so updates never overwrite it:
+
+```powershell
+# Example: protect your customized run-log-diagnostics skill
+Set-Content "$env:USERPROFILE\.bot\skills\run-log-diagnostics\.version" "99"
+```
+
+```bash
+# Linux/Mac
+echo 99 > ~/.bot/skills/run-log-diagnostics/.version
+```
+
+This tells the bootstrap "version 99 is installed" — since source versions are always lower, your file won't be touched. To receive upstream updates again, delete the `.version` file or set it back to `0`.
 
 ### Discord Not Responding
 

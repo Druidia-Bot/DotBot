@@ -21,7 +21,7 @@ export const adminTools: DotBotTool[] = [
         expiry_days: { type: "number", description: "Days until token expires (default: 7)" },
       },
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "admin.list_tokens",
@@ -32,7 +32,7 @@ export const adminTools: DotBotTool[] = [
     executor: "local",
     runtime: "internal",
     inputSchema: { type: "object", properties: {} },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "admin.revoke_token",
@@ -49,7 +49,7 @@ export const adminTools: DotBotTool[] = [
       },
       required: ["token"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "admin.list_devices",
@@ -60,7 +60,7 @@ export const adminTools: DotBotTool[] = [
     executor: "local",
     runtime: "internal",
     inputSchema: { type: "object", properties: {} },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "admin.revoke_device",
@@ -77,6 +77,6 @@ export const adminTools: DotBotTool[] = [
       },
       required: ["device_id"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
 ];

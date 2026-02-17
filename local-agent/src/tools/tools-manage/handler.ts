@@ -72,6 +72,14 @@ export async function handleToolsManagement(toolId: string, args: Record<string,
         await fs.mkdir(scriptsDir, { recursive: true });
         await fs.writeFile(join(scriptsDir, scriptFilename), args.script, "utf-8");
 
+        // Build annotations from explicit `mutating` arg (defaults to true)
+        const isMutating = args.mutating !== false;
+        const annotations = {
+          ...(args.annotations || {}),
+          mutatingHint: isMutating,
+          ...(!isMutating && { verificationHint: true, readOnlyHint: true }),
+        };
+
         // Build the DotBotTool definition
         const tool: DotBotTool = {
           id: args.id,
@@ -82,8 +90,9 @@ export async function handleToolsManagement(toolId: string, args: Record<string,
           executor: "local",
           runtime: args.runtime,
           inputSchema: typeof args.inputSchema === "string" ? JSON.parse(args.inputSchema) : args.inputSchema,
-          annotations: args.annotations || {},
+          annotations,
           ...(args.credentialRequired && { credentialRequired: args.credentialRequired }),
+          ...(args.cache && { cache: args.cache }),
         };
 
         // Save tool definition to ~/.bot/tools/custom/<id>.json
@@ -107,6 +116,19 @@ export async function handleToolsManagement(toolId: string, args: Record<string,
         };
       }
 
+      // Build annotations from explicit `mutating` arg (defaults to true)
+      const isMutatingApi = args.mutating !== false;
+      const apiAnnotations = {
+        ...(args.annotations || {}),
+        mutatingHint: isMutatingApi,
+        ...(!isMutatingApi && { verificationHint: true, readOnlyHint: true }),
+      };
+
+      // Auto-infer cache for read-only API tools: if the tool doesn't mutate
+      // and no explicit cache config was provided, default to caching responses.
+      const cacheConfig = args.cache
+        || (!isMutatingApi ? { mode: "raw" as const, type: "api_response" as const } : undefined);
+
       // API tool path
       const tool: DotBotTool = {
         id: args.id,
@@ -118,8 +140,9 @@ export async function handleToolsManagement(toolId: string, args: Record<string,
         runtime: "http",
         inputSchema: typeof args.inputSchema === "string" ? JSON.parse(args.inputSchema) : args.inputSchema,
         apiSpec: typeof args.apiSpec === "string" ? JSON.parse(args.apiSpec) : args.apiSpec,
-        annotations: args.annotations || {},
+        annotations: apiAnnotations,
         ...(args.credentialRequired && { credentialRequired: args.credentialRequired }),
+        ...(cacheConfig && { cache: cacheConfig }),
       };
 
       // Save to ~/.bot/tools/api/<id>.json

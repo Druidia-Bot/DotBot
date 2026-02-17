@@ -8,11 +8,14 @@
  * 2.5.  Detect and merge duplicate models (local LLM)
  * 3. Prune index — demote inactive models to deep memory
  * 4. Clean up expired agent work
+ * 5. Journal — append un-journaled cache entries to Assistant's Log
+ * 6. Prune stale research cache entries (72h TTL)
  *
  * Phase implementations live in:
  * - sleep-phases.ts  (condense, resolve, prune)
  * - sleep-dedup.ts   (loop dedup, model dedup)
  * - sleep-llm.ts     (shared LLM scoring utilities)
+ * - journal/         (Assistant's Log daily journal)
  */
 
 import * as store from "./store.js";
@@ -119,6 +122,8 @@ async function runCycle(): Promise<void> {
 
     const activeThreads = threads.filter(t => {
       if (!state.lastCycleAt) return true;
+      // Backfill guard: ensure threads that were never condensed get one pass.
+      if (!t.condensedAt) return true;
       return t.lastActiveAt > state.lastCycleAt;
     }).slice(0, MAX_THREADS_PER_CYCLE);
 
@@ -126,7 +131,8 @@ async function runCycle(): Promise<void> {
 
     for (const threadSummary of activeThreads) {
       try {
-        const result = await condenseThread(sendToServer, threadSummary, l0Index, state.lastCycleAt);
+        const lastCycleCutoff: string | null = threadSummary.condensedAt ? state.lastCycleAt : null;
+        const result = await condenseThread(sendToServer, threadSummary, l0Index, lastCycleCutoff);
         threadsProcessed++;
         totalInstructionsApplied += result.applied;
         console.log(`[SleepCycle] Thread "${threadSummary.topic}": ${result.applied} instructions applied`);
@@ -185,6 +191,28 @@ async function runCycle(): Promise<void> {
     const agentWorkCleaned = await cleanupExpiredAgentWork();
     if (agentWorkCleaned > 0) {
       console.log(`[SleepCycle] Cleaned ${agentWorkCleaned} expired agent work threads`);
+    }
+
+    // ── Phase 5: Journal — append un-journaled cache entries to today's Assistant's Log ──
+    try {
+      const { appendToJournal } = await import("./journal/index.js");
+      const journaled = await appendToJournal();
+      if (journaled > 0) {
+        console.log(`[SleepCycle] Journaled ${journaled} cache entries to Assistant's Log`);
+      }
+    } catch (err) {
+      console.error("[SleepCycle] Failed to write journal:", err);
+    }
+
+    // ── Phase 6: Prune stale research cache entries (72h TTL) ──
+    try {
+      const { pruneStaleCacheEntries } = await import("./research-cache.js");
+      const cachePruned = await pruneStaleCacheEntries();
+      if (cachePruned > 0) {
+        console.log(`[SleepCycle] Pruned ${cachePruned} stale research cache entries`);
+      }
+    } catch (err) {
+      console.error("[SleepCycle] Failed to prune research cache:", err);
     }
 
   } catch (err) {
@@ -311,7 +339,8 @@ export async function flushSession(): Promise<FlushResult> {
 
       for (const threadSummary of activeThreads) {
         try {
-          const condensed = await condenseThread(sendToServer, threadSummary, l0Index, state.lastCycleAt);
+          const lastCycleCutoff: string | null = threadSummary.condensedAt ? state.lastCycleAt : null;
+          const condensed = await condenseThread(sendToServer, threadSummary, l0Index, lastCycleCutoff);
           result.threadsCondensed++;
           result.instructionsApplied += condensed.applied;
           console.log(`[Flush] Thread "${threadSummary.topic}": ${condensed.applied} instructions applied`);

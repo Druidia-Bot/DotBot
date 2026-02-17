@@ -29,6 +29,11 @@ const RETRYABLE_PATTERNS = [
   "timed out",
   "socket hang up",
   "aborted",
+  "response_format",
+  "is unavailable",
+  "temporarily unavailable",
+  "service unavailable",
+  "overloaded",
 ];
 
 /**

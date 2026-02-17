@@ -276,6 +276,19 @@ try {
     Stop-ScheduledTask -TaskName "DotBot" -ErrorAction SilentlyContinue
 } catch {}
 
+# Kill the tray.ps1 PowerShell process (it holds the system tray icon)
+$trayKilled = 0
+Get-Process -Name "powershell" -ErrorAction SilentlyContinue | ForEach-Object {
+    try {
+        $cmdLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction SilentlyContinue).CommandLine
+        if ($cmdLine -and $cmdLine -match 'tray\.ps1') {
+            if (-not $WhatIf) { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+            $trayKilled++
+        }
+    } catch {}
+}
+if ($trayKilled -gt 0) { Write-Action "Stopped DotBot tray process" }
+
 $pids = Find-DotBotPids
 if ($pids.Count -gt 0) {
     if (-not $WhatIf) {
@@ -286,7 +299,7 @@ if ($pids.Count -gt 0) {
     }
     Write-Action "Stopped $($pids.Count) DotBot process(es)"
 } else {
-    Write-Skip "No running processes"
+    if ($trayKilled -eq 0) { Write-Skip "No running processes" }
 }
 
 # ============================================

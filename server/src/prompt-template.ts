@@ -4,7 +4,7 @@
  * Reads .md prompt files and injects values into |* Field *| placeholders.
  * 
  * Usage:
- *   const prompt = await loadPrompt("intake/intake.md", {
+ *   const prompt = await loadPrompt("pipeline/intake/intake.md", {
  *     "Identity": identitySection,
  *     "Conversation History": historySection,
  *   });

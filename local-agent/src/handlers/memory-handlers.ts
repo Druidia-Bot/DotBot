@@ -5,8 +5,11 @@
  */
 
 import { nanoid } from "nanoid";
+import { promises as fs } from "fs";
+import * as path from "path";
 import type { WSMessage, MemoryRequest, SkillRequest } from "../types.js";
 import * as memory from "../memory/index.js";
+import { DOTBOT_DIR } from "../memory/store-core.js";
 
 type SendFn = (message: WSMessage) => void;
 
@@ -208,24 +211,39 @@ export async function handleMemoryRequest(request: MemoryRequest, send: SendFn):
         break;
 
       case "get_recent_history": {
-        // Return last N messages from the most recently active thread
+        // Return last N messages from a specific thread (preferred) or most recently active
         const limit = request.data?.limit || 20;
-        const summaries = await memory.getAllThreadSummaries();
-        if (summaries.length > 0) {
-          // Sort by lastActiveAt descending
-          summaries.sort((a, b) => (b.lastActiveAt || "").localeCompare(a.lastActiveAt || ""));
-          const activeThread = await memory.getThread(summaries[0].id);
-          if (activeThread?.messages?.length) {
-            result = {
-              threadId: summaries[0].id,
-              messages: activeThread.messages.slice(-limit).map((m: any) => ({
-                role: m.role || "unknown",
-                content: m.content || "",
-              })),
-            };
-          } else {
-            result = { threadId: null, messages: [] };
+        const preferredId = request.data?.threadId;
+
+        let targetThread: any = null;
+        let targetThreadId: string | null = null;
+
+        // If a specific thread was requested, try it first
+        if (preferredId) {
+          targetThread = await memory.getThread(preferredId);
+          if (targetThread?.messages?.length) {
+            targetThreadId = preferredId;
           }
+        }
+
+        // Fallback: most recently active thread
+        if (!targetThread?.messages?.length) {
+          const summaries = await memory.getAllThreadSummaries();
+          if (summaries.length > 0) {
+            summaries.sort((a, b) => (b.lastActiveAt || "").localeCompare(a.lastActiveAt || ""));
+            targetThread = await memory.getThread(summaries[0].id);
+            targetThreadId = summaries[0].id;
+          }
+        }
+
+        if (targetThread?.messages?.length) {
+          result = {
+            threadId: targetThreadId,
+            messages: targetThread.messages.slice(-limit).map((m: any) => ({
+              role: m.role || "unknown",
+              content: m.content || "",
+            })),
+          };
         } else {
           result = { threadId: null, messages: [] };
         }
@@ -280,6 +298,32 @@ export async function handleMemoryRequest(request: MemoryRequest, send: SendFn):
         result = await memory.loadIdentity();
         break;
 
+      case "get_backstory":
+        try {
+          const backstoryPath = path.join(DOTBOT_DIR, "backstory.md");
+          result = { content: await fs.readFile(backstoryPath, "utf-8") };
+        } catch {
+          result = null;
+        }
+        break;
+
+      case "save_backstory":
+        try {
+          const content = request.data?.content;
+          if (!content || typeof content !== "string") {
+            result = false;
+            break;
+          }
+          const savePath = path.join(DOTBOT_DIR, "backstory.md");
+          await fs.writeFile(savePath, content, "utf-8");
+          await memory.setUseBackstory(true);
+          result = { saved: true, path: savePath, length: content.length };
+        } catch (err: any) {
+          console.error("[Memory] Failed to save backstory:", err.message);
+          result = false;
+        }
+        break;
+
       // ── Identity Mutations ──────────────────────────
       case "identity_add_trait":
         result = request.data?.value ? await memory.addTrait(request.data.value) : false;
@@ -323,6 +367,45 @@ export async function handleMemoryRequest(request: MemoryRequest, send: SendFn):
       case "identity_set_role":
         result = request.data?.value ? await memory.setRole(request.data.value) : false;
         break;
+      case "identity_set_use_backstory":
+        result = await memory.setUseBackstory(request.data?.value === "true" || request.data?.value === true);
+        break;
+
+      case "get_research_cache_index": {
+        const { loadCacheIndex } = await import("../memory/research-cache.js");
+        result = await loadCacheIndex();
+        break;
+      }
+
+      case "get_journal_files": {
+        const { listJournalFiles } = await import("../memory/journal/index.js");
+        result = await listJournalFiles();
+        break;
+      }
+
+      case "write_research_cache": {
+        const d = request.data;
+        if (!d?.source || !d?.content) {
+          result = { error: "write_research_cache requires source and content" };
+          break;
+        }
+        const { writeResearchCache } = await import("../memory/research-cache.js");
+        const filename = await writeResearchCache({
+          source: d.source,
+          type: d.type || "api_response",
+          tool: d.tool || "premium",
+          title: d.title,
+          content: d.content,
+        });
+        // Fire-and-forget enrichment if mode is "enrich"
+        if (d.cacheMode === "enrich") {
+          import("../memory/cache-enricher.js").then(({ enrichCacheEntry }) => {
+            enrichCacheEntry(filename, d.content, d.title).catch(() => {});
+          }).catch(() => {});
+        }
+        result = { filename };
+        break;
+      }
 
       case "get_model_skeletons": {
         const slugs: string[] = request.data?.slugs || [];
@@ -340,6 +423,67 @@ export async function handleMemoryRequest(request: MemoryRequest, send: SendFn):
         if (request.modelSlug) {
           const success = await memory.promoteModel(request.modelSlug);
           result = { promoted: success, slug: request.modelSlug };
+        }
+        break;
+      }
+
+      // ── Run-Log Inspection ──────────────────────────
+      case "list_run_logs": {
+        const logsDir = path.join(DOTBOT_DIR, "run-logs");
+        try {
+          const files = await fs.readdir(logsDir);
+          const logFiles = files.filter(f => f.endsWith(".log")).sort().reverse();
+          const entries = [];
+          for (const f of logFiles) {
+            const stat = await fs.stat(path.join(logsDir, f)).catch(() => null);
+            if (stat) entries.push({ file: f, sizeKB: +(stat.size / 1024).toFixed(1), modified: stat.mtime.toISOString() });
+          }
+          result = entries;
+        } catch {
+          result = [];
+        }
+        break;
+      }
+
+      case "read_run_log": {
+        const logsDir2 = path.join(DOTBOT_DIR, "run-logs");
+        const filename = request.data?.filename;
+        if (!filename || typeof filename !== "string") { result = { error: "filename is required" }; break; }
+        const safeName = path.basename(filename);
+        try {
+          const content = await fs.readFile(path.join(logsDir2, safeName), "utf-8");
+          const lines = content.trim().split("\n");
+          const tail = request.data?.tail;
+          const selected = (typeof tail === "number" && tail > 0) ? lines.slice(-tail) : lines;
+          result = { filename: safeName, totalLines: lines.length, returnedLines: selected.length, entries: selected.map(l => { try { return JSON.parse(l); } catch { return l; } }) };
+        } catch (err: any) {
+          result = { error: `Cannot read ${safeName}: ${err.message}` };
+        }
+        break;
+      }
+
+      case "search_run_logs": {
+        const logsDir3 = path.join(DOTBOT_DIR, "run-logs");
+        const q = (request.query || "").toLowerCase();
+        if (!q) { result = { error: "query is required" }; break; }
+        try {
+          const files = await fs.readdir(logsDir3);
+          const logFiles = files.filter(f => f.endsWith(".log")).sort().reverse();
+          const matches: any[] = [];
+          for (const f of logFiles) {
+            const content = await fs.readFile(path.join(logsDir3, f), "utf-8");
+            const lines = content.trim().split("\n");
+            for (const line of lines) {
+              if (line.toLowerCase().includes(q)) {
+                try { matches.push({ file: f, entry: JSON.parse(line) }); } catch { matches.push({ file: f, entry: line }); }
+                if (matches.length >= 50) break;
+              }
+            }
+            if (matches.length >= 50) break;
+          }
+          result = { query: q, matchCount: matches.length, matches };
+        } catch {
+          result = { query: q, matchCount: 0, matches: [] };
         }
         break;
       }

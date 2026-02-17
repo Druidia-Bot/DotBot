@@ -152,7 +152,7 @@ export async function reconcileIdentityPaths(): Promise<boolean> {
  */
 function buildExpectedPaths(): Record<string, string> {
   return {
-    dotbotHome: `${DOTBOT_DIR} | Root of all DotBot data — memory, skills, tasks, config`,
+    dotbotHome: `${DOTBOT_DIR} | This is your home. Treat it with respect! — memory, skills, tasks, config`,
     agentWorkspaces: `${path.join(DOTBOT_DIR, "agent-workspaces")} | Where spawned agents store their workspace files (task.json, research/, output/)`,
     memory: `${path.join(DOTBOT_DIR, "memory")} | Mental models, threads, schemas, and the memory index`,
     memoryModels: `${path.join(DOTBOT_DIR, "memory", "models")} | Hot (active) mental model JSON files`,
@@ -313,6 +313,19 @@ export async function setRole(value: string): Promise<boolean> {
   if (!identity) return false;
 
   identity.role = value;
+  identity.version++;
+  await saveIdentity(identity);
+  return true;
+}
+
+/**
+ * Set the useBackstory flag — controls whether backstory.md is injected into the system prompt.
+ */
+export async function setUseBackstory(enabled: boolean): Promise<boolean> {
+  const identity = await loadIdentity();
+  if (!identity) return false;
+
+  identity.useBackstory = enabled;
   identity.version++;
   await saveIdentity(identity);
   return true;

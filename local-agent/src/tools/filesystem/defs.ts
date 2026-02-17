@@ -21,7 +21,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["path", "content"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "filesystem.read_file",
@@ -38,7 +38,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["path"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "filesystem.read_file_base64",
@@ -55,7 +55,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["path"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "filesystem.upload_file",
@@ -74,7 +74,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["path", "uploadUrl"],
     },
-    annotations: {},
+    annotations: { mutatingHint: true },
   },
   {
     id: "filesystem.append_file",
@@ -92,7 +92,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["path", "content"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "filesystem.delete_file",
@@ -109,7 +109,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["path"],
     },
-    annotations: { destructiveHint: true, requiresConfirmation: true },
+    annotations: { destructiveHint: true, requiresConfirmation: true, mutatingHint: true },
   },
   {
     id: "filesystem.move",
@@ -127,7 +127,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["source", "destination"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "filesystem.copy",
@@ -146,7 +146,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["source", "destination"],
     },
-    annotations: {},
+    annotations: { mutatingHint: true },
   },
   {
     id: "filesystem.exists",
@@ -163,7 +163,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["path"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "filesystem.edit_file",
@@ -183,7 +183,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["path", "old_string", "new_string"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "filesystem.read_lines",
@@ -202,7 +202,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["path", "start_line"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "filesystem.diff",
@@ -222,7 +222,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["path_a"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "filesystem.file_info",
@@ -239,7 +239,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["path"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "filesystem.download",
@@ -258,7 +258,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["url", "path"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "filesystem.archive",
@@ -276,7 +276,7 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["source", "destination"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "filesystem.extract",
@@ -294,6 +294,6 @@ export const filesystemTools: DotBotTool[] = [
       },
       required: ["source", "destination"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
 ];

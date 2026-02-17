@@ -20,6 +20,8 @@ export interface ToolManifestEntry {
   };
   annotations?: {
     readOnlyHint?: boolean;
+    mutatingHint?: boolean;
+    verificationHint?: boolean;
     destructiveHint?: boolean;
     requiresConfirmation?: boolean;
   };

@@ -23,6 +23,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/scrape",
     requiredParams: ["url"],
     optionalParams: ["dynamic", "premium", "country"],
+    cache: { mode: "enrich", type: "web_page" },
   },
   {
     id: "web_scrape_post",
@@ -34,6 +35,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     method: "POST",
     requiredParams: ["url"],
     optionalParams: ["dynamic", "premium", "country", "body", "headers"],
+    cache: { mode: "enrich", type: "web_page" },
   },
   {
     id: "screenshot",
@@ -44,6 +46,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/screenshot",
     requiredParams: ["url"],
     optionalParams: ["full_page", "width", "height"],
+    cache: { mode: "raw", type: "image_description" },
   },
 
   // ── Search ────────────────────────────────────────────────────
@@ -56,6 +59,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google",
     requiredParams: ["query"],
     optionalParams: ["country", "language", "results"],
+    cache: { mode: "raw", type: "web_search" },
   },
   {
     id: "google_ai_mode",
@@ -66,6 +70,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_ai_mode",
     requiredParams: ["query"],
     optionalParams: ["country", "language"],
+    cache: { mode: "enrich", type: "web_search" },
   },
   {
     id: "google_ai_overview",
@@ -76,6 +81,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_ai_overview",
     requiredParams: ["query"],
     optionalParams: ["country", "language"],
+    cache: { mode: "enrich", type: "web_search" },
   },
   {
     id: "google_autocomplete",
@@ -86,6 +92,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_autocomplete",
     requiredParams: ["query"],
     optionalParams: ["country", "language"],
+    cache: { mode: "raw", type: "web_search" },
   },
   {
     id: "bing_search",
@@ -96,6 +103,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/bing",
     requiredParams: ["query"],
     optionalParams: ["country", "language"],
+    cache: { mode: "raw", type: "web_search" },
   },
   {
     id: "duckduckgo_search",
@@ -106,6 +114,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/duckduckgo",
     requiredParams: ["query"],
     optionalParams: [],
+    cache: { mode: "raw", type: "web_search" },
   },
   {
     id: "universal_search",
@@ -116,6 +125,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/universal_search",
     requiredParams: ["query"],
     optionalParams: ["engine", "country", "language"],
+    cache: { mode: "raw", type: "web_search" },
   },
   {
     id: "baidu_search",
@@ -126,6 +136,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/baidu",
     requiredParams: ["query"],
     optionalParams: [],
+    cache: { mode: "raw", type: "web_search" },
   },
 
   // ── News ──────────────────────────────────────────────────────
@@ -138,6 +149,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_news",
     requiredParams: ["query"],
     optionalParams: ["country", "language"],
+    cache: { mode: "raw", type: "web_search" },
   },
 
   // ── Images & Visual ───────────────────────────────────────────
@@ -150,6 +162,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_images",
     requiredParams: ["query"],
     optionalParams: ["country", "language"],
+    cache: { mode: "raw", type: "web_search" },
   },
   {
     id: "google_lens",
@@ -160,6 +173,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_lens",
     requiredParams: ["url"],
     optionalParams: ["country", "language"],
+    cache: { mode: "raw", type: "image_description" },
   },
 
   // ── Video ─────────────────────────────────────────────────────
@@ -172,6 +186,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_videos",
     requiredParams: ["query"],
     optionalParams: ["country", "language"],
+    cache: { mode: "raw", type: "web_search" },
   },
   {
     id: "google_shorts",
@@ -182,6 +197,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_shorts",
     requiredParams: ["query"],
     optionalParams: ["country", "language"],
+    cache: { mode: "raw", type: "web_search" },
   },
   {
     id: "youtube_search",
@@ -192,6 +208,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/youtube/search",
     requiredParams: ["query"],
     optionalParams: [],
+    cache: { mode: "raw", type: "web_search" },
   },
   {
     id: "youtube_transcript",
@@ -202,6 +219,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/youtube/transcript",
     requiredParams: ["video_id"],
     optionalParams: ["language"],
+    cache: { mode: "enrich", type: "video_transcript" },
   },
   {
     id: "youtube_channel",
@@ -212,6 +230,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/youtube/channel",
     requiredParams: ["url"],
     optionalParams: [],
+    cache: { mode: "enrich", type: "api_response" },
   },
   {
     id: "youtube_comments",
@@ -222,6 +241,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/youtube/comments",
     requiredParams: ["video_id"],
     optionalParams: [],
+    cache: { mode: "enrich", type: "api_response" },
   },
 
   // ── E-Commerce ────────────────────────────────────────────────
@@ -234,6 +254,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/amazon/search",
     requiredParams: ["query"],
     optionalParams: ["country", "page"],
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "amazon_product",
@@ -244,6 +265,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/amazon/product",
     requiredParams: ["asin"],
     optionalParams: ["country"],
+    cache: { mode: "enrich", type: "api_response" },
   },
   {
     id: "walmart_search",
@@ -254,6 +276,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/walmart",
     requiredParams: ["url"],
     optionalParams: [],
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "ebay_search",
@@ -264,6 +287,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/ebay",
     requiredParams: ["url"],
     optionalParams: [],
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "flipkart_search",
@@ -274,6 +298,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/flipkart",
     requiredParams: ["url"],
     optionalParams: [],
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "myntra_search",
@@ -284,6 +309,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/myntra",
     requiredParams: ["url"],
     optionalParams: [],
+    cache: { mode: "raw", type: "api_response" },
   },
 
   // ── Social & Professional ─────────────────────────────────────
@@ -296,6 +322,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/linkedin",
     requiredParams: ["url"],
     optionalParams: [],
+    cache: { mode: "enrich", type: "api_response" },
   },
   {
     id: "linkedin_jobs",
@@ -306,6 +333,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/linkedin_jobs",
     requiredParams: ["url"],
     optionalParams: [],
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "twitter_search",
@@ -316,6 +344,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/twitter",
     requiredParams: ["query"],
     optionalParams: [],
+    cache: { mode: "raw", type: "web_search" },
   },
 
   // ── Maps & Local ──────────────────────────────────────────────
@@ -328,6 +357,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_maps",
     requiredParams: ["query"],
     optionalParams: ["country", "language", "ll"],
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "google_local",
@@ -338,6 +368,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_local",
     requiredParams: ["query"],
     optionalParams: ["country", "language"],
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "yelp_search",
@@ -348,6 +379,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/yelp",
     requiredParams: ["query"],
     optionalParams: ["location"],
+    cache: { mode: "raw", type: "api_response" },
   },
 
   // ── Finance ───────────────────────────────────────────────────
@@ -360,6 +392,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_finance",
     requiredParams: ["query"],
     optionalParams: [],
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "google_trends",
@@ -370,6 +403,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_trends",
     requiredParams: ["query"],
     optionalParams: ["country"],
+    cache: { mode: "enrich", type: "api_response" },
   },
 
   // ── Shopping ──────────────────────────────────────────────────
@@ -382,6 +416,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_shopping",
     requiredParams: ["query"],
     optionalParams: ["country", "language"],
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "google_product",
@@ -392,6 +427,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_product",
     requiredParams: ["product_id"],
     optionalParams: ["country", "language"],
+    cache: { mode: "enrich", type: "api_response" },
   },
   {
     id: "google_immersive_product",
@@ -402,6 +438,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_immersive_product",
     requiredParams: ["product_id"],
     optionalParams: ["country", "language"],
+    cache: { mode: "enrich", type: "api_response" },
   },
 
   // ── Academic & Patents ────────────────────────────────────────
@@ -414,6 +451,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_scholar",
     requiredParams: ["query"],
     optionalParams: ["country", "language"],
+    cache: { mode: "enrich", type: "web_search" },
   },
   {
     id: "google_patents",
@@ -424,6 +462,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_patents",
     requiredParams: ["query"],
     optionalParams: ["country", "language"],
+    cache: { mode: "enrich", type: "web_search" },
   },
 
   // ── Jobs & Real Estate ────────────────────────────────────────
@@ -436,6 +475,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_jobs",
     requiredParams: ["query"],
     optionalParams: ["country", "language"],
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "indeed_search",
@@ -446,6 +486,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/indeed",
     requiredParams: ["url"],
     optionalParams: [],
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "google_hotels",
@@ -456,6 +497,7 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/google_hotels",
     requiredParams: ["query"],
     optionalParams: ["country", "language"],
+    cache: { mode: "raw", type: "api_response" },
   },
   {
     id: "zillow_search",
@@ -466,5 +508,6 @@ export const SCRAPINGDOG_APIS: ScrapingDogApiEntry[] = [
     endpoint: "https://api.scrapingdog.com/zillow",
     requiredParams: ["url"],
     optionalParams: [],
+    cache: { mode: "enrich", type: "api_response" },
   },
 ];

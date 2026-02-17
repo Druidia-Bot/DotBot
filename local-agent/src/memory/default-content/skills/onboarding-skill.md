@@ -62,7 +62,16 @@ shell.powershell({ command: "Set-Clipboard -Value 'Please tell me everything you
 
 Then say: "I copied a prompt to your clipboard. Open ChatGPT/Claude in a new tab, paste it (Ctrl+V), hit Enter, copy the whole response, come back here and paste it. Take your time — I'll wait."
 
-When they paste the response, **save it to your mental model as foundational knowledge about the user**.
+When they paste the response:
+
+1. **Save it to your mental model** as foundational knowledge about the user.
+2. **Generate your origin backstory** by calling:
+```
+backstory.generate({ user_info: "<the full text they pasted>", agent_name: "<your name from Step 2>" })
+```
+This calls the architect model to write your origin story, saves it to ~/.bot/backstory.md, and enables it in your system prompt automatically.
+
+3. While the backstory generates, tell the user: "I'm writing my origin story based on what I just learned about you. It'll be woven into how I think from now on."
 
 **If no:** Say "No problem! I'll learn about you as we go."
 

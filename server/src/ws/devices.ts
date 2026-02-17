@@ -78,6 +78,44 @@ export interface SkillRequest {
 export const devices = new Map<string, ConnectedDevice>();
 
 // ============================================
+// DEVICE FACTORIES & HELPERS
+// ============================================
+
+export function createConnectedDevice(ws: WebSocket, session: DeviceSession): ConnectedDevice {
+  return {
+    ws,
+    session,
+    pendingCommands: new Map(),
+    pendingMemoryRequests: new Map(),
+    pendingSkillRequests: new Map(),
+    pendingPersonaRequests: new Map(),
+    pendingCouncilRequests: new Map(),
+    pendingThreadRequests: new Map(),
+    pendingKnowledgeRequests: new Map(),
+    pendingToolRequests: new Map(),
+  };
+}
+
+export function rejectAllPending(device: ConnectedDevice, error: Error): void {
+  const maps: Map<string, { reject: (err: Error) => void }>[] = [
+    device.pendingCommands as any,
+    device.pendingMemoryRequests,
+    device.pendingSkillRequests,
+    device.pendingPersonaRequests,
+    device.pendingCouncilRequests,
+    device.pendingKnowledgeRequests,
+    device.pendingToolRequests,
+    device.pendingThreadRequests,
+  ];
+  for (const map of maps) {
+    for (const [, pending] of map) {
+      pending.reject(error);
+    }
+    map.clear();
+  }
+}
+
+// ============================================
 // SEND HELPERS
 // ============================================
 

@@ -28,10 +28,19 @@ export const toolsManagementTools: DotBotTool[] = [
         script: { type: "string", description: "For script tools: the full source code of the script. Receives JSON args on stdin, outputs JSON on stdout." },
         runtime: { type: "string", enum: ["python", "node", "powershell"], description: "For script tools: execution runtime" },
         credentialRequired: { type: "string", description: "Vault credential name if this tool needs an API key (optional)" },
+        mutating: { type: "boolean", description: "Does this tool modify external state? true = mutating (write, create, delete, send), false = read-only/verification. Defaults to true if omitted." },
+        cache: {
+          type: "object",
+          description: "Research cache config. If set, successful results are cached for follow-up questions. mode: 'raw' (already structured, e.g. search results) or 'enrich' (needs LLM summary, e.g. web pages, transcripts). type: 'web_page', 'web_search', 'api_response', 'pdf_summary', 'video_transcript', or 'image_description'. Auto-inferred as { mode: 'raw', type: 'api_response' } for read-only API tools if omitted.",
+          properties: {
+            mode: { type: "string", enum: ["raw", "enrich"] },
+            type: { type: "string", enum: ["web_page", "web_search", "api_response", "pdf_summary", "video_transcript", "image_description"] },
+          },
+        },
       },
       required: ["id", "name", "description", "category", "inputSchema"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "tools.list_tools",
@@ -48,7 +57,7 @@ export const toolsManagementTools: DotBotTool[] = [
         source: { type: "string", description: "Filter by source: core, api, mcp, skill, custom (optional)" },
       },
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "tools.delete_tool",
@@ -65,6 +74,6 @@ export const toolsManagementTools: DotBotTool[] = [
       },
       required: ["id"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
 ];

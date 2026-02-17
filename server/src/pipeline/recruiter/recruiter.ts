@@ -62,8 +62,8 @@ export async function runRecruiter(
   // ── Step 1: Build prompts + load schemas (parallel) ──
   const [pickerPrompt, pickerSchema, writerSchema] = await Promise.all([
     buildPickerPrompt(intakeKnowledgebase, restatedRequest),
-    loadSchema("recruiter/picker.schema.json"),
-    loadSchema("recruiter/writer.schema.json"),
+    loadSchema("pipeline/recruiter/picker.schema.json"),
+    loadSchema("pipeline/recruiter/writer.schema.json"),
   ]);
 
   const { selectedModel: modelConfig, client } = await resolveModelAndClient(

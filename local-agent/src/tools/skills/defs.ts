@@ -24,7 +24,7 @@ export const skillsManagementTools: DotBotTool[] = [
       },
       required: ["name", "description", "content"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "skills.list_skills",
@@ -40,7 +40,7 @@ export const skillsManagementTools: DotBotTool[] = [
         query: { type: "string", description: "Search query to filter skills (optional)" },
       },
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "skills.read_skill",
@@ -57,7 +57,7 @@ export const skillsManagementTools: DotBotTool[] = [
       },
       required: ["slug"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "skills.delete_skill",
@@ -74,6 +74,6 @@ export const skillsManagementTools: DotBotTool[] = [
       },
       required: ["slug"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
 ];

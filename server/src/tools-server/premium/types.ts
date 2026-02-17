@@ -23,6 +23,11 @@ export interface PremiumApiEntry {
   category: string;
   requiredParams: string[];
   optionalParams: string[];
+  /** Research cache config — if set, results are cached on the local agent for follow-up use. */
+  cache?: {
+    mode: "raw" | "enrich";
+    type: "web_page" | "web_search" | "api_response" | "pdf_summary" | "video_transcript" | "image_description";
+  };
 }
 
 /**

@@ -17,7 +17,7 @@ export const secretsTools: DotBotTool[] = [
       type: "object",
       properties: {},
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "secrets.delete_key",
@@ -34,7 +34,7 @@ export const secretsTools: DotBotTool[] = [
       },
       required: ["key"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "secrets.prompt_user",
@@ -54,6 +54,6 @@ export const secretsTools: DotBotTool[] = [
       },
       required: ["key_name", "prompt", "allowed_domain"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
 ];

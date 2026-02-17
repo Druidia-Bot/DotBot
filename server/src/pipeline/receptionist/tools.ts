@@ -148,7 +148,7 @@ export async function runReceptionistLoop(
   );
 
   const fields = buildReceptionistPromptFields(intakeResult, request, relevantModelSummaries, relatedConversationsText);
-  const systemPrompt = await loadPrompt("receptionist/receptionist.md", fields);
+  const systemPrompt = await loadPrompt("pipeline/receptionist/receptionist.md", fields);
   const messages = buildReceptionistMessages(systemPrompt, conversationHistory, request.prompt);
   const handlers = buildReceptionistHandlers();
   const state = createReceptionistState(request.prompt);

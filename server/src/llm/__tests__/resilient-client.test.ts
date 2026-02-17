@@ -118,6 +118,20 @@ describe("isRetryableError", () => {
   it("handles string errors", () => {
     expect(isRetryableError("429 rate limit")).toBe(true);
   });
+
+  it("detects response_format unavailable (DeepSeek capability error)", () => {
+    expect(isRetryableError(new Error(
+      'DeepSeek API error: 400 {"error":{"message":"This response_format type is unavailable now","type":"invalid_request_error"}}'
+    ))).toBe(true);
+  });
+
+  it("detects 'overloaded' errors", () => {
+    expect(isRetryableError(new Error("Model is overloaded, please try again"))).toBe(true);
+  });
+
+  it("detects 'temporarily unavailable' errors", () => {
+    expect(isRetryableError(new Error("This feature is temporarily unavailable"))).toBe(true);
+  });
 });
 
 // ============================================

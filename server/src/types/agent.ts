@@ -353,6 +353,8 @@ export interface EnhancedPromptRequest {
   activeTasks?: TaskSnapshot[];
   /** Agent identity skeleton — compact self-model for context injection */
   agentIdentity?: string;
+  /** Dot's origin backstory — injected before all other context when useBackstory is enabled */
+  backstory?: string;
   /** Pre-classification hints from local agent (runs on-device before sending) */
   hints?: {
     /** Local LLM detected multiple unrelated requests in the message */

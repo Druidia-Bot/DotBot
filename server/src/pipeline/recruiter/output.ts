@@ -40,7 +40,7 @@ export async function buildPickerPrompt(
     "Councils": formatCouncilsBulletList(councils),
   };
 
-  return loadPrompt("recruiter/picker.md", fields);
+  return loadPrompt("pipeline/recruiter/picker.md", fields);
 }
 
 // ============================================
@@ -111,7 +111,7 @@ export async function buildWriterPrompt(
     "Tool Catalog": toolCatalog,
   };
 
-  return loadPrompt("recruiter/writer.md", fields);
+  return loadPrompt("pipeline/recruiter/writer.md", fields);
 }
 
 // ============================================

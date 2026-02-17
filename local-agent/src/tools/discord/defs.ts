@@ -20,7 +20,7 @@ export const discordTools: DotBotTool[] = [
         token: { type: "string", description: "Optional. The Discord bot token — only needed if not already stored via secrets.prompt_user." },
       },
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "discord.get_invite_url",
@@ -38,7 +38,7 @@ export const discordTools: DotBotTool[] = [
         permissions: { type: "string", description: "Permission integer (default: '8' = Administrator). Use '8' for full access." },
       },
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "discord.list_guilds",
@@ -53,7 +53,7 @@ export const discordTools: DotBotTool[] = [
       type: "object",
       properties: {},
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "discord.list_channels",
@@ -71,7 +71,7 @@ export const discordTools: DotBotTool[] = [
       },
       required: ["guild_id"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "discord.create_channel",
@@ -91,7 +91,7 @@ export const discordTools: DotBotTool[] = [
       },
       required: ["guild_id", "name"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "discord.setup_channels",
@@ -109,7 +109,7 @@ export const discordTools: DotBotTool[] = [
       },
       required: ["guild_id"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "discord.write_config",
@@ -130,7 +130,7 @@ export const discordTools: DotBotTool[] = [
       },
       required: ["guild_id", "channel_conversation", "channel_updates", "channel_logs"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "discord.create_guild",
@@ -147,7 +147,7 @@ export const discordTools: DotBotTool[] = [
         name: { type: "string", description: "Server name (default: 'Agent HQ')" },
       },
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "discord.create_invite",
@@ -167,7 +167,7 @@ export const discordTools: DotBotTool[] = [
       },
       required: ["channel_id"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "discord.send_message",
@@ -201,7 +201,7 @@ export const discordTools: DotBotTool[] = [
       },
       required: ["channel_id"],
     },
-    annotations: {},
+    annotations: { mutatingHint: true },
   },
   {
     id: "discord.send_file",
@@ -221,7 +221,24 @@ export const discordTools: DotBotTool[] = [
       },
       required: ["channel_id", "file_path"],
     },
-    annotations: {},
+    annotations: { mutatingHint: true },
+  },
+  {
+    id: "discord.gateway",
+    name: "manage_discord_gateway",
+    description: "Manage the Discord Gateway WebSocket connection. Actions: 'status' — check if the gateway is connected, get bot user ID, session info, and pending responses. 'restart' — disconnect the current gateway and reconnect with a fresh token from the vault (use after updating the bot token via secrets.prompt_user). 'stop' — shut down the gateway gracefully.",
+    source: "core",
+    category: "discord",
+    executor: "local",
+    runtime: "internal",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["status", "restart", "stop"], description: "The gateway management action to perform" },
+      },
+      required: ["action"],
+    },
+    annotations: { mutatingHint: true },
   },
   {
     id: "discord.full_setup",
@@ -238,6 +255,6 @@ export const discordTools: DotBotTool[] = [
         name: { type: "string", description: "Server name (default: 'Agent HQ')" },
       },
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
 ];

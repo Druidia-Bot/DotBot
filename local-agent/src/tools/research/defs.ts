@@ -28,7 +28,7 @@ Use this instead of raw filesystem.write_file when saving research — it handle
       },
       required: ["workspace", "title", "detailed_notes"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "research.list",
@@ -45,6 +45,6 @@ Use this instead of raw filesystem.write_file when saving research — it handle
       },
       required: ["workspace"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
 ];

@@ -6,6 +6,30 @@
  */
 
 import type { ToolManifestEntry } from "#tools/types.js";
+import { SCRAPINGDOG_APIS } from "./providers/scrapingdog/catalog.js";
+
+/**
+ * Build a compact summary of available premium APIs grouped by category.
+ * Injected into the premium.execute tool description so agents know
+ * what's available without needing a discovery call.
+ */
+function buildApiCatalogSummary(): string {
+  const grouped = new Map<string, { id: string; cost: number }[]>();
+  for (const api of SCRAPINGDOG_APIS) {
+    const cat = api.category || "other";
+    if (!grouped.has(cat)) grouped.set(cat, []);
+    grouped.get(cat)!.push({ id: api.id, cost: api.creditCost });
+  }
+
+  const lines: string[] = [];
+  for (const [cat, apis] of grouped) {
+    const entries = apis.map(a => `${a.id}(${a.cost}cr)`).join(", ");
+    lines.push(`${cat}: ${entries}`);
+  }
+  return lines.join("; ");
+}
+
+const apiSummary = buildApiCatalogSummary();
 
 export const PREMIUM_TOOLS: ToolManifestEntry[] = [
   {
@@ -31,12 +55,12 @@ export const PREMIUM_TOOLS: ToolManifestEntry[] = [
   {
     id: "premium.execute",
     name: "premium_execute",
-    description: "Execute a premium API call. Costs credits per call. Use list_premium_apis first to see available APIs and their costs. Pass the API id and its required parameters.",
+    description: `Execute a premium API call. Costs credits per call. Pass the API id and its required parameters. Available APIs: ${apiSummary}. Call list_premium_apis for full details and parameter docs.`,
     category: "premium",
     inputSchema: {
       type: "object",
       properties: {
-        api: { type: "string", description: "API id from list_premium_apis (e.g., 'google_search', 'web_scrape', 'amazon_search')" },
+        api: { type: "string", description: "API id from the Available APIs list above" },
         query: { type: "string", description: "Search query (for search-type APIs)" },
         url: { type: "string", description: "URL to scrape (for web_scrape and screenshot APIs)" },
         asin: { type: "string", description: "Amazon ASIN (for amazon_product API)" },

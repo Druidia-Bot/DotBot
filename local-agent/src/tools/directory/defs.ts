@@ -22,7 +22,7 @@ export const directoryTools: DotBotTool[] = [
       },
       required: ["path"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "directory.create",
@@ -39,7 +39,7 @@ export const directoryTools: DotBotTool[] = [
       },
       required: ["path"],
     },
-    annotations: {},
+    annotations: { mutatingHint: true },
   },
   {
     id: "directory.delete",
@@ -56,7 +56,7 @@ export const directoryTools: DotBotTool[] = [
       },
       required: ["path"],
     },
-    annotations: { destructiveHint: true, requiresConfirmation: true },
+    annotations: { destructiveHint: true, requiresConfirmation: true, mutatingHint: true },
   },
   {
     id: "directory.find",
@@ -75,7 +75,7 @@ export const directoryTools: DotBotTool[] = [
       },
       required: ["path", "pattern"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "directory.tree",
@@ -93,7 +93,7 @@ export const directoryTools: DotBotTool[] = [
       },
       required: ["path"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "directory.grep",
@@ -114,7 +114,7 @@ export const directoryTools: DotBotTool[] = [
       },
       required: ["path", "pattern"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "directory.size",
@@ -131,6 +131,6 @@ export const directoryTools: DotBotTool[] = [
       },
       required: ["path"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
 ];

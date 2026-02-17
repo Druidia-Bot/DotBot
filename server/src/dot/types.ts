@@ -24,6 +24,20 @@ export interface DotOptions {
 }
 
 // ============================================
+// DOT PREPARED CONTEXT (output of pre-dot phase)
+// ============================================
+
+/** Everything the pre-dot phase produces — passed to runDot() and used for thread saving. */
+export interface DotPreparedContext {
+  /** The resolved/restated prompt (context-aware rewrite of the user's raw input). */
+  resolvedPrompt: string;
+  /** Active thread ID from context builder. */
+  threadId: string;
+  /** @internal Pre-dot state consumed by runDot — opaque to callers. */
+  _internal: unknown;
+}
+
+// ============================================
 // DOT RESULT
 // ============================================
 
@@ -57,4 +71,8 @@ export const DOT_PROXY_CATEGORIES = new Set([
   "shell",       // shell.execute
   "secrets",     // secrets.prompt_user — secure API key input
   "tools",       // tools.list_tools, tools.save_tool, tools.delete_tool
+  "discord",     // discord.gateway, discord.send_message, discord.full_setup, etc.
+  "personas",    // personas.create, personas.list, personas.read
+  "memory",      // memory.create_model, memory.save_message, memory.search, etc.
+  "imagegen",    // imagegen.generate, imagegen.edit — image generation & editing
 ]);

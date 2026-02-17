@@ -32,14 +32,14 @@ export async function replan(
   });
 
   const [replanSchema] = await Promise.all([
-    loadSchema("planner/prompts/replanner.schema.json"),
+    loadSchema("pipeline/planner/prompts/replanner.schema.json"),
   ]);
 
   const signalsText = signals && signals.length > 0
     ? `The user sent the following instructions while work was in progress. Incorporate them into the remaining steps:\n${signals.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
     : "(none)";
 
-  const prompt = await loadPrompt("planner/prompts/replanner.md", {
+  const prompt = await loadPrompt("pipeline/planner/prompts/replanner.md", {
     "Original Plan": formatPlanForPrompt(originalPlan),
     "Step Title": completedStep.step.title,
     "Step ID": completedStep.step.id,

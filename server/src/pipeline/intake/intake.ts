@@ -43,7 +43,7 @@ export async function executeClassifyPipeline(
     "User Message": request.prompt,
   };
 
-  const prompt = await loadPrompt("intake/intake.md", fields);
+  const prompt = await loadPrompt("pipeline/intake/intake.md", fields);
 
   log.info("Calling LLM", {
     historyCount: request.recentHistory.length,

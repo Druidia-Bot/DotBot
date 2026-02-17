@@ -64,7 +64,7 @@ async function queryLLMRaw(
   if (!response) {
     try {
       const serverCall = serverLLMCall({
-        provider: "deepseek",
+        role: "workhorse",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt },

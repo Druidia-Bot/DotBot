@@ -86,22 +86,34 @@ if ((Test-Path (Join-Path $OldInstallDir 'package.json')) -and -not (Test-Path (
         try {
             $task = Get-ScheduledTask -TaskName "DotBot" -ErrorAction SilentlyContinue
             if ($task) {
-                $runPath = Join-Path 'C:\.bot' 'run.ps1'
-                $Action = New-ScheduledTaskAction -Execute "powershell.exe" `
-                    -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$runPath`" -Service" `
-                    -WorkingDirectory 'C:\.bot'
+                $trayScript = Join-Path 'C:\.bot' 'tray.ps1'
+                if (Test-Path $trayScript) {
+                    $Action = New-ScheduledTaskAction -Execute "powershell.exe" `
+                        -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$trayScript`"" `
+                        -WorkingDirectory 'C:\.bot'
+                } else {
+                    $runPath = Join-Path 'C:\.bot' 'run.ps1'
+                    $Action = New-ScheduledTaskAction -Execute "powershell.exe" `
+                        -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$runPath`" -Service" `
+                        -WorkingDirectory 'C:\.bot'
+                }
                 Set-ScheduledTask -TaskName "DotBot" -Action $Action | Out-Null
                 Write-Host "  [OK] Updated scheduled task to new location" -ForegroundColor Green
             }
         } catch { Write-Host "  [!] Could not update scheduled task" -ForegroundColor Yellow }
 
-        # Update Start Menu shortcut
+        # Update Start Menu shortcut — prefer tray.ps1 (invisible) over run.ps1 (console)
         try {
             $lnkPath = Join-Path ([Environment]::GetFolderPath("Programs")) "DotBot.lnk"
             if (Test-Path $lnkPath) {
                 $shell = New-Object -ComObject WScript.Shell
                 $shortcut = $shell.CreateShortcut($lnkPath)
-                $shortcut.Arguments = "-ExecutionPolicy Bypass -NoExit -File `"$(Join-Path 'C:\.bot' 'run.ps1')`""
+                $trayScript = Join-Path 'C:\.bot' 'tray.ps1'
+                if (Test-Path $trayScript) {
+                    $shortcut.Arguments = "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$trayScript`""
+                } else {
+                    $shortcut.Arguments = "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path 'C:\.bot' 'run.ps1')`" -Service"
+                }
                 $shortcut.WorkingDirectory = 'C:\.bot'
                 $shortcut.Save()
             }
@@ -171,12 +183,30 @@ function Write-Log {
 if ($Stop) {
     Write-Host ""
     Write-Host "  Stopping DotBot..." -ForegroundColor Yellow
+    $script:stopped = $false
+
+    # Kill the tray.ps1 PowerShell process (system tray icon)
+    Get-Process -Name "powershell" -ErrorAction SilentlyContinue | ForEach-Object {
+        try {
+            $cmdLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction SilentlyContinue).CommandLine
+            if ($cmdLine -and $cmdLine -match 'tray\.ps1') {
+                Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+                Write-Host "  Killed tray process (PID $($_.Id))" -ForegroundColor Gray
+                $script:stopped = $true
+            }
+        } catch {}
+    }
+
     $pids = Find-DotBotPids
     if ($pids.Count -gt 0) {
         foreach ($p in $pids) {
             Stop-Process -Id $p -Force -ErrorAction SilentlyContinue
             Write-Host "  Killed PID $p" -ForegroundColor Gray
         }
+        $script:stopped = $true
+    }
+
+    if ($script:stopped) {
         Write-Host "  [OK] DotBot stopped" -ForegroundColor Green
     } else {
         Write-Host "  No running DotBot processes found" -ForegroundColor Gray

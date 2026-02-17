@@ -651,59 +651,130 @@ async function executeScriptTool(toolId: string, tool: DotBotTool, args: Record<
   });
 }
 
+// ============================================
+// RESEARCH CACHE — CENTRALIZED POST-EXECUTION HOOK
+// ============================================
+
+const MIN_CACHE_LENGTH = 50;
+
+/**
+ * Extract a source identifier from tool args using well-known arg names.
+ */
+function extractCacheSource(toolId: string, args: Record<string, any>): string {
+  if (args.url) return args.url;
+  if (args.query) return `${toolId.split(".")[0]}:${args.query}`;
+  if (args.path) return args.path;
+  if (args.image_path) return args.image_path;
+  return toolId;
+}
+
+/**
+ * Extract a human-readable title from tool args.
+ */
+function extractCacheTitle(toolId: string, args: Record<string, any>, output: string): string | undefined {
+  if (args.query) return `${toolId === "search.brave" ? "Search" : toolId === "search.ddg_instant" ? "DDG" : "Query"}: ${args.query}`;
+  if (args.path) return `${toolId.split(".")[1] || "File"}: ${args.path.split(/[\\/]/).pop()}`;
+  if (args.image_path) return `OCR: ${args.image_path.split(/[\\/]/).pop()}`;
+  // For http.render, try to extract title from JSON output
+  if (args.url) {
+    try { const t = JSON.parse(output).title; if (t) return t; } catch { /* not JSON */ }
+  }
+  return undefined;
+}
+
+/**
+ * Fire-and-forget: write a research cache entry and optionally enrich it.
+ * Reads cache config from the tool definition — never blocks tool execution.
+ */
+function cacheToolResult(toolId: string, args: Record<string, any>, result: ToolExecResult): void {
+  if (!result.success) return;
+  if (result.output.length < MIN_CACHE_LENGTH) return;
+
+  // Look up tool definition to check for cache config
+  const toolDef = getTool(toolId);
+  if (!toolDef?.cache) return;
+
+  const { mode, type } = toolDef.cache;
+  const source = extractCacheSource(toolId, args);
+  const title = extractCacheTitle(toolId, args, result.output);
+
+  // Fire-and-forget: write cache, then enrich if mode === "enrich"
+  import("../memory/research-cache.js").then(({ writeResearchCache }) => {
+    writeResearchCache({
+      source,
+      type,
+      tool: toolId,
+      title,
+      content: result.output,
+    }).then((filename) => {
+      if (mode === "enrich") {
+        import("../memory/cache-enricher.js").then(({ enrichCacheEntry }) => {
+          enrichCacheEntry(filename, result.output, title).catch(() => {});
+        }).catch(() => {});
+      }
+    }).catch(() => {});
+  }).catch(() => {});
+}
+
 /**
  * Execute a tool by its dotted ID with the given arguments.
  */
 export async function executeTool(toolId: string, args: Record<string, any>): Promise<ToolExecResult> {
   const [category] = toolId.split(".");
 
+  let result: ToolExecResult;
   try {
     switch (category) {
-      case "filesystem": return await handleFilesystem(toolId, args);
-      case "directory":  return await handleDirectory(toolId, args);
-      case "shell":      return await handleShell(toolId, args);
-      case "http":       return await handleHttp(toolId, args);
-      case "clipboard":  return await handleClipboard(toolId, args);
-      case "browser":    return await handleBrowser(toolId, args);
-      case "system":     return await handleSystem(toolId, args);
-      case "network":    return await handleNetwork(toolId, args);
-      case "secrets":    return await handleSecrets(toolId, args);
-      case "search":     return await handleSearch(toolId, args);
-      case "tools":      return await handleToolsManagement(toolId, args);
-      case "skills":     return await handleSkillsManagement(toolId, args);
-      case "codegen":    return await handleCodegen(toolId, args);
-      case "npm":        return await handleNpm(toolId, args);
-      case "git":        return await handleGit(toolId, args);
-      case "runtime":    return await handleRuntime(toolId, args);
-      case "knowledge":  return await handleKnowledge(toolId, args);
-      case "personas":   return await handlePersonas(toolId, args);
-      case "llm":        return await handleLocalLLM(toolId, args);
-      case "gui":        return await handleGui(toolId, args);
-      case "discord":    return await handleDiscord(toolId, args);
-      case "reminder":   return await handleReminder(toolId, args);
-      case "admin":      return await handleAdmin(toolId, args);
-      case "email":      return await handleEmail(toolId, args);
-      case "market":     return await handleMarket(toolId, args);
-      case "research":   return await handleResearch(toolId, args);
-      case "onboarding": return await handleOnboarding(toolId, args);
-      case "config":     return await handleConfig(toolId, args);
-      case "registry":   return await handleRegistry(toolId, args);
-      case "window":     return await handleWindow(toolId, args);
-      case "screen":     return await handleScreen(toolId, args);
-      case "audio":      return await handleAudio(toolId, args);
-      case "monitoring": return await handleMonitoring(toolId, args);
-      case "package":    return await handlePackage(toolId, args);
-      case "data":       return await handleData(toolId, args);
-      case "pdf":        return await handlePdf(toolId, args);
-      case "db":         return await handleDb(toolId, args);
-      case "vision":     return await handleVision(toolId, args);
+      case "filesystem": result = await handleFilesystem(toolId, args); break;
+      case "directory":  result = await handleDirectory(toolId, args); break;
+      case "shell":      result = await handleShell(toolId, args); break;
+      case "http":       result = await handleHttp(toolId, args); break;
+      case "clipboard":  result = await handleClipboard(toolId, args); break;
+      case "browser":    result = await handleBrowser(toolId, args); break;
+      case "system":     result = await handleSystem(toolId, args); break;
+      case "network":    result = await handleNetwork(toolId, args); break;
+      case "secrets":    result = await handleSecrets(toolId, args); break;
+      case "search":     result = await handleSearch(toolId, args); break;
+      case "tools":      result = await handleToolsManagement(toolId, args); break;
+      case "skills":     result = await handleSkillsManagement(toolId, args); break;
+      case "codegen":    result = await handleCodegen(toolId, args); break;
+      case "npm":        result = await handleNpm(toolId, args); break;
+      case "git":        result = await handleGit(toolId, args); break;
+      case "runtime":    result = await handleRuntime(toolId, args); break;
+      case "knowledge":  result = await handleKnowledge(toolId, args); break;
+      case "personas":   result = await handlePersonas(toolId, args); break;
+      case "llm":        result = await handleLocalLLM(toolId, args); break;
+      case "gui":        result = await handleGui(toolId, args); break;
+      case "discord":    result = await handleDiscord(toolId, args); break;
+      case "reminder":   result = await handleReminder(toolId, args); break;
+      case "admin":      result = await handleAdmin(toolId, args); break;
+      case "email":      result = await handleEmail(toolId, args); break;
+      case "market":     result = await handleMarket(toolId, args); break;
+      case "research":   result = await handleResearch(toolId, args); break;
+      case "onboarding": result = await handleOnboarding(toolId, args); break;
+      case "config":     result = await handleConfig(toolId, args); break;
+      case "registry":   result = await handleRegistry(toolId, args); break;
+      case "window":     result = await handleWindow(toolId, args); break;
+      case "screen":     result = await handleScreen(toolId, args); break;
+      case "audio":      result = await handleAudio(toolId, args); break;
+      case "monitoring": result = await handleMonitoring(toolId, args); break;
+      case "package":    result = await handlePackage(toolId, args); break;
+      case "data":       result = await handleData(toolId, args); break;
+      case "pdf":        result = await handlePdf(toolId, args); break;
+      case "db":         result = await handleDb(toolId, args); break;
+      case "vision":     result = await handleVision(toolId, args); break;
       default:
         // Catch-all: check if this is a registered non-core tool (API or custom script)
-        return await executeRegisteredTool(toolId, args);
+        result = await executeRegisteredTool(toolId, args); break;
     }
   } catch (err) {
     return { success: false, output: "", error: err instanceof Error ? err.message : String(err) };
   }
+
+  // Post-execution: cache research-worthy tool results (fire-and-forget)
+  cacheToolResult(toolId, args, result);
+
+  return result;
 }
 
 // ============================================

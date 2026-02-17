@@ -30,13 +30,13 @@ export async function createPlan(
   log.info("Creating step plan", { agentId: input.agentId, request: restatedRequest.slice(0, 100) });
 
   const [plannerSchema, toolManifest] = await Promise.all([
-    loadSchema("planner/prompts/planner.schema.json"),
+    loadSchema("pipeline/planner/prompts/planner.schema.json"),
     fetchManifest(input.deviceId),
   ]);
 
   const toolSummary = generateMinimalCatalog(toolManifest);
 
-  const prompt = await loadPrompt("planner/prompts/planner.md", {
+  const prompt = await loadPrompt("pipeline/planner/prompts/planner.md", {
     "Intake Knowledgebase": intakeKnowledgebase || "(none gathered)",
     "Restated Request": restatedRequest,
     "Tool Summary": toolSummary,

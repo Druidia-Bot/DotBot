@@ -20,11 +20,15 @@ let reconnectAttempts = 0;
 let failingSinceMs = 0;
 let messageHandler: ((message: WSMessage) => Promise<void>) | null = null;
 let onConnectedCallback: (() => void) | null = null;
+let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+let missedPongs = 0;
 
 const MAX_RECONNECT_ATTEMPTS = 50;
 const BASE_RECONNECT_DELAY_MS = 2_000;
 const MAX_RECONNECT_DELAY_MS = 60_000;
 const CIRCUIT_BREAKER_MS = 60 * 60 * 1000; // 1 hour
+const KEEPALIVE_INTERVAL_MS = 20_000; // 20s — fast enough to catch Starlink micro-dropouts
+const MAX_MISSED_PONGS = 2; // 2 missed pongs (~40s) = zombie, force reconnect
 
 // Pending server responses for async request/response (sleep cycle condense, resolve loop)
 const pendingServerResponses = new Map<string, { resolve: (value: any) => void; reject: (err: any) => void }>();
@@ -59,6 +63,7 @@ export function connect(): void {
     console.log("[Agent] Connected! Authenticating...");
     reconnectAttempts = 0;
     failingSinceMs = 0;
+    missedPongs = 0;
     onConnectedCallback?.();
   });
 
@@ -79,6 +84,7 @@ export function connect(): void {
       return;
     }
     console.log("[Agent] Disconnected");
+    flushPendingResponses();
     scheduleReconnect();
   });
 
@@ -100,8 +106,10 @@ function scheduleReconnect(): void {
 
   if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
     reconnectAttempts++;
-    // Exponential backoff: 2s, 4s, 8s, 16s, 32s, capped at 60s
-    const delay = Math.min(BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY_MS);
+    // Exponential backoff with jitter: base * 2^n + random(0..base), capped at 60s
+    const exponential = BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts - 1);
+    const jitter = Math.random() * BASE_RECONNECT_DELAY_MS;
+    const delay = Math.min(exponential + jitter, MAX_RECONNECT_DELAY_MS);
     console.log(`[Agent] Reconnecting in ${(delay/1000).toFixed(0)}s (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}, failing for ${Math.round(failingDuration/1000)}s)...`);
     setTimeout(connect, delay);
   } else {
@@ -175,13 +183,37 @@ export function handlePendingResponse(message: WSMessage): void {
   }
 }
 
+/**
+ * Flush all pending server responses on disconnect.
+ * Resolves them with null so callers (sleep cycle, etc.) fail fast
+ * instead of hanging until the 2-minute timeout.
+ */
+function flushPendingResponses(): void {
+  if (pendingServerResponses.size === 0) return;
+  console.log(`[Agent] Flushing ${pendingServerResponses.size} pending server response(s) after disconnect`);
+  for (const [id, pending] of pendingServerResponses) {
+    pending.resolve(null);
+  }
+  pendingServerResponses.clear();
+}
+
 // ============================================
 // KEEPALIVE PING
 // ============================================
 
 export function startKeepalivePing(): void {
-  setInterval(() => {
+  if (keepaliveTimer) clearInterval(keepaliveTimer);
+  missedPongs = 0;
+
+  keepaliveTimer = setInterval(() => {
     if (ws?.readyState === WebSocket.OPEN) {
+      if (missedPongs >= MAX_MISSED_PONGS) {
+        console.warn(`[Agent] ${missedPongs} pongs missed — zombie connection, forcing reconnect`);
+        missedPongs = 0;
+        ws.close(4000, "Zombie connection — missed pongs");
+        return;
+      }
+      missedPongs++;
       send({
         type: "ping",
         id: nanoid(),
@@ -189,7 +221,14 @@ export function startKeepalivePing(): void {
         payload: {}
       });
     }
-  }, 30000);
+  }, KEEPALIVE_INTERVAL_MS);
+}
+
+/**
+ * Called by the message router when a pong is received.
+ */
+export function handlePong(): void {
+  missedPongs = 0;
 }
 
 // ============================================

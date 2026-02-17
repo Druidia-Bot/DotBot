@@ -49,13 +49,21 @@ export async function condenseThread(
     if (model) relevantModels.push(model);
   }
 
-  // Also check keyword matches against model index
+  // Build a text blob from message content for broader matching
+  const messageText = (thread.messages || [])
+    .filter((m: any) => !m.condensed)
+    .map((m: any) => (m.content || "").toLowerCase())
+    .join(" ");
+
+  // Check keyword/name matches against model index — includes message content scan
   for (const indexEntry of l0Index.models) {
     if (relevantModels.some(m => m.slug === indexEntry.slug)) continue;
-    const overlap = indexEntry.keywords.some(k =>
+    const nameMatch = messageText.includes(indexEntry.name.toLowerCase())
+      || messageText.includes(indexEntry.slug);
+    const keywordMatch = indexEntry.keywords.some(k =>
       threadSummary.keywords.includes(k) || threadSummary.topic.toLowerCase().includes(k)
     );
-    if (overlap) {
+    if (nameMatch || keywordMatch) {
       const model = await store.getMentalModel(indexEntry.slug);
       if (model) relevantModels.push(model);
     }
@@ -75,7 +83,38 @@ export async function condenseThread(
     },
   });
 
-  if (!response?.instructions?.length) return { applied: 0 };
+  if (!response) {
+    console.warn(`[SleepCycle] Condense returned null for thread "${threadSummary.topic}" — server may have disconnected`);
+    return { applied: 0 };
+  }
+  if (!response.instructions?.length) {
+    console.log(`[SleepCycle] Condense returned 0 instructions for thread "${threadSummary.topic}" — reasoning: ${response.reasoning || "none"}`);
+    return { applied: 0 };
+  }
+
+  // Log what the condenser wants to do
+  const actionCounts: Record<string, number> = {};
+  for (const inst of response.instructions) {
+    actionCounts[inst.action] = (actionCounts[inst.action] || 0) + 1;
+  }
+  console.log(`[SleepCycle] Condenser for "${threadSummary.topic}": ${response.instructions.length} instructions — ${JSON.stringify(actionCounts)}`);
+  if (relevantModels.length > 0) {
+    console.log(`[SleepCycle]   Relevant models: ${relevantModels.map(m => m.slug).join(", ")}`);
+  }
+
+  // Ensure a condense_thread instruction exists — if the LLM forgot to emit one,
+  // add a fallback so the thread always gets condensed after processing.
+  const hasCondense = response.instructions.some((i: any) => i.action === "condense_thread");
+  if (!hasCondense) {
+    console.log(`[SleepCycle] LLM did not emit condense_thread for "${threadSummary.topic}" — adding fallback`);
+    response.instructions.push({
+      action: "condense_thread",
+      threadId: threadSummary.id,
+      summary: response.reasoning || `Conversation about ${threadSummary.topic}`,
+      keyPoints: [],
+      preserveLastN: 3,
+    });
+  }
 
   const result = await applyInstructions(response.instructions);
 

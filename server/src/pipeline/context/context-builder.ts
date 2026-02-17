@@ -56,7 +56,7 @@ export async function buildRequestContext(
       fetchToolManifest(agentDeviceId),
     ]);
 
-  const { l0Index, priorHistory, activeThreadId, activeTasks, agentIdentity } = memoryState;
+  const { l0Index, priorHistory, activeThreadId, activeTasks, agentIdentity, backstory } = memoryState;
 
   const enhancedRequest: EnhancedPromptRequest = {
     type: "prompt",
@@ -76,6 +76,7 @@ export async function buildRequestContext(
     memoryIndex: l0Index.models,
     activeTasks,
     agentIdentity,
+    backstory,
   };
 
   const devicePlatform = getPlatformForUser(userId);

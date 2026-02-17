@@ -39,6 +39,8 @@ export interface AgentIdentity {
   humanInstructions: string[];
   /** Preferred communication style keywords */
   communicationStyle: string[];
+  /** If true, inject backstory.md into system prompt before all other context */
+  useBackstory?: boolean;
   /** Version — bumped on each update for change tracking */
   version: number;
   createdAt: string;
@@ -285,6 +287,9 @@ export interface MentalModel {
   
   /** Conversation history relevant to this model */
   conversations: ConversationReference[];
+  
+  /** Explicit keywords for indexing (supplemented by auto-extracted keywords) */
+  keywords?: string[];
   
   /** Agents that have been assigned to work on tasks related to this model */
   agents: AgentAssignment[];

@@ -31,7 +31,7 @@ export const scrapingDogProvider: PremiumProvider = {
 
   async execute(apiEntry: PremiumApiEntry, args: Record<string, any>): Promise<string> {
     if (!client.isConfigured) {
-      throw new Error("ScrapingDog API key not configured on the server. Contact the DotBot administrator.");
+      throw new Error("ScrapingDog API key not configured on the server. This is a SERVER-MANAGED credential — do NOT prompt the user for it. The server administrator must set SCRAPING_DOG_API_KEY in the server environment.");
     }
     const sdEntry = apiById.get(apiEntry.id);
     if (!sdEntry) {

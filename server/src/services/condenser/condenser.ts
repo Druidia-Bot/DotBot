@@ -15,7 +15,7 @@
  * - loop-resolver.schema.json — resolver response schema
  */
 
-import { createLLMClient } from "#llm/factory.js";
+import { createClientForSelection } from "#llm/factory.js";
 import { selectModel } from "#llm/selection/model-selector.js";
 import { loadPrompt, loadSchema } from "../../prompt-template.js";
 import { createComponentLogger } from "#logging.js";
@@ -67,11 +67,19 @@ function formatThread(thread: any, messages: any[]): string {
     .map((m: any) => `[${m.role || "unknown"}]: ${m.content}`)
     .join("\n");
 
-  return `"${thread.topic || "Untitled"}" (ID: ${thread.id})\n${messages.length} messages:\n${conversationStr}`;
+  // Include previous condensed summary as context if available
+  const condensedMsg = (thread.messages || []).find((m: any) => m.condensed);
+  const priorContext = condensedMsg
+    ? `\nPrior context (from previous condensation):\n${condensedMsg.content}\n\n`
+    : "";
+
+  return `"${thread.topic || "Untitled"}" (ID: ${thread.id})\n${priorContext}${messages.length} new messages:\n${conversationStr}`;
 }
 
 function filterNewMessages(thread: any, lastCycleAt?: string): any[] {
   let messages = thread.messages || [];
+  // Always skip condensed summary messages — they're artifacts of previous cycles
+  messages = messages.filter((m: any) => !m.condensed);
   if (lastCycleAt) {
     const cutoff = new Date(lastCycleAt).getTime();
     messages = messages.filter((m: any) => {
@@ -106,8 +114,8 @@ export async function runCondenser(
   request: CondenserRequest,
   options: CondenserOptions,
 ): Promise<CondenserResult> {
-  const llm = createLLMClient({ apiKey: options.apiKey, provider: options.provider || "deepseek" });
   const modelConfig = selectModel({ explicitRole: "workhorse" });
+  const llm = createClientForSelection(modelConfig);
 
   const messages = filterNewMessages(request.thread, request.lastCycleAt);
   if (messages.length === 0) {
@@ -115,13 +123,13 @@ export async function runCondenser(
   }
 
   const [prompt, condenserSchema] = await Promise.all([
-    loadPrompt("condenser/condenser.md", {
+    loadPrompt("services/condenser/condenser.md", {
       Identity: request.identity || "Name: Dot\nRole: AI Assistant",
       Thread: formatThread(request.thread, messages),
       ModelIndex: formatModelIndex(request.modelIndex),
       RelevantModels: formatRelevantModels(request.relevantModels),
     }),
-    loadSchema("condenser/condenser.schema.json"),
+    loadSchema("services/condenser/condenser.schema.json"),
   ]);
 
   log.info("Running condenser", {

@@ -13,7 +13,7 @@
  * - loop-resolver.schema.json    — JSON schema sent to LLM for structured output
  */
 
-import { createLLMClient } from "#llm/factory.js";
+import { createClientForSelection } from "#llm/factory.js";
 import { selectModel } from "#llm/selection/model-selector.js";
 import { loadPrompt, loadSchema } from "../../prompt-template.js";
 import { createComponentLogger } from "#logging.js";
@@ -68,16 +68,16 @@ export async function runLoopResolver(
   options: CondenserOptions,
   toolOptions?: LoopResolverToolOptions,
 ): Promise<LoopResolverResult> {
-  const llm = createLLMClient({ apiKey: options.apiKey, provider: options.provider || "deepseek" });
   const modelConfig = selectModel({ explicitRole: "workhorse" });
+  const llm = createClientForSelection(modelConfig);
 
   const [prompt, resolverSchema] = await Promise.all([
-    loadPrompt("condenser/loop-resolver.md", {
+    loadPrompt("services/condenser/loop-resolver.md", {
       Identity: request.identity || "Name: Dot\nRole: AI Assistant",
       Loop: formatLoop(request),
       Context: formatContext(request),
     }),
-    loadSchema("condenser/loop-resolver.schema.json"),
+    loadSchema("services/condenser/loop-resolver.schema.json"),
   ]);
 
   log.info("Running loop resolver", {

@@ -20,6 +20,6 @@ export const browserTools: DotBotTool[] = [
       },
       required: ["url"],
     },
-    annotations: {},
+    annotations: { mutatingHint: true },
   },
 ];

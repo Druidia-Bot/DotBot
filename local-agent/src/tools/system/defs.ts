@@ -20,7 +20,7 @@ export const systemTools: DotBotTool[] = [
         top: { type: "number", description: "Number of top processes to show (default: 20)" },
       },
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "system.kill_process",
@@ -37,7 +37,7 @@ export const systemTools: DotBotTool[] = [
         pid: { type: "number", description: "Process ID" },
       },
     },
-    annotations: { destructiveHint: true, requiresConfirmation: true },
+    annotations: { destructiveHint: true, requiresConfirmation: true, mutatingHint: true },
   },
   {
     id: "system.info",
@@ -51,7 +51,7 @@ export const systemTools: DotBotTool[] = [
       type: "object",
       properties: {},
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "system.env_get",
@@ -68,7 +68,7 @@ export const systemTools: DotBotTool[] = [
       },
       required: ["name"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "system.env_set",
@@ -87,7 +87,7 @@ export const systemTools: DotBotTool[] = [
       },
       required: ["name", "value"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "system.service_list",
@@ -104,7 +104,7 @@ export const systemTools: DotBotTool[] = [
         status: { type: "string", description: "Filter by status: 'running', 'stopped', or 'all' (default: 'all')" },
       },
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "system.service_manage",
@@ -122,7 +122,7 @@ export const systemTools: DotBotTool[] = [
       },
       required: ["name", "action"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "system.scheduled_task",
@@ -143,7 +143,7 @@ export const systemTools: DotBotTool[] = [
       },
       required: ["action"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "system.notification",
@@ -161,7 +161,7 @@ export const systemTools: DotBotTool[] = [
       },
       required: ["title", "message"],
     },
-    annotations: {},
+    annotations: { mutatingHint: true },
   },
   {
     id: "system.restart",
@@ -175,10 +175,12 @@ export const systemTools: DotBotTool[] = [
       type: "object",
       properties: {
         reason: { type: "string", description: "Why the restart is needed (logged for debugging)" },
+        user_initiated: { type: "boolean", description: "Set true when the user explicitly asked for a restart in this conversation. Explicit user requests bypass restart cooldown." },
+        force: { type: "boolean", description: "Emergency cooldown bypass. Use only for explicit user-requested restarts or recovery situations." },
       },
       required: ["reason"],
     },
-    annotations: { destructiveHint: true, requiresConfirmation: true },
+    annotations: { destructiveHint: true, requiresConfirmation: true, mutatingHint: true },
   },
   {
     id: "system.health_check",
@@ -192,7 +194,7 @@ export const systemTools: DotBotTool[] = [
       type: "object",
       properties: {},
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "system.update",
@@ -208,7 +210,7 @@ export const systemTools: DotBotTool[] = [
         reason: { type: "string", description: "Why the update is being performed" },
       },
     },
-    annotations: { destructiveHint: true, requiresConfirmation: true },
+    annotations: { destructiveHint: true, requiresConfirmation: true, mutatingHint: true },
   },
   {
     id: "system.version",
@@ -222,6 +224,6 @@ export const systemTools: DotBotTool[] = [
       type: "object",
       properties: {},
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
 ];

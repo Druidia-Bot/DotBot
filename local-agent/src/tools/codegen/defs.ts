@@ -23,7 +23,7 @@ export const codegenTools: DotBotTool[] = [
       },
       required: ["prompt"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "codegen.status",
@@ -37,6 +37,6 @@ export const codegenTools: DotBotTool[] = [
       type: "object",
       properties: {},
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
 ];

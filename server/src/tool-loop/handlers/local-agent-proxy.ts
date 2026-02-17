@@ -48,9 +48,6 @@ function createProxyHandler(entry: ToolManifestEntry): ToolHandler {
   return async (ctx: ToolContext, args: Record<string, any>): Promise<string> => {
     const commandId = `proxy_${nanoid(8)}`;
 
-    // Store current toolId so server-side handlers can read it
-    ctx.state._currentToolId = toolId;
-
     try {
       const output = await sendExecutionCommand(ctx.deviceId, {
         id: commandId,

@@ -4,10 +4,10 @@
  * Tools that don't exist on the local agent — they're injected into the
  * LLM's tool set by the loop and handled entirely server-side.
  *
- *   - agent__escalate      — re-route to planner (already handled via stopTool)
- *   - agent__wait_for_user — pause loop, wait for user response
- *   - agent__request_tools — expand tool set at runtime
- *   - agent__request_research — delegate research to sub-agent
+ *   - agent.escalate        — re-route to planner (already handled via stopTool)
+ *   - agent.wait_for_user   — pause loop, wait for user response
+ *   - agent.request_tools   — expand tool set at runtime
+ *   - agent.request_research — delegate research to sub-agent
  *
  * Each function returns both:
  *   - A ToolDefinition (for injection into the LLM's tools array)
@@ -17,6 +17,7 @@
  */
 
 import { createComponentLogger } from "#logging.js";
+import { sanitizeToolName } from "#tools/manifest.js";
 import type { ToolDefinition } from "#llm/types.js";
 import type { ToolHandler, ToolHandlerResult } from "../types.js";
 
@@ -26,13 +27,13 @@ const log = createComponentLogger("tool-loop.synthetic");
 // ESCALATE
 // ============================================
 
-export const ESCALATE_TOOL_ID = "agent__escalate";
+export const ESCALATE_TOOL_ID = "agent.escalate";
 
 export function escalateToolDefinition(): ToolDefinition {
   return {
     type: "function",
     function: {
-      name: "agent__escalate",
+      name: sanitizeToolName(ESCALATE_TOOL_ID),
       description: "Call this when you realize you don't have the right tools for this task. This will re-route the task to the planner, which will pick a persona with the correct tools. Do NOT keep trying the same failing approach — escalate instead.",
       parameters: {
         type: "object",
@@ -96,13 +97,13 @@ export function escalateHandler(): ToolHandler {
 // WAIT FOR USER
 // ============================================
 
-export const WAIT_FOR_USER_TOOL_ID = "agent__wait_for_user";
+export const WAIT_FOR_USER_TOOL_ID = "agent.wait_for_user";
 
 export function waitForUserToolDefinition(): ToolDefinition {
   return {
     type: "function",
     function: {
-      name: "agent__wait_for_user",
+      name: sanitizeToolName(WAIT_FOR_USER_TOOL_ID),
       description: "Pause execution and wait for the user to respond. Use this when you need information or action from the user before you can continue (e.g., they need to create an account, enter credentials, make a choice). The task will be suspended and automatically resume when the user sends a relevant message.",
       parameters: {
         type: "object",
@@ -154,13 +155,13 @@ export function waitForUserHandler(): ToolHandler {
 // REQUEST TOOLS
 // ============================================
 
-export const REQUEST_TOOLS_TOOL_ID = "agent__request_tools";
+export const REQUEST_TOOLS_TOOL_ID = "agent.request_tools";
 
 export function requestToolsToolDefinition(): ToolDefinition {
   return {
     type: "function",
     function: {
-      name: "agent__request_tools",
+      name: sanitizeToolName(REQUEST_TOOLS_TOOL_ID),
       description: "Request additional tool categories to be added to your active tool set. Use this when you discover you need tools from a category you weren't given. The tools will be available on your next LLM call.",
       parameters: {
         type: "object",
@@ -203,13 +204,13 @@ export function requestToolsHandler(): ToolHandler {
 // REQUEST RESEARCH
 // ============================================
 
-export const REQUEST_RESEARCH_TOOL_ID = "agent__request_research";
+export const REQUEST_RESEARCH_TOOL_ID = "agent.request_research";
 
 export function requestResearchToolDefinition(): ToolDefinition {
   return {
     type: "function",
     function: {
-      name: "agent__request_research",
+      name: sanitizeToolName(REQUEST_RESEARCH_TOOL_ID),
       description: "Delegate a research task to a specialized research agent. Use this when you need to look up information (pricing, docs, competitors, etc.) but want to continue working on your primary task.",
       parameters: {
         type: "object",

@@ -87,10 +87,11 @@
           "ref": {
             "type": "object",
             "properties": {
-              "timestamp": { "type": "string" },
-              "summary": { "type": "string" },
-              "keyPoints": { "type": "array", "items": { "type": "string" } }
-            }
+              "timestamp": { "type": "string", "description": "ISO timestamp of the conversation" },
+              "summary": { "type": "string", "description": "Concise 1-2 sentence summary of what was discussed" },
+              "keyPoints": { "type": "array", "items": { "type": "string" }, "description": "2-5 specific actionable takeaways" }
+            },
+            "required": ["summary", "keyPoints"]
           },
           "threadId": { "type": "string" },
           "summary": { "type": "string" },

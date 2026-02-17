@@ -66,7 +66,8 @@ export function handleServerLLMResponse(payload: any): void {
  * Uses the server's registered LLM clients — no API keys needed locally.
  */
 export async function serverLLMCall(options: {
-  provider: string;
+  provider?: string;
+  role?: string;
   model?: string;
   messages: Array<{ role: string; content: string }>;
   maxTokens?: number;
@@ -84,6 +85,7 @@ export async function serverLLMCall(options: {
     timestamp: Date.now(),
     payload: {
       provider: options.provider,
+      role: options.role,
       model: options.model,
       messages: options.messages,
       maxTokens: options.maxTokens,

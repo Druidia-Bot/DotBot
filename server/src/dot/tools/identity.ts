@@ -84,7 +84,7 @@ export const IDENTITY_UPDATE_TOOL_ID = "identity.update";
 
 const VALID_UPDATE_FIELDS = [
   "trait", "ethic", "conduct", "instruction",
-  "communication_style", "property", "name", "role",
+  "communication_style", "property", "name", "role", "use_backstory",
 ] as const;
 
 export function identityUpdateDefinition(): ToolDefinition {
@@ -105,7 +105,7 @@ export function identityUpdateDefinition(): ToolDefinition {
             enum: [...VALID_UPDATE_FIELDS],
             description:
               "Which identity field to update: trait, ethic, conduct, instruction, " +
-              "communication_style, property, name, or role",
+              "communication_style, property, name, role, or use_backstory",
           },
           value: {
             type: "string",
@@ -140,6 +140,7 @@ export function identityUpdateHandler(): ToolHandler {
       property: "identity_set_property",
       name: "identity_set_name",
       role: "identity_set_role",
+      use_backstory: "identity_set_use_backstory",
     };
 
     const action = actionMap[field];

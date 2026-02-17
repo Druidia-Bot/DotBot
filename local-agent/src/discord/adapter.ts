@@ -1,35 +1,34 @@
 /**
  * Discord Adapter — Bridge Between Discord and DotBot
- * 
- * Responsibilities:
- * 1. Resolve the bot token via credential_resolve (held in memory only)
- * 2. Start the Discord Gateway client
- * 3. Filter incoming messages (Layer 1: authorized user ID)
- * 4. Forward valid messages as prompts to the DotBot server
- * 5. Intercept responses for Discord-originated prompts
- * 6. Send responses back to Discord via REST API (credential proxy)
- * 
- * Architecture: Discord Gateway ←→ Local Agent ←→ DotBot Server
+ *
+ * Orchestrates the Discord integration lifecycle:
+ * - Resolves the bot token and connects the Gateway
+ * - Filters incoming messages (authorized user ID)
+ * - Forwards valid messages as prompts to the DotBot server
+ * - Delegates response routing to the response tracker
+ *
+ * Architecture: Discord Gateway <-> Local Agent <-> DotBot Server
  */
 
-import { nanoid } from "nanoid";
-import { DiscordGateway } from "./gateway.js";
-import type { DiscordMessage, DiscordInteraction } from "./gateway.js";
-import { resolveCredential } from "../credential-proxy.js";
-import { credentialProxyFetch } from "../credential-proxy.js";
-import { vaultHas } from "../credential-vault.js";
-import { classifyPromptLocally } from "../llm/prompt-classifier.js";
-import type { WSMessage } from "../types.js";
+import { nanoid } from 'nanoid';
+import { promises as fs } from 'fs';
+import * as path from 'path';
+import { DiscordGateway } from './gateway.js';
+import type { DiscordMessage, DiscordAttachment } from './types.js';
+import { sendToDiscord, startTypingLoop, clearAllTyping, deferInteraction, DISCORD_CREDENTIAL_NAME } from './rest.js';
+import { registerInteraction, handleDiscordInteraction } from './interactions.js';
+import { setChannelsActive } from './channels.js';
+import { trackPending, clearAllPending, getPendingCount, routeResponse } from './response-tracker.js';
+import { resolveCredential } from '../credential-proxy.js';
+import { vaultHas } from '../credential-vault.js';
+import { classifyPromptLocally } from '../llm/prompt-classifier.js';
+import { TEMP_DIR } from '../memory/store-core.js';
+import type { WSMessage } from '../types.js';
 
-// ============================================
-// CONSTANTS
-// ============================================
-
-const DISCORD_API = "https://discord.com/api/v10";
-const DISCORD_CREDENTIAL_NAME = "DISCORD_BOT_TOKEN";
-
-// Discord message length limit
-const DISCORD_MAX_LENGTH = 2000;
+// Re-export for external consumers
+export { registerInteraction } from './interactions.js';
+export { ackInteraction, deferInteraction, followUpInteraction } from './rest.js';
+export { sendToConversationChannel, sendToUpdatesChannel, sendToLogsChannel } from './channels.js';
 
 // ============================================
 // STATE
@@ -38,49 +37,26 @@ const DISCORD_MAX_LENGTH = 2000;
 let gateway: DiscordGateway | null = null;
 let botUserId: string | null = null;
 let wsSend: ((message: WSMessage) => void) | null = null;
-
-// Layer 1: Authorized user ID
 let authorizedUserId: string | null = null;
 
-// Response tracking: prompt message ID → Discord channel ID
-const pendingDiscordResponses = new Map<string, {
-  channelId: string;
-  discordMessageId: string;
-  taskId?: string;
-}>();
-
-// Typing indicator interval per channel
-const typingIntervals = new Map<string, ReturnType<typeof setInterval>>();
-
-// Pending response timeout — must exceed watchdog KILL_TOTAL_MS (10min) + LLM processing time.
-// 2 hours covers long-running research/compound tasks that chain multiple personas.
-const PENDING_RESPONSE_TTL_MS = 2 * 60 * 60 * 1000;
-
-// Fallback: track Discord-originated task IDs + channel so we can still
-// deliver agent_complete even if the pending entry expired.
-const discordTaskChannels = new Map<string, string>();
-
 // ============================================
-// INITIALIZATION
+// LIFECYCLE
 // ============================================
 
 /**
  * Initialize the Discord adapter.
  * Resolves the bot token, connects to Gateway, and starts listening.
- * 
- * @param send - Function to send WSMessage to the DotBot server
  */
 export async function initDiscordAdapter(send: (message: WSMessage) => void): Promise<void> {
   wsSend = send;
 
-  // Check if Discord is configured
   const hasToken = await vaultHas(DISCORD_CREDENTIAL_NAME);
   const conversationChannelId = process.env.DISCORD_CHANNEL_CONVERSATION;
 
   console.log(`[Discord] Init check: hasToken=${hasToken}, channelId=${conversationChannelId ? 'SET' : 'MISSING'}`);
 
   if (!hasToken || !conversationChannelId) {
-    console.log("[Discord] Not configured — skipping adapter init. Run /discord-setup first.");
+    console.log('[Discord] Not configured — skipping adapter init. Run /discord-setup first.');
     return;
   }
 
@@ -88,42 +64,35 @@ export async function initDiscordAdapter(send: (message: WSMessage) => void): Pr
   // don't create a second Gateway — that causes duplicate message processing.
   // But DO clear stale pending responses — the server lost all in-flight work on restart.
   if (gateway) {
-    console.log("[Discord] Adapter already running — clearing stale state from previous session");
-    const staleCount = pendingDiscordResponses.size;
-    for (const [, entry] of pendingDiscordResponses) {
-      stopTyping(entry.channelId);
-    }
-    pendingDiscordResponses.clear();
-    discordTaskChannels.clear();
+    console.log('[Discord] Adapter already running — clearing stale state from previous session');
+    const staleCount = clearAllPending();
     if (staleCount > 0) {
       console.log(`[Discord] Cleared ${staleCount} stale pending response(s) and typing indicators`);
     }
     return;
   }
 
-  // Load authorized user ID from env
   authorizedUserId = process.env.DISCORD_AUTHORIZED_USER_ID || null;
+  registerPromptInteractionHandler();
 
   try {
-    // Resolve the bot token (held in memory only, never logged)
-    console.log("[Discord] Requesting token resolve from server...");
-    const token = await resolveCredential(DISCORD_CREDENTIAL_NAME, "discord_gateway");
+    console.log('[Discord] Requesting token resolve from server...');
+    const token = await resolveCredential(DISCORD_CREDENTIAL_NAME, 'discord_gateway');
 
     console.log(`[Discord] Token resolved (${token.length} chars) — connecting to Gateway...`);
 
     gateway = new DiscordGateway(token, {
       onMessage: handleDiscordMessage,
-      onInteraction: handleDiscordInteraction,
+      onInteraction: (interaction) => handleDiscordInteraction(interaction, authorizedUserId),
       onReady: (userId) => {
         botUserId = userId;
-        console.log(`[Discord] Bot online — listening on #conversation`);
-
+        console.log('[Discord] Bot online — listening on #conversation');
         if (!authorizedUserId) {
-          console.log("[Discord] ⚠️ No DISCORD_AUTHORIZED_USER_ID set — will authorize first human message");
+          console.log('[Discord] \u26a0\ufe0f No DISCORD_AUTHORIZED_USER_ID set — will authorize first human message');
         }
       },
       onDisconnect: () => {
-        console.log("[Discord] Gateway disconnected — will reconnect automatically");
+        console.log('[Discord] Gateway disconnected — will reconnect automatically');
       },
       onError: (error) => {
         console.error(`[Discord] Gateway error: ${error}`);
@@ -131,52 +100,86 @@ export async function initDiscordAdapter(send: (message: WSMessage) => void): Pr
       },
     });
 
+    setChannelsActive(true);
     gateway.connect();
   } catch (err: any) {
     console.error(`[Discord] Failed to initialize: ${err.message}`);
   }
 }
 
-/**
- * Shut down the Discord adapter gracefully.
- */
 export function stopDiscordAdapter(): void {
-  // Clear all typing intervals
-  for (const [channelId] of typingIntervals) {
-    stopTyping(channelId);
-  }
+  clearAllTyping();
+  setChannelsActive(false);
   if (gateway) {
     gateway.disconnect();
     gateway = null;
-    console.log("[Discord] Adapter stopped");
+    console.log('[Discord] Adapter stopped');
   }
 }
 
 /**
- * Check if the Discord adapter is running.
+ * Restart the Discord gateway with a fresh token from the vault.
+ * Called when credential_stored fires for DISCORD_BOT_TOKEN.
  */
+export async function restartDiscordGateway(): Promise<void> {
+  if (!wsSend) {
+    console.log('[Discord] Cannot restart — no WS send function');
+    return;
+  }
+
+  console.log('[Discord] Credential updated — restarting gateway with new token...');
+  stopDiscordAdapter();
+  await new Promise((r) => setTimeout(r, 2000));
+  await initDiscordAdapter(wsSend);
+}
+
 export function isDiscordAdapterRunning(): boolean {
   return gateway !== null;
 }
 
+export function getGatewayStatus(): {
+  running: boolean;
+  connected: boolean;
+  destroyed: boolean;
+  sessionId: string | null;
+  reconnectAttempts: number;
+  botUserId: string | null;
+  authorizedUserId: string | null;
+  pendingResponses: number;
+  hasToken: boolean;
+  hasChannelConfig: boolean;
+} {
+  const gwStatus = gateway?.getStatus();
+  return {
+    running: gateway !== null,
+    connected: gwStatus?.connected ?? false,
+    destroyed: gwStatus?.destroyed ?? false,
+    sessionId: gwStatus?.sessionId ?? null,
+    reconnectAttempts: gwStatus?.reconnectAttempts ?? 0,
+    botUserId: gwStatus?.botUserId ?? botUserId,
+    authorizedUserId,
+    pendingResponses: getPendingCount(),
+    hasToken: false, // filled by caller after vault check
+    hasChannelConfig: !!process.env.DISCORD_CHANNEL_CONVERSATION,
+  };
+}
+
 // ============================================
-// INCOMING: Discord → DotBot
+// INCOMING: Discord -> DotBot
 // ============================================
 
 async function handleDiscordMessage(message: DiscordMessage): Promise<void> {
-  // Ignore bot messages (including our own)
   if (message.author.bot) return;
 
-  // Only process messages in #conversation
   const conversationChannelId = process.env.DISCORD_CHANNEL_CONVERSATION;
   if (!conversationChannelId || message.channel_id !== conversationChannelId) return;
 
-  // Ignore empty messages
-  if (!message.content.trim()) return;
+  const hasContent = !!message.content.trim();
+  const hasAttachments = Array.isArray(message.attachments) && message.attachments.length > 0;
+  if (!hasContent && !hasAttachments) return;
 
   // ── Layer 1: Authorized User ID ──
   if (!authorizedUserId) {
-    // First human message — auto-authorize this user
     authorizedUserId = message.author.id;
     process.env.DISCORD_AUTHORIZED_USER_ID = authorizedUserId;
     console.log(`[Discord] Authorized user: ${message.author.username} (${authorizedUserId})`);
@@ -188,37 +191,40 @@ async function handleDiscordMessage(message: DiscordMessage): Promise<void> {
     return;
   }
 
-  // Forward as prompt to DotBot server
   const promptId = `discord_${nanoid()}`;
+  trackPending(promptId, message.channel_id, message.id);
 
-  pendingDiscordResponses.set(promptId, {
-    channelId: message.channel_id,
-    discordMessageId: message.id,
-  });
-
-  // Auto-cleanup stale pending entries to prevent memory leaks
-  setTimeout(() => {
-    if (pendingDiscordResponses.has(promptId)) {
-      pendingDiscordResponses.delete(promptId);
-      stopTyping(message.channel_id);
+  // ── Download attachments and inline text content ──
+  let attachmentContext = '';
+  if (hasAttachments) {
+    const results = await downloadAttachments(message.attachments!);
+    if (results.length > 0) {
+      const parts: string[] = [];
+      for (const r of results) {
+        if (r.inlinedContent) {
+          parts.push(`--- BEGIN ATTACHED FILE: ${r.filename} ---\n${r.inlinedContent}\n--- END ATTACHED FILE: ${r.filename} ---`);
+        } else {
+          parts.push(`[Attached binary file: ${r.filename} — saved to ${r.path}]`);
+        }
+      }
+      attachmentContext = '\n\n' + parts.join('\n\n');
     }
-  }, PENDING_RESPONSE_TTL_MS);
+  }
 
-  console.log(`[Discord] → Prompt from ${message.author.username}: ${message.content.substring(0, 80)}${message.content.length > 80 ? "..." : ""}`);
+  const fullPrompt = (message.content || '').trim() + attachmentContext;
 
-  // Start typing indicator while we process
+  console.log(`[Discord] \u2192 Prompt from ${message.author.username}: ${fullPrompt.substring(0, 80)}${fullPrompt.length > 80 ? '...' : ''}`);
   startTypingLoop(message.channel_id);
 
   if (wsSend) {
-    // Run local LLM pre-classification (fast, on-device)
-    const hints = await classifyPromptLocally(message.content);
+    const hints = await classifyPromptLocally(fullPrompt);
     wsSend({
-      type: "prompt",
+      type: 'prompt',
       id: promptId,
       timestamp: Date.now(),
       payload: {
-        prompt: message.content,
-        source: "discord",
+        prompt: fullPrompt,
+        source: 'discord',
         sourceUserId: message.author.id,
         hints,
       },
@@ -226,8 +232,76 @@ async function handleDiscordMessage(message: DiscordMessage): Promise<void> {
   }
 }
 
+const DISCORD_TEMP_DIR = path.join(TEMP_DIR, 'discord-attachments');
+const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024; // 25 MB
+const MAX_INLINE_SIZE = 100 * 1024; // 100 KB — text files under this are inlined directly
+
+const TEXT_EXTENSIONS = new Set([
+  '.txt', '.md', '.json', '.csv', '.xml', '.yaml', '.yml', '.toml',
+  '.log', '.ini', '.cfg', '.conf', '.env', '.sh', '.bat', '.ps1',
+  '.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.go', '.rs', '.java',
+  '.c', '.cpp', '.h', '.hpp', '.cs', '.php', '.html', '.css', '.scss',
+  '.sql', '.graphql', '.svelte', '.vue', '.astro',
+]);
+
+interface AttachmentResult {
+  filename: string;
+  path: string;
+  inlinedContent?: string;
+}
+
+function isTextFile(filename: string, contentType?: string): boolean {
+  const ext = path.extname(filename).toLowerCase();
+  if (TEXT_EXTENSIONS.has(ext)) return true;
+  if (contentType && (contentType.startsWith('text/') || contentType.includes('json') || contentType.includes('xml'))) return true;
+  return false;
+}
+
+async function downloadAttachments(attachments: DiscordAttachment[]): Promise<AttachmentResult[]> {
+  await fs.mkdir(DISCORD_TEMP_DIR, { recursive: true });
+  const results: AttachmentResult[] = [];
+
+  for (const att of attachments) {
+    if (att.size > MAX_ATTACHMENT_SIZE) {
+      console.log(`[Discord] Skipping attachment ${att.filename} — too large (${(att.size / 1024 / 1024).toFixed(1)} MB)`);
+      continue;
+    }
+    try {
+      const safeName = `${att.id}_${att.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const destPath = path.join(DISCORD_TEMP_DIR, safeName);
+
+      const res = await fetch(att.url);
+      if (!res.ok) {
+        console.error(`[Discord] Failed to download ${att.filename}: HTTP ${res.status}`);
+        continue;
+      }
+      const buffer = Buffer.from(await res.arrayBuffer());
+      await fs.writeFile(destPath, buffer);
+
+      const result: AttachmentResult = { filename: att.filename, path: destPath };
+
+      // Inline text files so conversation.json has real content
+      if (isTextFile(att.filename, att.content_type) && att.size <= MAX_INLINE_SIZE) {
+        try {
+          result.inlinedContent = buffer.toString('utf-8');
+          console.log(`[Discord] Inlined attachment: ${att.filename} (${(att.size / 1024).toFixed(1)} KB)`);
+        } catch {
+          console.log(`[Discord] Could not inline ${att.filename} as text, keeping as binary reference`);
+        }
+      } else {
+        console.log(`[Discord] Downloaded attachment: ${att.filename} (${(att.size / 1024).toFixed(1)} KB) → ${destPath}`);
+      }
+
+      results.push(result);
+    } catch (err: any) {
+      console.error(`[Discord] Failed to download attachment ${att.filename}: ${err.message}`);
+    }
+  }
+  return results;
+}
+
 // ============================================
-// OUTGOING: DotBot → Discord
+// OUTGOING: DotBot -> Discord
 // ============================================
 
 /**
@@ -236,109 +310,7 @@ async function handleDiscordMessage(message: DiscordMessage): Promise<void> {
  * Returns true if the message was handled (consumed), false otherwise.
  */
 export async function handleDiscordResponse(message: WSMessage): Promise<boolean> {
-  if (!gateway) return false;
-
-  switch (message.type) {
-    case "response": {
-      const pending = pendingDiscordResponses.get(message.id);
-      if (!pending) return false;
-
-      const payload = message.payload;
-
-      // Check if this is a background task ack (has agentTaskId)
-      if (payload.agentTaskId) {
-        // Track the task ID so we can match the agent_complete later
-        pending.taskId = payload.agentTaskId;
-        pendingDiscordResponses.set(message.id, pending);
-
-        // Also track by task ID for agent_complete lookup
-        pendingDiscordResponses.set(`task_${payload.agentTaskId}`, {
-          channelId: pending.channelId,
-          discordMessageId: pending.discordMessageId,
-          taskId: payload.agentTaskId,
-        });
-
-        // Durable fallback: remember this task came from Discord so we can
-        // still deliver agent_complete even if the pending entry expires.
-        discordTaskChannels.set(payload.agentTaskId, pending.channelId);
-
-        // Send the ack to Discord so the user knows we're working on it.
-        if (payload.response) {
-          sendToDiscord(pending.channelId, payload.response);
-        }
-        return true;
-      }
-
-      // Routing acks (injection, status query, resume) — suppress on Discord.
-      // These are system noise; the user only needs the final result.
-      if (payload.isRoutingAck) {
-        pendingDiscordResponses.delete(message.id);
-        return true;
-      }
-
-      // Inline response — send to Discord and clean up
-      pendingDiscordResponses.delete(message.id);
-      stopTyping(pending.channelId);
-
-      // V2: Multi-agent responses use Discord embeds
-      if (payload.multiAgent && payload.agents && payload.agents.length > 0) {
-        await sendEmbedsToDiscord(pending.channelId, payload.agents);
-      } else if (payload.response) {
-        await sendToDiscord(pending.channelId, payload.response);
-      }
-      return true;
-    }
-
-    case "agent_complete": {
-      const taskId = message.payload?.taskId;
-      if (!taskId) return false;
-
-      const pending = pendingDiscordResponses.get(`task_${taskId}`);
-
-      // Determine the target channel — prefer pending entry, fall back to
-      // durable task→channel map, then #conversation as last resort.
-      const channelId = pending?.channelId
-        || discordTaskChannels.get(taskId)
-        || null;
-
-      // Clean up durable fallback entry
-      discordTaskChannels.delete(taskId);
-
-      if (!channelId) return false;
-
-      // Stop typing indicator
-      stopTyping(channelId);
-
-      // Clean up both pending entries
-      pendingDiscordResponses.delete(`task_${taskId}`);
-      for (const [key, val] of pendingDiscordResponses) {
-        if (val.taskId === taskId && key !== `task_${taskId}`) {
-          pendingDiscordResponses.delete(key);
-          break;
-        }
-      }
-
-      // V2: Multi-agent responses use Discord embeds
-      if (message.payload.multiAgent && message.payload.agents && message.payload.agents.length > 0) {
-        await sendEmbedsToDiscord(channelId, message.payload.agents);
-      } else if (message.payload.response) {
-        await sendToDiscord(channelId, message.payload.response);
-      }
-      return true;
-    }
-
-    case "task_progress": {
-      // Don't forward tool progress to Discord — the typing indicator is sufficient.
-      // Individual tool call messages are too noisy and clutter the conversation.
-      const taskId = message.payload?.taskId;
-      if (!taskId) return false;
-      const pending = pendingDiscordResponses.get(`task_${taskId}`);
-      return !!pending; // Consume silently if this is a Discord-originated task
-    }
-
-    default:
-      return false;
-  }
+  return routeResponse(message, gateway !== null);
 }
 
 // ============================================
@@ -346,430 +318,73 @@ export async function handleDiscordResponse(message: WSMessage): Promise<boolean
 // ============================================
 
 function handleGatewayError(error: string): void {
-  const isIntentError = error.toLowerCase().includes("intent");
+  const isIntentError = error.toLowerCase().includes('intent');
+  if (!isIntentError) return;
 
-  if (isIntentError) {
-    const channelId = process.env.DISCORD_CHANNEL_CONVERSATION;
-    const message = [
-      "⚠️ **Discord Gateway: Message Content Intent is not enabled**",
-      "",
-      "I can't read your messages until you enable it:",
-      "",
-      "1. Go to https://discord.com/developers/applications",
-      "2. Select your **DotBot** application",
-      "3. Click **Bot** in the left sidebar",
-      "4. Scroll to **Privileged Gateway Intents**",
-      "5. Turn on **MESSAGE CONTENT INTENT**",
-      "6. Click **Save Changes**",
-      "",
-      "Then restart the agent (`system.restart` or re-run `run-dev.bat`).",
-    ].join("\n");
-
-    // Notify via Discord REST (works without Gateway)
-    if (channelId) {
-      sendToDiscord(channelId, message).catch(() => {});
-    }
-
-    // Notify via DotBot client — include suggested fix action
-    if (wsSend) {
-      wsSend({
-        type: "user_notification",
-        id: `discord_intent_${Date.now()}`,
-        timestamp: Date.now(),
-        payload: {
-          title: "Discord: Message Content Intent Required",
-          message: "The bot connected but Discord rejected the Message Content Intent. Enable it in Developer Portal → Bot → Privileged Gateway Intents → MESSAGE CONTENT INTENT, then restart.",
-          source: "discord",
-          suggestedPrompt: "The Discord Message Content Intent is not enabled and I can't fix it from the API. Can you try to enable it for me using computer mode (GUI automation)? Go to https://discord.com/developers/applications, select the DotBot app, click Bot, scroll to Privileged Gateway Intents, toggle MESSAGE CONTENT INTENT on, and click Save Changes. This is experimental so let me know if it doesn't work.",
-          suggestedLabel: "\ud83d\udda5\ufe0f Try to fix with Computer Mode (experimental)",
-        },
-      });
-    }
-  }
-}
-
-// ============================================
-// TYPING INDICATOR
-// ============================================
-
-async function triggerTyping(channelId: string): Promise<void> {
-  try {
-    await credentialProxyFetch(`/channels/${channelId}/typing`, DISCORD_CREDENTIAL_NAME, {
-      baseUrl: DISCORD_API,
-      method: "POST",
-      headers: {
-        "User-Agent": "DotBot (https://getmy.bot, 1.0)",
-      },
-      placement: { header: "Authorization", prefix: "Bot " },
-    });
-  } catch {
-    // Non-fatal — typing indicator is cosmetic
-  }
-}
-
-function startTypingLoop(channelId: string): void {
-  stopTyping(channelId);
-  triggerTyping(channelId);
-  // Discord typing indicator lasts ~10s, re-trigger every 8s
-  const interval = setInterval(() => triggerTyping(channelId), 8_000);
-  typingIntervals.set(channelId, interval);
-}
-
-function stopTyping(channelId: string): void {
-  const interval = typingIntervals.get(channelId);
-  if (interval) {
-    clearInterval(interval);
-    typingIntervals.delete(channelId);
-  }
-}
-
-// ============================================
-// DISCORD REST API (via credential proxy)
-// ============================================
-
-async function sendToDiscord(channelId: string, content: string): Promise<void> {
-  try {
-    // Sanitize: prevent @everyone/@here pings from LLM output
-    const sanitized = content.replace(/@(everyone|here)/g, "@\u200b$1");
-    // Split long messages
-    const chunks = splitMessage(sanitized);
-    for (const chunk of chunks) {
-      const result = await credentialProxyFetch(`/channels/${channelId}/messages`, DISCORD_CREDENTIAL_NAME, {
-        baseUrl: DISCORD_API,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "DotBot (https://getmy.bot, 1.0)",
-        },
-        body: JSON.stringify({ content: chunk }),
-        placement: { header: "Authorization", prefix: "Bot " },
-      });
-      if (result && !result.ok) {
-        console.error(`[Discord] POST failed: status=${result.status} body=${result.body?.slice(0, 200)}`);
-      }
-    }
-  } catch (err: any) {
-    console.error(`[Discord] Failed to send message: ${err.message}`);
-  }
-}
-
-/**
- * Send a multi-agent response to Discord using embeds.
- * Each agent gets its own embed card.
- */
-async function sendEmbedsToDiscord(
-  channelId: string,
-  agents: Array<{ topic: string; response: string }>
-): Promise<void> {
-  try {
-    // Discord color palette for agent embeds
-    const colors = [
-      0x5865F2, // Blurple
-      0x57F287, // Green
-      0xFEE75C, // Yellow
-      0xEB459E, // Fuchsia
-      0xED4245, // Red
-    ];
-
-    // Build embeds (max 10 per message, Discord API limit)
-    const embeds = agents.map((agent, idx) => {
-      // Sanitize agent response
-      const sanitized = agent.response.replace(/@(everyone|here)/g, "@\u200b$1");
-
-      // Truncate if too long (embed description limit is 4096 chars)
-      const description = sanitized.length > 4096
-        ? sanitized.substring(0, 4093) + "..."
-        : sanitized;
-
-      return {
-        title: agent.topic,
-        description,
-        color: colors[idx % colors.length],
-        footer: {
-          text: `Agent ${idx + 1} of ${agents.length}`,
-        },
-      };
-    });
-
-    // Send embeds in batches of 10 (Discord limit)
-    for (let i = 0; i < embeds.length; i += 10) {
-      const batch = embeds.slice(i, i + 10);
-      await credentialProxyFetch(`/channels/${channelId}/messages`, DISCORD_CREDENTIAL_NAME, {
-        baseUrl: DISCORD_API,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "DotBot (https://getmy.bot, 1.0)",
-        },
-        body: JSON.stringify({ embeds: batch }),
-        placement: { header: "Authorization", prefix: "Bot " },
-      });
-    }
-  } catch (err: any) {
-    console.error(`[Discord] Failed to send embeds: ${err.message}`);
-  }
-}
-
-function splitMessage(content: string): string[] {
-  if (content.length <= DISCORD_MAX_LENGTH) return [content];
-
-  const chunks: string[] = [];
-  let remaining = content;
-
-  while (remaining.length > 0) {
-    if (remaining.length <= DISCORD_MAX_LENGTH) {
-      chunks.push(remaining);
-      break;
-    }
-
-    // Try to split at a newline
-    let splitIdx = remaining.lastIndexOf("\n", DISCORD_MAX_LENGTH);
-    if (splitIdx < DISCORD_MAX_LENGTH * 0.5) {
-      // No good newline — split at space
-      splitIdx = remaining.lastIndexOf(" ", DISCORD_MAX_LENGTH);
-    }
-    if (splitIdx <= 0) {
-      // No good split point — hard split at limit
-      splitIdx = DISCORD_MAX_LENGTH;
-    }
-
-    chunks.push(remaining.substring(0, splitIdx));
-    remaining = remaining.substring(splitIdx).trimStart();
-  }
-
-  return chunks;
-}
-
-// ============================================
-// CHANNEL ROUTING — #conversation, #updates, and #logs
-// ============================================
-
-/**
- * Send a proactive message to the #conversation channel.
- * Used for: reminder notifications, proactive alerts that the user should see
- * in their main chat flow (not buried in a side channel).
- * Silently no-ops if Discord is not configured or #conversation channel not set.
- */
-export async function sendToConversationChannel(content: string): Promise<void> {
-  if (!gateway) return;
   const channelId = process.env.DISCORD_CHANNEL_CONVERSATION;
-  if (!channelId) return;
-  await sendToDiscord(channelId, content);
-}
+  const msg = [
+    '\u26a0\ufe0f **Discord Gateway: Message Content Intent is not enabled**',
+    '',
+    "I can't read your messages until you enable it:",
+    '',
+    '1. Go to https://discord.com/developers/applications',
+    '2. Select your **DotBot** application',
+    '3. Click **Bot** in the left sidebar',
+    '4. Scroll to **Privileged Gateway Intents**',
+    '5. Turn on **MESSAGE CONTENT INTENT**',
+    '6. Click **Save Changes**',
+    '',
+    'Then restart the agent (`system.restart` or re-run `run-dev.bat`).',
+  ].join('\n');
 
-/**
- * Send a notification/update to the #updates channel.
- * Used for: user_notification, heartbeat alerts, agent completions.
- * Silently no-ops if Discord is not configured or #updates channel not set.
- */
-export async function sendToUpdatesChannel(content: string): Promise<void> {
-  if (!gateway) return;
-  const channelId = process.env.DISCORD_CHANNEL_UPDATES;
-  if (!channelId) return;
-  await sendToDiscord(channelId, content);
-}
+  if (channelId) {
+    sendToDiscord(channelId, msg).catch(() => {});
+  }
 
-/**
- * Log verbosity levels for Discord #logs channel.
- *
- * - "full":    Every tool call, stream chunk, and lifecycle event (noisy but complete)
- * - "summary": Only lifecycle events — agent started, completed, failed
- * - "off":     Nothing sent to #logs
- *
- * Controlled by DISCORD_LOG_VERBOSITY env var. Defaults to "summary".
- */
-export type DiscordLogVerbosity = "full" | "summary" | "off";
-
-function getLogVerbosity(): DiscordLogVerbosity {
-  const v = (process.env.DISCORD_LOG_VERBOSITY || "summary").toLowerCase();
-  if (v === "full" || v === "summary" || v === "off") return v;
-  return "summary";
-}
-
-/**
- * Send a log entry to the #logs channel.
- * Respects DISCORD_LOG_VERBOSITY:
- *   - level "detail" (tool calls, stream chunks) requires verbosity "full"
- *   - level "summary" (lifecycle events) requires verbosity "summary" or "full"
- * Silently no-ops if Discord is not configured or #logs channel not set.
- */
-export async function sendToLogsChannel(content: string, level: "detail" | "summary" = "summary"): Promise<void> {
-  if (!gateway) return;
-  const channelId = process.env.DISCORD_CHANNEL_LOGS;
-  if (!channelId) return;
-
-  const verbosity = getLogVerbosity();
-  if (verbosity === "off") return;
-  if (verbosity === "summary" && level === "detail") return;
-
-  await sendToDiscord(channelId, content);
+  if (wsSend) {
+    wsSend({
+      type: 'user_notification',
+      id: `discord_intent_${Date.now()}`,
+      timestamp: Date.now(),
+      payload: {
+        title: 'Discord: Message Content Intent Required',
+        message: 'The bot connected but Discord rejected the Message Content Intent. Enable it in Developer Portal \u2192 Bot \u2192 Privileged Gateway Intents \u2192 MESSAGE CONTENT INTENT, then restart.',
+        source: 'discord',
+        suggestedPrompt: "The Discord Message Content Intent is not enabled and I can't fix it from the API. Can you try to enable it for me using computer mode (GUI automation)? Go to https://discord.com/developers/applications, select the DotBot app, click Bot, scroll to Privileged Gateway Intents, toggle MESSAGE CONTENT INTENT on, and click Save Changes. This is experimental so let me know if it doesn't work.",
+        suggestedLabel: '\ud83d\udda5\ufe0f Try to fix with Computer Mode (experimental)',
+      },
+    });
+  }
 }
 
 // ============================================
-// INTERACTION HANDLING (Button clicks)
+// PROMPT INTERACTION HANDLER
 // ============================================
 
-// Registered interaction handlers: custom_id prefix → handler function
-const interactionHandlers = new Map<string, (interaction: DiscordInteraction, args: string) => Promise<void>>();
-
-/**
- * Register a handler for button interactions with a given custom_id prefix.
- * Example: registerInteraction("confirm", handler) catches custom_id="confirm:payload".
- */
-export function registerInteraction(
-  prefix: string,
-  handler: (interaction: DiscordInteraction, args: string) => Promise<void>,
-): void {
-  interactionHandlers.set(prefix, handler);
-}
-
-async function handleDiscordInteraction(interaction: DiscordInteraction): Promise<void> {
-  // Only handle authorized users
-  if (authorizedUserId && interaction.user.id !== authorizedUserId) {
-    await ackInteraction(interaction, "You're not authorized to use these buttons.", true);
-    return;
-  }
-
-  const customId = interaction.data.custom_id;
-  console.log(`[Discord] Button clicked: custom_id="${customId}" by ${interaction.user.username}`);
-
-  // Parse prefix:args pattern
-  const colonIdx = customId.indexOf(":");
-  const prefix = colonIdx >= 0 ? customId.substring(0, colonIdx) : customId;
-  const args = colonIdx >= 0 ? customId.substring(colonIdx + 1) : "";
-
-  const handler = interactionHandlers.get(prefix);
-  if (handler) {
-    try {
-      await handler(interaction, args);
-    } catch (err: any) {
-      console.error(`[Discord] Interaction handler error (${prefix}):`, err.message);
-      await ackInteraction(interaction, `Error: ${err.message}`, true);
-    }
-    return;
-  }
-
-  // Default: if custom_id starts with "prompt:", forward as a DotBot prompt
-  if (prefix === "prompt") {
+function registerPromptInteractionHandler(): void {
+  registerInteraction('prompt', async (interaction, args) => {
     await deferInteraction(interaction);
-    const promptText = args || customId;
+    const promptText = args || interaction.data.custom_id;
     const promptId = `discord_btn_${nanoid()}`;
 
-    pendingDiscordResponses.set(promptId, {
-      channelId: interaction.channel_id,
-      discordMessageId: interaction.message?.id || "",
-    });
-
+    trackPending(promptId, interaction.channel_id, interaction.message?.id || '');
     startTypingLoop(interaction.channel_id);
 
     if (wsSend) {
       const hints = await classifyPromptLocally(promptText);
       wsSend({
-        type: "prompt",
+        type: 'prompt',
         id: promptId,
         timestamp: Date.now(),
         payload: {
           prompt: promptText,
-          source: "discord_button",
+          source: 'discord_button',
           sourceUserId: interaction.user.id,
           hints,
         },
       });
     }
-    return;
-  }
-
-  // Unknown button — ACK with ephemeral message
-  await ackInteraction(interaction, "This button isn't connected to any action.", true);
-}
-
-/**
- * ACK an interaction with an immediate message response.
- * Set ephemeral=true to make the response visible only to the clicker.
- */
-export async function ackInteraction(
-  interaction: DiscordInteraction,
-  content: string,
-  ephemeral = false,
-): Promise<void> {
-  try {
-    await credentialProxyFetch(
-      `/interactions/${interaction.id}/${interaction.token}/callback`,
-      DISCORD_CREDENTIAL_NAME,
-      {
-        baseUrl: DISCORD_API,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "DotBot (https://getmy.bot, 1.0)",
-        },
-        body: JSON.stringify({
-          type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
-          data: {
-            content,
-            flags: ephemeral ? 64 : 0, // 64 = EPHEMERAL
-          },
-        }),
-        placement: { header: "Authorization", prefix: "Bot " },
-      },
-    );
-  } catch (err: any) {
-    console.error(`[Discord] Failed to ACK interaction: ${err.message}`);
-  }
-}
-
-/**
- * Defer an interaction (show "thinking..." indicator).
- * Follow up later with followUpInteraction().
- */
-export async function deferInteraction(interaction: DiscordInteraction): Promise<void> {
-  try {
-    await credentialProxyFetch(
-      `/interactions/${interaction.id}/${interaction.token}/callback`,
-      DISCORD_CREDENTIAL_NAME,
-      {
-        baseUrl: DISCORD_API,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "DotBot (https://getmy.bot, 1.0)",
-        },
-        body: JSON.stringify({
-          type: 5, // DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE
-        }),
-        placement: { header: "Authorization", prefix: "Bot " },
-      },
-    );
-  } catch (err: any) {
-    console.error(`[Discord] Failed to defer interaction: ${err.message}`);
-  }
-}
-
-/**
- * Send a follow-up message after a deferred interaction.
- */
-export async function followUpInteraction(
-  interaction: DiscordInteraction,
-  content: string,
-): Promise<void> {
-  try {
-    await credentialProxyFetch(
-      `/webhooks/${botUserId}/${interaction.token}`,
-      DISCORD_CREDENTIAL_NAME,
-      {
-        baseUrl: DISCORD_API,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "DotBot (https://getmy.bot, 1.0)",
-        },
-        body: JSON.stringify({ content }),
-        placement: { header: "Authorization", prefix: "Bot " },
-      },
-    );
-  } catch (err: any) {
-    console.error(`[Discord] Failed to follow up interaction: ${err.message}`);
-  }
+  });
 }
 
 // ============================================
@@ -778,32 +393,33 @@ export async function followUpInteraction(
 
 async function persistAuthorizedUser(userId: string): Promise<void> {
   try {
-    const { promises: fs } = await import("fs");
-    const { resolve } = await import("path");
-    const envPath = resolve(process.env.USERPROFILE || process.env.HOME || "", ".bot", ".env");
+    const { promises: fs } = await import('fs');
+    const { resolve } = await import('path');
+    const envPath = resolve(process.env.USERPROFILE || process.env.HOME || '', '.bot', '.env');
 
-    let existing = "";
+    let existing = '';
     try {
-      existing = await fs.readFile(envPath, "utf-8");
-    } catch { /* file doesn't exist */ }
+      existing = await fs.readFile(envPath, 'utf-8');
+    } catch {
+      /* file doesn't exist */
+    }
 
-    // Parse existing .env
     const envMap = new Map<string, string>();
     for (const line of existing.split(/\r?\n/)) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
       if (eqIdx > 0) {
         envMap.set(trimmed.substring(0, eqIdx).trim(), trimmed.substring(eqIdx + 1).trim());
       }
     }
 
-    envMap.set("DISCORD_AUTHORIZED_USER_ID", userId);
+    envMap.set('DISCORD_AUTHORIZED_USER_ID', userId);
 
     const lines = Array.from(envMap.entries()).map(([k, v]) => `${k}=${v}`);
-    await fs.writeFile(envPath, lines.join("\n") + "\n", "utf-8");
+    await fs.writeFile(envPath, lines.join('\n') + '\n', 'utf-8');
 
-    console.log(`[Discord] Saved authorized user ID to ~/.bot/.env`);
+    console.log('[Discord] Saved authorized user ID to ~/.bot/.env');
   } catch (err: any) {
     console.error(`[Discord] Failed to persist authorized user: ${err.message}`);
   }

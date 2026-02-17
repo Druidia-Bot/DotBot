@@ -19,7 +19,7 @@ export const emailTools: DotBotTool[] = [
         prefix: { type: "string", description: "Optional prefix for the email address (e.g. 'dotbot-signup'). Random if omitted." },
       },
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "email.check_temp_inbox",
@@ -35,7 +35,7 @@ export const emailTools: DotBotTool[] = [
         page: { type: "number", description: "Page number for pagination (default: 1)" },
       },
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "email.read_temp_message",
@@ -52,7 +52,7 @@ export const emailTools: DotBotTool[] = [
       },
       required: ["message_id"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "email.delete_temp",
@@ -66,7 +66,7 @@ export const emailTools: DotBotTool[] = [
       type: "object",
       properties: {},
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "email.list_addresses",
@@ -80,6 +80,6 @@ export const emailTools: DotBotTool[] = [
       type: "object",
       properties: {},
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
 ];

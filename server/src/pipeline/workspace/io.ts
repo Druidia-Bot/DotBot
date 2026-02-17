@@ -18,7 +18,7 @@ const log = createComponentLogger("workspace.io");
 export async function readWorkspaceFile(
   deviceId: string,
   filePath: string,
-  timeoutMs = 5_000,
+  timeoutMs = 20_000,
 ): Promise<string> {
   return sendExecutionCommand(deviceId, {
     id: `ws_read_${nanoid(6)}`,
@@ -42,7 +42,7 @@ export async function writeWorkspaceFile(
   deviceId: string,
   filePath: string,
   content: string,
-  timeoutMs = 5_000,
+  timeoutMs = 25_000,
 ): Promise<void> {
   await sendExecutionCommand(deviceId, {
     id: `ws_write_${nanoid(6)}`,

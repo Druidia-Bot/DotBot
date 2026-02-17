@@ -104,15 +104,7 @@ export async function initializeMemoryStore(): Promise<void> {
   await fs.mkdir(TEMP_DIR, { recursive: true });
   await cleanupTempDir();
 
-  if (!await fileExists(MEMORY_INDEX_PATH)) {
-    const initialIndex: MemoryIndex = {
-      version: "1.0",
-      lastUpdatedAt: new Date().toISOString(),
-      models: [],
-      schemas: []
-    };
-    await writeJson(MEMORY_INDEX_PATH, initialIndex);
-  }
+  await writeJson(MEMORY_INDEX_PATH, emptyMemoryIndex());
 
   // Rebuild index from disk so it's always in sync with model files
   await rebuildMemoryIndex();
@@ -156,14 +148,34 @@ export async function cleanupTempDir(): Promise<number> {
 // INDEX OPERATIONS
 // ============================================
 
-export async function getMemoryIndex(): Promise<MemoryIndex> {
-  const raw = await readJson<MemoryIndex>(MEMORY_INDEX_PATH);
+export function emptyMemoryIndex(): MemoryIndex {
   return {
-    version: raw.version || "1.0",
-    lastUpdatedAt: raw.lastUpdatedAt || new Date().toISOString(),
-    models: raw.models || [],
-    schemas: raw.schemas || [],
+    version: "1.0",
+    lastUpdatedAt: new Date().toISOString(),
+    models: [],
+    schemas: [],
   };
+}
+
+export async function getMemoryIndex(): Promise<MemoryIndex> {
+  if (!await fileExists(MEMORY_INDEX_PATH)) {
+    const fresh = emptyMemoryIndex();
+    await writeJson(MEMORY_INDEX_PATH, fresh);
+    return fresh;
+  }
+  try {
+    const raw = await readJson<MemoryIndex>(MEMORY_INDEX_PATH);
+    return {
+      version: raw.version || "1.0",
+      lastUpdatedAt: raw.lastUpdatedAt || new Date().toISOString(),
+      models: raw.models || [],
+      schemas: raw.schemas || [],
+    };
+  } catch {
+    const fresh = emptyMemoryIndex();
+    await writeJson(MEMORY_INDEX_PATH, fresh);
+    return fresh;
+  }
 }
 
 export async function updateMemoryIndex(updater: (index: MemoryIndex) => void): Promise<void> {
@@ -214,15 +226,19 @@ export async function rebuildMemoryIndex(): Promise<void> {
  */
 export function extractKeywords(model: MentalModel): string[] {
   const words = new Set<string>();
-  model.name.toLowerCase().split(/\s+/).forEach(w => { if (w.length > 2) words.add(w); });
-  words.add(model.category);
+  if (model.name) model.name.toLowerCase().split(/\s+/).forEach(w => { if (w.length > 2) words.add(w); });
+  if (model.category) words.add(model.category);
+  // Include explicit keywords set by the condenser
+  for (const kw of model.keywords || []) {
+    words.add(kw.toLowerCase());
+  }
   for (const b of model.beliefs || []) {
-    b.attribute.toLowerCase().split(/\s+/).forEach(w => { if (w.length > 2) words.add(w); });
+    if (b.attribute) b.attribute.toLowerCase().split(/\s+/).forEach(w => { if (w.length > 2) words.add(w); });
   }
   for (const r of model.relationships || []) {
-    r.targetSlug.split("-").forEach(w => { if (w.length > 2) words.add(w); });
+    if (r.targetSlug) r.targetSlug.split("-").forEach(w => { if (w.length > 2) words.add(w); });
   }
-  return Array.from(words).slice(0, 20);
+  return Array.from(words).slice(0, 30);
 }
 
 // ============================================

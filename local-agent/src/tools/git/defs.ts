@@ -23,6 +23,6 @@ export const gitTools: DotBotTool[] = [
       },
       required: ["command"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
 ];

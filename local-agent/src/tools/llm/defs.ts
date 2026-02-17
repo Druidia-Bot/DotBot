@@ -22,6 +22,6 @@ export const llmTools: DotBotTool[] = [
       },
       required: ["prompt"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
 ];

@@ -45,3 +45,13 @@ export function saveDeviceCredentials(creds: DeviceCredentials): void {
 export function hasDeviceCredentials(): boolean {
   return fs.existsSync(DEVICE_FILE);
 }
+
+export function deleteDeviceCredentials(): void {
+  try {
+    if (fs.existsSync(DEVICE_FILE)) {
+      fs.unlinkSync(DEVICE_FILE);
+    }
+  } catch {
+    // non-fatal — file may already be gone
+  }
+}

@@ -190,12 +190,12 @@ export async function executeSteps(
             const cmdId = `imgcmd_${nanoid(8)}`;
             return sendExecutionCommand(deviceId, { id: cmdId, ...cmd });
           };
-          return executeImageGenTool(toolId, args, executeCommand);
+          return executeImageGenTool(toolId, args, executeCommand, `${workspacePath}/output`);
         },
         // Server-side premium executor
         executePremiumTool: async (toolId: string, args: Record<string, any>) => {
           const { executePremiumTool } = await import("#tools-server/premium/executor.js");
-          return executePremiumTool(userId, toolId, args);
+          return executePremiumTool(userId, toolId, args, deviceId);
         },
         // Server-side schedule executor
         executeScheduleTool: async (toolId: string, args: Record<string, any>) => {

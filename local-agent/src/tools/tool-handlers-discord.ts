@@ -798,6 +798,74 @@ export async function handleDiscord(toolId: string, args: Record<string, any>): 
       }
     }
 
+    // ----------------------------------------
+    // discord.gateway
+    // ----------------------------------------
+    case "discord.gateway": {
+      const action = (args.action || "").toLowerCase();
+
+      if (action === "status") {
+        try {
+          const { getGatewayStatus } = await import("../discord/adapter.js");
+          const { vaultHas } = await import("../credential-vault.js");
+          const status = getGatewayStatus();
+          status.hasToken = await vaultHas(DISCORD_CREDENTIAL_NAME);
+
+          return {
+            success: true,
+            output: JSON.stringify({
+              ...status,
+              hint: !status.hasToken
+                ? "No bot token in vault. Use secrets.prompt_user with key_name='DISCORD_BOT_TOKEN' to store one."
+                : !status.hasChannelConfig
+                  ? "Token exists but no channel config. Run discord.full_setup to configure channels."
+                  : !status.running
+                    ? "Gateway not running. Use discord.gateway with action='restart' to start it."
+                    : status.connected
+                      ? "Gateway is connected and healthy."
+                      : "Gateway exists but is not connected — it may be reconnecting.",
+            }, null, 2),
+          };
+        } catch (err: any) {
+          return { success: false, output: "", error: `Failed to get gateway status: ${err.message}` };
+        }
+      }
+
+      if (action === "restart") {
+        try {
+          const { restartDiscordGateway } = await import("../discord/adapter.js");
+          await restartDiscordGateway();
+          return {
+            success: true,
+            output: JSON.stringify({
+              restarted: true,
+              hint: "Gateway restarted with a fresh token from the vault. It may take a few seconds to fully connect.",
+            }, null, 2),
+          };
+        } catch (err: any) {
+          return { success: false, output: "", error: `Failed to restart gateway: ${err.message}` };
+        }
+      }
+
+      if (action === "stop") {
+        try {
+          const { stopDiscordAdapter } = await import("../discord/adapter.js");
+          stopDiscordAdapter();
+          return {
+            success: true,
+            output: JSON.stringify({
+              stopped: true,
+              hint: "Gateway stopped. Use action='restart' to reconnect.",
+            }, null, 2),
+          };
+        } catch (err: any) {
+          return { success: false, output: "", error: `Failed to stop gateway: ${err.message}` };
+        }
+      }
+
+      return { success: false, output: "", error: "action must be 'status', 'restart', or 'stop'" };
+    }
+
     default:
       return { success: false, output: "", error: `Unknown discord tool: ${toolId}` };
   }

@@ -276,7 +276,7 @@ All modules that call an LLM follow the same sequence:
 
 ### Module boundaries
 
-Each module produces a typed result that feeds into the next module. Modules do not import each other's internals — they communicate through their public types. The pipeline orchestrator (`prompt-handler.ts`) is the only file that calls modules in sequence and threads results between them.
+Each module produces a typed result that feeds into the next module. Modules do not import each other's internals — they communicate through their public types. The pipeline orchestrator (`ws/handlers/prompt.ts`) is the only file that calls modules in sequence and threads results between them.
 
 WebSocket handlers are thin wrappers: dynamic-import the module, pass the payload, return the result. No business logic in handlers.
 

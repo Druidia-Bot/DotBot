@@ -17,7 +17,7 @@ export const onboardingTools: DotBotTool[] = [
       type: "object",
       properties: {},
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "onboarding.complete_step",
@@ -34,7 +34,7 @@ export const onboardingTools: DotBotTool[] = [
       },
       required: ["step"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "onboarding.skip_step",
@@ -51,7 +51,7 @@ export const onboardingTools: DotBotTool[] = [
       },
       required: ["step"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "onboarding.mark_not_applicable",
@@ -68,6 +68,6 @@ export const onboardingTools: DotBotTool[] = [
       },
       required: ["step"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
 ];

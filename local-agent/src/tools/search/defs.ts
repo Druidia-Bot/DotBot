@@ -20,7 +20,8 @@ export const searchTools: DotBotTool[] = [
       },
       required: ["query"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
+    cache: { mode: "raw", type: "web_search" },
   },
   {
     id: "search.brave",
@@ -39,7 +40,8 @@ export const searchTools: DotBotTool[] = [
       },
       required: ["query"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
+    cache: { mode: "raw", type: "web_search" },
   },
   {
     id: "search.background",
@@ -57,7 +59,7 @@ export const searchTools: DotBotTool[] = [
       },
       required: ["type", "query"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "search.check_results",
@@ -74,7 +76,7 @@ export const searchTools: DotBotTool[] = [
       },
       required: ["task_id"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "search.files",
@@ -94,6 +96,6 @@ export const searchTools: DotBotTool[] = [
       },
       required: ["query"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
 ];

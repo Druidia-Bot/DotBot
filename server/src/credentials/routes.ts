@@ -12,10 +12,19 @@ import type { Hono } from "hono";
 import QRCode from "qrcode";
 import { getSession, getAndConsumeSession } from "./sessions.js";
 import { encryptCredential } from "./crypto.js";
+import { clearResolveForCredential } from "./handlers/index.js";
 import { devices, sendMessage } from "#ws/devices.js";
 import { nanoid } from "nanoid";
 import { createComponentLogger } from "#logging.js";
 import { validateDeviceSession } from "../auth/device-sessions.js";
+import {
+  renderEntryPage,
+  renderSuccessPage,
+  renderExpiredPage,
+  renderErrorPage,
+  renderSessionUnauthedPage,
+  renderSessionAuthedPage,
+} from "./templates/index.js";
 
 const log = createComponentLogger("credentials.routes");
 
@@ -58,6 +67,19 @@ export function _clearRateLimits(): void {
 }
 
 // ============================================
+// CSP HEADERS
+// ============================================
+
+function cspHeaders(): Record<string, string> {
+  return {
+    "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+  };
+}
+
+// ============================================
 // ROUTE REGISTRATION
 // ============================================
 
@@ -78,15 +100,19 @@ export function registerCredentialRoutes(app: Hono): void {
 
     const sessionId = cookies["dotbot_device_session"];
     if (!sessionId) {
-      return c.html(sessionLandingPage(null), 200, cspHeaders());
+      return c.html(renderSessionUnauthedPage(), 200, cspHeaders());
     }
 
     const session = validateDeviceSession(sessionId);
     if (!session.valid) {
-      return c.html(sessionLandingPage(null), 200, cspHeaders());
+      return c.html(renderSessionUnauthedPage(), 200, cspHeaders());
     }
 
-    return c.html(sessionLandingPage(session), 200, cspHeaders());
+    return c.html(
+      renderSessionAuthedPage(session.deviceId || "unknown", session.userId || "unknown"),
+      200,
+      cspHeaders(),
+    );
   });
 
   // ----------------------------------------
@@ -96,7 +122,7 @@ export function registerCredentialRoutes(app: Hono): void {
   app.get("/credentials/enter/:token", async (c) => {
     const ip = c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "unknown";
     if (isRateLimited(ip)) {
-      return c.html(errorPage("Too many attempts. Please try again later."), 429, cspHeaders());
+      return c.html(renderErrorPage("Too many attempts. Please try again later."), 429, cspHeaders());
     }
 
     const token = c.req.param("token");
@@ -104,7 +130,7 @@ export function registerCredentialRoutes(app: Hono): void {
 
     if (!session) {
       recordFailedAttempt(ip);
-      return c.html(expiredPage(), 410, cspHeaders());
+      return c.html(renderExpiredPage(), 410, cspHeaders());
     }
 
     // Generate QR code for this page so user can open it on their phone
@@ -123,7 +149,18 @@ export function registerCredentialRoutes(app: Hono): void {
       log.warn("Failed to generate QR code for credential entry page");
     }
 
-    return c.html(entryPage(session.title, session.prompt, session.keyName, token, session.allowedDomain, qrSvg), 200, cspHeaders());
+    return c.html(
+      renderEntryPage({
+        title: session.title,
+        prompt: session.prompt,
+        keyName: session.keyName,
+        token,
+        allowedDomain: session.allowedDomain,
+        qrSvg,
+      }),
+      200,
+      cspHeaders(),
+    );
   });
 
   // ----------------------------------------
@@ -133,7 +170,7 @@ export function registerCredentialRoutes(app: Hono): void {
   app.post("/credentials/submit", async (c) => {
     const ip = c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "unknown";
     if (isRateLimited(ip)) {
-      return c.html(errorPage("Too many attempts. Please try again later."), 429, cspHeaders());
+      return c.html(renderErrorPage("Too many attempts. Please try again later."), 429, cspHeaders());
     }
 
     // CSRF protection: the one-time session token (unguessable, consumed on use)
@@ -145,13 +182,13 @@ export function registerCredentialRoutes(app: Hono): void {
     const value = body["value"] as string;
 
     if (!token || !value) {
-      return c.html(errorPage("Missing token or value."), 400, cspHeaders());
+      return c.html(renderErrorPage("Missing token or value."), 400, cspHeaders());
     }
 
     // Atomically get and consume the session (M-06 fix: prevents TOCTOU race)
     const session = getAndConsumeSession(token);
     if (!session) {
-      return c.html(expiredPage(), 410, cspHeaders());
+      return c.html(renderExpiredPage(), 410, cspHeaders());
     }
 
     // Encrypt the credential with the server key for this user
@@ -170,547 +207,12 @@ export function registerCredentialRoutes(app: Hono): void {
           encrypted_blob: encryptedBlob,
         },
       });
+
+      // Clear resolve tracking so the agent can re-resolve the updated credential
+      // (e.g., Discord gateway needs to re-resolve the new bot token)
+      clearResolveForCredential(session.deviceId, session.keyName);
     }
 
-    return c.html(successPage(session.keyName), 200, cspHeaders());
+    return c.html(renderSuccessPage(session.keyName), 200, cspHeaders());
   });
-}
-
-// ============================================
-// HTML TEMPLATES
-// ============================================
-
-/**
- * CSP headers for all credential pages.
- * Strict policy: no external resources, no eval, inline styles/scripts only.
- */
-function cspHeaders(): Record<string, string> {
-  return {
-    "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "no-referrer",
-  };
-}
-
-function entryPage(title: string, prompt: string, keyName: string, token: string, allowedDomain: string, qrSvg: string): string {
-  // Escape HTML entities in user-provided strings
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${esc(title)}</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0f0f23;
-      color: #e0e0e0;
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-    .card {
-      background: #1a1a2e;
-      border: 1px solid #2a2a4a;
-      border-radius: 12px;
-      padding: 40px;
-      max-width: 520px;
-      width: 100%;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-    }
-    .logo {
-      text-align: center;
-      margin-bottom: 24px;
-    }
-    .logo span {
-      font-size: 28px;
-      font-weight: 700;
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .badge {
-      display: inline-block;
-      background: #1e3a2f;
-      color: #4ade80;
-      font-size: 11px;
-      font-weight: 600;
-      padding: 3px 10px;
-      border-radius: 20px;
-      margin-top: 8px;
-      letter-spacing: 0.5px;
-    }
-    .prompt {
-      background: #16162b;
-      border: 1px solid #2a2a4a;
-      border-radius: 8px;
-      padding: 16px;
-      margin: 20px 0;
-      font-size: 14px;
-      line-height: 1.6;
-      white-space: pre-wrap;
-    }
-    .key-name {
-      color: #a78bfa;
-      font-family: 'Consolas', 'Fira Code', monospace;
-      font-size: 13px;
-    }
-    label {
-      display: block;
-      font-size: 13px;
-      color: #999;
-      margin-bottom: 8px;
-    }
-    input[type="password"], input[type="text"] {
-      width: 100%;
-      padding: 12px 16px;
-      background: #0f0f23;
-      border: 1px solid #333366;
-      border-radius: 8px;
-      color: #e0e0e0;
-      font-family: 'Consolas', 'Fira Code', monospace;
-      font-size: 14px;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    input:focus {
-      border-color: #667eea;
-    }
-    .toggle-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin: 12px 0 24px 0;
-      font-size: 13px;
-      color: #888;
-    }
-    .toggle-row input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      accent-color: #667eea;
-    }
-    button {
-      width: 100%;
-      padding: 14px;
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity 0.2s;
-    }
-    button:hover { opacity: 0.9; }
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .security-note {
-      margin-top: 20px;
-      padding: 12px;
-      background: #1e1e3a;
-      border-radius: 8px;
-      font-size: 12px;
-      color: #777;
-      line-height: 1.5;
-    }
-    .security-note strong { color: #4ade80; }
-    .domain-badge {
-      text-align: center;
-      margin: 12px 0;
-      padding: 6px 16px;
-      background: #162032;
-      border: 1px solid #1e3a5f;
-      border-radius: 6px;
-      font-size: 13px;
-      color: #7dd3fc;
-    }
-    .domain-badge strong { color: #38bdf8; }
-    .phone-entry {
-      margin-top: 20px;
-      padding: 16px;
-      background: #162032;
-      border: 1px solid #1e3a5f;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-    .phone-entry-qr {
-      flex-shrink: 0;
-      width: 120px;
-      height: 120px;
-    }
-    .phone-entry-qr svg {
-      width: 100%;
-      height: 100%;
-    }
-    .phone-entry-text {
-      font-size: 12px;
-      color: #7dd3fc;
-      line-height: 1.5;
-    }
-    .phone-entry-text strong {
-      color: #a78bfa;
-      font-size: 13px;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="logo">
-      <span>DotBot</span><br>
-      <span class="badge">SECURE CREDENTIAL ENTRY</span>
-    </div>
-
-    <div class="domain-badge">
-      Scoped to: <strong>${esc(allowedDomain)}</strong>
-    </div>
-
-    <div class="prompt">${esc(prompt)}</div>
-
-    <form method="POST" action="/credentials/submit" id="credForm">
-      <input type="hidden" name="token" value="${esc(token)}">
-
-      <label>Enter value for <span class="key-name">${esc(keyName)}</span></label>
-      <input type="password" name="value" id="valueInput" required autocomplete="off" autofocus
-             placeholder="Paste or type your credential here">
-
-      <div class="toggle-row">
-        <input type="checkbox" id="showToggle">
-        <label for="showToggle" style="margin:0; cursor:pointer;">Show value</label>
-      </div>
-
-      <button type="submit" id="submitBtn">Store Securely</button>
-    </form>
-
-    <div class="security-note">
-      <strong>🔒 Security:</strong> This credential is encrypted with a server-side key and
-      cryptographically bound to <strong>${esc(allowedDomain)}</strong>. It can only be used
-      for API calls to that domain — it cannot be exfiltrated to any other destination.
-      The LLM never sees the real value.
-    </div>
-
-    ${qrSvg ? `
-    <div class="phone-entry">
-      <div class="phone-entry-qr">${qrSvg}</div>
-      <div class="phone-entry-text">
-        <strong>📱 Prefer a different device?</strong><br>
-        Scan this QR code to open this page on your phone or tablet.
-        This protects against keyloggers, browser extensions, or other
-        software that may be monitoring this computer.
-      </div>
-    </div>` : ""}
-  </div>
-
-  <script>
-    const input = document.getElementById('valueInput');
-    const toggle = document.getElementById('showToggle');
-    const form = document.getElementById('credForm');
-    const btn = document.getElementById('submitBtn');
-
-    toggle.addEventListener('change', () => {
-      input.type = toggle.checked ? 'text' : 'password';
-    });
-
-    form.addEventListener('submit', () => {
-      btn.disabled = true;
-      btn.textContent = 'Encrypting…';
-    });
-  </script>
-</body>
-</html>`;
-}
-
-function successPage(keyName: string): string {
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Credential Stored</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0f0f23;
-      color: #e0e0e0;
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-    .card {
-      background: #1a1a2e;
-      border: 1px solid #2a2a4a;
-      border-radius: 12px;
-      padding: 40px;
-      max-width: 420px;
-      width: 100%;
-      text-align: center;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-    }
-    .check { font-size: 48px; margin-bottom: 16px; }
-    h2 { color: #4ade80; margin-bottom: 12px; }
-    p { color: #999; font-size: 14px; line-height: 1.6; }
-    .key-name { color: #a78bfa; font-family: 'Consolas', monospace; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="check">✓</div>
-    <h2>Credential Stored</h2>
-    <p><span class="key-name">${esc(keyName)}</span> has been encrypted and stored securely.
-    You can close this tab and return to DotBot.</p>
-  </div>
-</body>
-</html>`;
-}
-
-function expiredPage(): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Session Expired</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0f0f23;
-      color: #e0e0e0;
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-    .card {
-      background: #1a1a2e;
-      border: 1px solid #2a2a4a;
-      border-radius: 12px;
-      padding: 40px;
-      max-width: 420px;
-      width: 100%;
-      text-align: center;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-    }
-    h2 { color: #f87171; margin-bottom: 12px; }
-    p { color: #999; font-size: 14px; line-height: 1.6; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h2>Session Expired</h2>
-    <p>This credential entry link has expired or was already used.
-    Return to DotBot and request a new one.</p>
-  </div>
-</body>
-</html>`;
-}
-
-function errorPage(message: string): string {
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Error</title>
-  <style>
-    body { font-family: sans-serif; background: #0f0f23; color: #e0e0e0;
-           display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-    .card { background: #1a1a2e; border: 1px solid #2a2a4a; border-radius: 12px;
-            padding: 40px; max-width: 420px; text-align: center; }
-    h2 { color: #f87171; margin-bottom: 12px; }
-    p { color: #999; font-size: 14px; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h2>Error</h2>
-    <p>${esc(message)}</p>
-  </div>
-</body>
-</html>`;
-}
-
-function sessionLandingPage(session: { valid: boolean; deviceId?: string; userId?: string } | null): string {
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-  if (!session || !session.valid) {
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DotBot - Authentication Required</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0f0f23;
-      color: #e0e0e0;
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-    .card {
-      background: #1a1a2e;
-      border: 1px solid #2a2a4a;
-      border-radius: 12px;
-      padding: 40px;
-      max-width: 520px;
-      width: 100%;
-      text-align: center;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-    }
-    .logo { font-size: 32px; margin-bottom: 16px; }
-    h2 { color: #f87171; margin-bottom: 12px; }
-    p { color: #999; font-size: 14px; line-height: 1.6; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="logo">🤖</div>
-    <h2>Authentication Required</h2>
-    <p>Please use the setup link provided by your DotBot agent to access this page.</p>
-  </div>
-</body>
-</html>`;
-  }
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DotBot - Browser Access</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0f0f23;
-      color: #e0e0e0;
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-    .card {
-      background: #1a1a2e;
-      border: 1px solid #2a2a4a;
-      border-radius: 12px;
-      padding: 40px;
-      max-width: 520px;
-      width: 100%;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-    }
-    .logo {
-      text-align: center;
-      margin-bottom: 24px;
-    }
-    .logo span {
-      font-size: 28px;
-      font-weight: 700;
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .badge {
-      display: inline-block;
-      background: #1e3a2f;
-      color: #4ade80;
-      font-size: 11px;
-      font-weight: 600;
-      padding: 3px 10px;
-      border-radius: 20px;
-      margin-top: 8px;
-      letter-spacing: 0.5px;
-    }
-    .success {
-      text-align: center;
-      margin: 20px 0;
-    }
-    .success .icon {
-      font-size: 48px;
-      margin-bottom: 16px;
-    }
-    .success h2 {
-      color: #4ade80;
-      margin-bottom: 12px;
-    }
-    .info {
-      background: #16162b;
-      border: 1px solid #2a2a4a;
-      border-radius: 8px;
-      padding: 16px;
-      margin: 20px 0;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      margin: 8px 0;
-      padding: 4px 0;
-      border-bottom: 1px solid #2a2a4a;
-    }
-    .info-row:last-child { border-bottom: none; }
-    .info-label { color: #999; }
-    .info-value {
-      color: #a78bfa;
-      font-family: 'Consolas', 'Fira Code', monospace;
-      font-size: 12px;
-    }
-    .note {
-      margin-top: 20px;
-      padding: 12px;
-      background: #1e1e3a;
-      border-radius: 8px;
-      font-size: 12px;
-      color: #777;
-      line-height: 1.5;
-      text-align: center;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="logo">
-      <span>DotBot</span><br>
-      <span class="badge">BROWSER ACCESS ACTIVE</span>
-    </div>
-
-    <div class="success">
-      <div class="icon">✓</div>
-      <h2>Browser Authenticated</h2>
-      <p style="color: #999;">Your browser is now connected to your DotBot instance.</p>
-    </div>
-
-    <div class="info">
-      <div class="info-row">
-        <span class="info-label">Device ID:</span>
-        <span class="info-value">${esc(session.deviceId || "unknown")}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">User ID:</span>
-        <span class="info-value">${esc(session.userId || "unknown")}</span>
-      </div>
-    </div>
-
-    <div class="note">
-      🔒 This browser session is scoped to your device and will expire after 30 days of inactivity.
-      You can now close this tab and return to using your DotBot agent.
-    </div>
-  </div>
-</body>
-</html>`;
 }

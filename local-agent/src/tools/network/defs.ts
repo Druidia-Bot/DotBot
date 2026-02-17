@@ -21,7 +21,7 @@ export const networkTools: DotBotTool[] = [
       },
       required: ["host"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "network.dns_lookup",
@@ -39,7 +39,7 @@ export const networkTools: DotBotTool[] = [
       },
       required: ["domain"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "network.port_check",
@@ -57,6 +57,6 @@ export const networkTools: DotBotTool[] = [
       },
       required: ["host", "port"],
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
 ];

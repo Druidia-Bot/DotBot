@@ -53,6 +53,8 @@ export interface ToolLoopOptions {
   maxTokens: number;
   messages: LLMMessage[];
   tools: ToolDefinition[];
+  /** Optional per-tool behavior hints keyed by unsanitized tool ID (e.g. filesystem.create_file). */
+  toolHintsById?: Record<string, { mutating?: boolean; verification?: boolean }>;
   handlers: Map<string, ToolHandler>;
   maxIterations: number;
   temperature?: number;
@@ -124,7 +126,7 @@ export interface ToolLoopResult {
   completed: boolean;
   /** Tool calls that were executed. */
   toolCallsMade: { tool: string; args: Record<string, any>; result: string; success: boolean }[];
-  /** When true, the persona called agent__escalate or got force-escalated. */
+  /** When true, the persona called agent.escalate or got force-escalated. */
   escalated?: boolean;
   /** Why the escalation happened. */
   escalationReason?: string;

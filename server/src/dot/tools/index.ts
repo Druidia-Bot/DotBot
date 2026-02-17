@@ -49,6 +49,24 @@ import {
   identityRemoveHandler,
 } from "./identity.js";
 
+import {
+  BACKSTORY_GENERATE_TOOL_ID,
+  backstoryGenerateDefinition,
+  backstoryGenerateHandler,
+} from "./backstory.js";
+
+import {
+  LOGS_LIST_TOOL_ID,
+  logsListDefinition,
+  logsListHandler,
+  LOGS_READ_TOOL_ID,
+  logsReadDefinition,
+  logsReadHandler,
+  LOGS_SEARCH_TOOL_ID,
+  logsSearchDefinition,
+  logsSearchHandler,
+} from "./logs.js";
+
 // Re-export everything for external consumers
 export {
   TASK_DISPATCH_TOOL_ID,
@@ -83,6 +101,24 @@ export {
   identityRemoveHandler,
 } from "./identity.js";
 
+export {
+  BACKSTORY_GENERATE_TOOL_ID,
+  backstoryGenerateDefinition,
+  backstoryGenerateHandler,
+} from "./backstory.js";
+
+export {
+  LOGS_LIST_TOOL_ID,
+  logsListDefinition,
+  logsListHandler,
+  LOGS_READ_TOOL_ID,
+  logsReadDefinition,
+  logsReadHandler,
+  LOGS_SEARCH_TOOL_ID,
+  logsSearchDefinition,
+  logsSearchHandler,
+} from "./logs.js";
+
 // ============================================
 // BUILDER
 // ============================================
@@ -92,11 +128,47 @@ function mergeInto(target: Map<string, ToolHandler>, source: Map<string, ToolHan
   for (const [id, handler] of source) target.set(id, handler);
 }
 
+function buildToolHintsById(manifest: ToolManifestEntry[]): Record<string, { mutating?: boolean; verification?: boolean }> {
+  const hints: Record<string, { mutating?: boolean; verification?: boolean }> = {};
+
+  // Forward explicit definition-level flags from the manifest.
+  // Every tool should declare mutatingHint / verificationHint directly;
+  // the fallback to readOnlyHint is kept only for third-party MCP tools
+  // that may not have been updated yet.
+  for (const t of manifest) {
+    if (t.annotations?.mutatingHint !== undefined || t.annotations?.verificationHint !== undefined) {
+      hints[t.id] = {
+        mutating: t.annotations.mutatingHint,
+        verification: t.annotations.verificationHint,
+      };
+    }
+  }
+
+  // Dot-native tools (not in the manifest)
+  hints[TASK_DISPATCH_TOOL_ID] = { mutating: true, verification: false };
+  hints[SKILL_SEARCH_TOOL_ID] = { mutating: false, verification: true };
+  hints[SKILL_READ_TOOL_ID] = { mutating: false, verification: true };
+  hints[SKILL_CREATE_TOOL_ID] = { mutating: true, verification: false };
+  hints[SKILL_DELETE_TOOL_ID] = { mutating: true, verification: false };
+  hints[IDENTITY_READ_TOOL_ID] = { mutating: false, verification: true };
+  hints[IDENTITY_UPDATE_TOOL_ID] = { mutating: true, verification: false };
+  hints[IDENTITY_REMOVE_TOOL_ID] = { mutating: true, verification: false };
+  hints[BACKSTORY_GENERATE_TOOL_ID] = { mutating: true, verification: false };
+  hints[LOGS_LIST_TOOL_ID] = { mutating: false, verification: true };
+  hints[LOGS_READ_TOOL_ID] = { mutating: false, verification: true };
+  hints[LOGS_SEARCH_TOOL_ID] = { mutating: false, verification: true };
+  hints[TOOL_EXECUTE_ID] = { mutating: true, verification: false };
+
+  return hints;
+}
+
 export interface DotToolSetup {
   /** Native tool definitions for the LLM API. */
   definitions: ToolDefinition[];
   /** Handler map (toolId → handler). */
   handlers: Map<string, ToolHandler>;
+  /** Behavior hints for Dot verification loop keyed by tool ID. */
+  toolHintsById: Record<string, { mutating?: boolean; verification?: boolean }>;
 }
 
 /**
@@ -143,6 +215,10 @@ export function buildDotTools(
   handlers.set(IDENTITY_READ_TOOL_ID, identityReadHandler());
   handlers.set(IDENTITY_UPDATE_TOOL_ID, identityUpdateHandler());
   handlers.set(IDENTITY_REMOVE_TOOL_ID, identityRemoveHandler());
+  handlers.set(BACKSTORY_GENERATE_TOOL_ID, backstoryGenerateHandler());
+  handlers.set(LOGS_LIST_TOOL_ID, logsListHandler());
+  handlers.set(LOGS_READ_TOOL_ID, logsReadHandler());
+  handlers.set(LOGS_SEARCH_TOOL_ID, logsSearchHandler());
 
   // Layer 4: tools.execute — generic passthrough for discovered tools
   handlers.set(TOOL_EXECUTE_ID, toolExecuteHandler(handlers));
@@ -158,12 +234,19 @@ export function buildDotTools(
     identityReadDefinition(),
     identityUpdateDefinition(),
     identityRemoveDefinition(),
+    backstoryGenerateDefinition(),
+    logsListDefinition(),
+    logsReadDefinition(),
+    logsSearchDefinition(),
     toolExecuteDefinition(),
   ];
+
+  const toolHintsById = buildToolHintsById(dotManifest);
 
   return {
     definitions: [...proxyDefs, ...dotDefs],
     handlers,
+    toolHintsById,
   };
 }
 

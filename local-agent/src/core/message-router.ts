@@ -8,10 +8,10 @@
 import { nanoid } from "nanoid";
 import type { WSMessage } from "../types.js";
 import { AGENT_VERSION, DEVICE_NAME, SERVER_URL, deviceCredentials, setDeviceCredentials } from "./config.js";
-import { send, handlePendingResponse } from "./ws-client.js";
+import { send, handlePendingResponse, handlePong } from "./ws-client.js";
 import { cleanConsumedInviteToken } from "./env.js";
 import { initializeAfterAuth, notifyActivity } from "./post-auth-init.js";
-import { handleRunLog } from "./run-log.js";
+import { writeClientLog } from "./client-log.js";
 import { saveDeviceCredentials } from "../auth/device-credentials.js";
 import { appendAgentWork } from "../memory/store-agent-work.js";
 
@@ -229,8 +229,19 @@ export async function handleMessage(message: WSMessage): Promise<void> {
       // Server encrypted a credential — store the blob in vault
       const stored = handleCredentialStored(message.payload);
       if (stored) {
-        vaultSetServerBlob(stored.keyName, stored.blob).then(() => {
+        vaultSetServerBlob(stored.keyName, stored.blob).then(async () => {
           console.log(`[Agent] Credential "${stored.keyName}" stored securely (server-encrypted)`);
+
+          // If the Discord bot token was updated, restart the gateway with the new token.
+          // The gateway holds the old token in memory — it won't pick up the new one otherwise.
+          if (stored.keyName === "DISCORD_BOT_TOKEN") {
+            try {
+              const { restartDiscordGateway } = await import("../discord/adapter.js");
+              await restartDiscordGateway();
+            } catch (err) {
+              console.error("[Agent] Failed to restart Discord gateway after token update:", err);
+            }
+          }
         }).catch(err => {
           console.error(`[Agent] Failed to store credential blob:`, err);
         });
@@ -304,7 +315,21 @@ export async function handleMessage(message: WSMessage): Promise<void> {
 
     case "run_log":
       // Persist execution trace to disk for diagnostics
-      await handleRunLog(message.payload);
+      if (message.payload?.stage === "write_log") {
+        // Generic log write — subfolder/filename/content provided by server
+        await writeClientLog(message.payload);
+      } else {
+        // Legacy run-log — auto-wrap into daily JSONL with 72h pruning
+        const now = new Date();
+        const entry = JSON.stringify({ ...message.payload, _ts: now.toISOString() }) + "\n";
+        await writeClientLog({
+          subfolder: "run-logs",
+          filename: `${now.toISOString().slice(0, 10)}.log`,
+          content: entry,
+          mode: "append",
+          pruneAfterMs: 72 * 60 * 60 * 1000,
+        });
+      }
       break;
 
     case "system_update": {
@@ -332,7 +357,7 @@ export async function handleMessage(message: WSMessage): Promise<void> {
     }
 
     case "pong":
-      // Heartbeat response
+      handlePong();
       break;
   }
 }

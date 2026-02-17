@@ -133,7 +133,7 @@ export async function buildIntakeKnowledge(input: KnowledgebaseInput): Promise<s
     "Polymarket Results": polymarketResultsText,
   };
 
-  return loadPrompt("receptionist/intake-knowledge.md", fields);
+  return loadPrompt("pipeline/receptionist/intake-knowledge.md", fields);
 }
 
 // ============================================

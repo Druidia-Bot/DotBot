@@ -22,7 +22,7 @@ export const reminderTools: DotBotTool[] = [
       },
       required: ["message", "scheduled_for"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
   {
     id: "reminder.list",
@@ -38,7 +38,7 @@ export const reminderTools: DotBotTool[] = [
         status: { type: "string", description: "Filter by status: 'scheduled' (default, pending reminders), 'completed', 'failed', 'expired', or omit for all" },
       },
     },
-    annotations: { readOnlyHint: true },
+    annotations: { readOnlyHint: true, verificationHint: true, mutatingHint: false },
   },
   {
     id: "reminder.cancel",
@@ -55,6 +55,6 @@ export const reminderTools: DotBotTool[] = [
       },
       required: ["task_id"],
     },
-    annotations: { destructiveHint: true },
+    annotations: { destructiveHint: true, mutatingHint: true },
   },
 ];

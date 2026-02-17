@@ -203,7 +203,16 @@ export type MemoryAction =
   | "identity_set_role"
   | "get_model_skeletons"
   | "search_and_promote"
-  | "promote_model";
+  | "promote_model"
+  | "get_backstory"
+  | "identity_set_use_backstory"
+  | "save_backstory"
+  | "list_run_logs"
+  | "read_run_log"
+  | "search_run_logs"
+  | "get_research_cache_index"
+  | "write_research_cache"
+  | "get_journal_files";
 
 export interface MemoryRequest {
   action: MemoryAction;

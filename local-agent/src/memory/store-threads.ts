@@ -64,7 +64,7 @@ export async function getThread(threadId: string): Promise<any | null> {
 }
 
 /**
- * Get L0 summaries of all threads (id, topic, status, lastActive).
+ * Get L0 summaries of all threads (id, topic, status, lastActive, condensedAt).
  * Does not load full thread content — just enough for the receptionist to route.
  */
 export async function getAllThreadSummaries(): Promise<{
@@ -72,6 +72,7 @@ export async function getAllThreadSummaries(): Promise<{
   topic: string;
   status: string;
   lastActiveAt: string;
+  condensedAt?: string;
   entities: string[];
   keywords: string[];
 }[]> {
@@ -88,6 +89,7 @@ export async function getAllThreadSummaries(): Promise<{
           topic: thread.topic || "Untitled",
           status: thread.status || "active",
           lastActiveAt: thread.lastActiveAt || thread.createdAt || "",
+          condensedAt: thread.condensedAt || "",
           entities: thread.entities || [],
           keywords: thread.keywords || [],
         });
@@ -106,7 +108,7 @@ export async function getAllThreadSummaries(): Promise<{
  */
 export async function getL0MemoryIndex(): Promise<{
   models: { slug: string; name: string; category: string; description: string; keywords: string[]; lastUpdatedAt: string }[];
-  threads: { id: string; topic: string; status: string; lastActiveAt: string; entities: string[]; keywords: string[] }[];
+  threads: { id: string; topic: string; status: string; lastActiveAt: string; condensedAt?: string; entities: string[]; keywords: string[] }[];
   sessionSummary: string | null;
 }> {
   const memoryIndex = await getMemoryIndex();
@@ -376,6 +378,11 @@ export async function condenseThread(
         },
         ...preserved,
       ];
+
+      // Update topic if still the default — derive from condensation summary
+      if (!thread.topic || thread.topic === "New Thread") {
+        thread.topic = summary.slice(0, 100);
+      }
 
       thread.condensedAt = new Date().toISOString();
       thread.lastActiveAt = new Date().toISOString();

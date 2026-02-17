@@ -10,6 +10,7 @@ import { deductCredits, getBalance } from "../../credits/service.js";
 import { createComponentLogger } from "#logging.js";
 import { PROVIDERS } from "./providers/index.js";
 import { listApis } from "./list.js";
+import { sendMemoryRequest } from "#ws/device-bridge.js";
 import type { PremiumApiEntry, PremiumToolResult } from "./types.js";
 
 const log = createComponentLogger("premium");
@@ -24,6 +25,7 @@ export async function executePremiumTool(
   userId: string,
   toolId: string,
   args: Record<string, any>,
+  deviceId?: string,
 ): Promise<PremiumToolResult> {
   // ── Meta tools ──────────────────────────────────────────────
   if (toolId === "premium.list_apis") {
@@ -91,6 +93,25 @@ export async function executePremiumTool(
     const output = formatResponse(response);
 
     log.info("Premium tool executed", { userId, apiId, provider: provider.name, creditCost: apiEntry.creditCost, newBalance });
+
+    // Fire-and-forget: cache the result on the local agent (paid data — always cache)
+    if (deviceId && apiEntry.cache) {
+      const source = args.url || args.query || args.asin || args.video_id || args.product_id || apiId;
+      const title = args.query ? `${apiEntry.name}: ${args.query}` : apiEntry.name;
+      sendMemoryRequest(deviceId, {
+        action: "write_research_cache",
+        data: {
+          source,
+          type: apiEntry.cache.type,
+          tool: `premium.${apiId}`,
+          title,
+          content: output,
+          cacheMode: apiEntry.cache.mode,
+        },
+      } as any).catch(err => {
+        log.warn("Failed to cache premium tool result", { apiId, error: err });
+      });
+    }
 
     return {
       success: true,

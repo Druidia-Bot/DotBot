@@ -114,6 +114,10 @@ export interface JSONSchema {
 export interface MCPToolAnnotations {
   /** If true, tool doesn't modify external state */
   readOnlyHint?: boolean;
+  /** If true, tool mutates external state. Preferred over heuristic classification. */
+  mutatingHint?: boolean;
+  /** If true, tool is suitable for verification/read-back checks after a mutating action. */
+  verificationHint?: boolean;
   /** If true, tool may have destructive effects */
   destructiveHint?: boolean;
   /** If true, tool may take significant time */
@@ -265,6 +269,19 @@ export interface DotBotTool extends MCPTool {
 
   /** MCP-specific config (source: "mcp") */
   mcpServer?: string;
+
+  /**
+   * Research cache configuration. If set, successful tool results are
+   * automatically cached to ~/.bot/memory/research-cache/ for follow-up use.
+   *
+   * - "raw": save output as-is (search results, instant answers — already structured)
+   * - "enrich": save + generate brief/headnote + tags + related memory models
+   *            (web pages, PDFs, transcripts — long/unstructured content)
+   */
+  cache?: {
+    mode: "raw" | "enrich";
+    type: "web_page" | "web_search" | "api_response" | "pdf_summary" | "video_transcript" | "image_description";
+  };
 }
 
 /**

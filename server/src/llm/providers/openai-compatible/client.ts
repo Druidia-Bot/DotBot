@@ -75,7 +75,8 @@ export class OpenAICompatibleClient implements ILLMClient {
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: "POST",
       headers,
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120_000),
     });
     
     if (!response.ok) {
@@ -129,7 +130,8 @@ export class OpenAICompatibleClient implements ILLMClient {
         temperature: options?.temperature ?? 0.5,
         max_tokens: options?.maxTokens ?? 4096,
         stream: true
-      })
+      }),
+      signal: AbortSignal.timeout(120_000),
     });
     
     if (!response.ok) {

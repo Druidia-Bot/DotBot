@@ -75,6 +75,7 @@ export class GeminiClient implements ILLMClient {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120_000),
     });
 
     if (!response.ok) {
@@ -156,6 +157,7 @@ export class GeminiClient implements ILLMClient {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120_000),
     });
 
     if (!response.ok) {

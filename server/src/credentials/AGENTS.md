@@ -15,15 +15,32 @@
 | Master key | Server `~/.bot/server-data/master.key` | 32 bytes AES key — useless without blob |
 | Plaintext | Neither (server RAM only during `fetch()`) | Exists for milliseconds |
 
-## Files in This Directory
+## Directory Structure
 
-| File | Purpose | Key Exports |
-|------|---------|-------------|
-| `crypto.ts` | AES-256-GCM + HKDF encryption | `encryptCredential(userId, plaintext, allowedDomain)`, `decryptCredential(blobString, requestDomain?)` |
-| `sessions.ts` | One-time entry sessions (10-min TTL, in-memory) | `createSession()`, `getSession()`, `consumeSession()` |
-| `routes.ts` | HTTP entry page + security headers + rate limiting | `registerCredentialRoutes(app)` |
-| `proxy.ts` | SSRF-safe HTTP proxy with credential injection | `executeProxyRequest()` |
-| `handlers.ts` | WS message handlers | `handleCredentialSessionRequest()`, `handleCredentialProxyRequest()` |
+```
+credentials/
+  crypto.ts                        — AES-256-GCM + HKDF encryption
+  sessions.ts                      — One-time entry sessions (15-min TTL, in-memory)
+  proxy.ts                         — SSRF-safe HTTP proxy with credential injection
+  routes.ts                        — HTTP entry page + CSP headers + rate limiting
+  handlers/
+    session-request.ts             — handleCredentialSessionRequest (WS → create entry session)
+    proxy-request.ts               — handleCredentialProxyRequest (WS → decrypt + proxy HTTP call)
+    resolve.ts                     — handleCredentialResolveRequest + resolve tracking + cleanup
+    index.ts                       — Barrel re-export
+  templates/
+    entry.html                     — Credential entry form (Tailwind CDN)
+    success.html                   — Success confirmation
+    expired.html                   — Expired session
+    error.html                     — Generic error
+    session-unauthed.html          — Auth required landing
+    session-authed.html            — Authenticated session info
+    index.ts                       — Template loader + {{placeholder}} interpolation
+  __tests__/
+    crypto.test.ts
+    proxy.test.ts
+    sessions.test.ts
+```
 
 ## Domain-Scoped Encryption
 
@@ -49,12 +66,14 @@ Double enforcement on decrypt:
 - All `createSession()` calls MUST include `allowedDomain` in the options object
 - `proxy.ts` extracts the hostname from the request URL and passes it to `decryptCredential()` — do not remove this
 - Rate limiting uses `_clearRateLimits()` for testing — don't remove the export
-- CSP headers are on ALL HTML responses from credential routes — `cspHeaders()` helper
+- CSP headers are on ALL HTML responses from credential routes — `cspHeaders()` helper allows Tailwind CDN
 - Sessions are one-time use: `consumeSession()` marks them consumed, they're deleted after a grace period
+- Templates use `{{placeholder}}` syntax — `formatPrompt()` auto-links URLs and formats numbered steps
 
 ## Testing Helpers
 
 - `_setMasterKeyForTesting(key: Buffer)` — inject a known master key in tests
 - `_clearMasterKey()` — reset master key state between tests
 - `_clearRateLimits()` — reset rate limiter between tests
+- `_clearAllSessions()` — reset session store between tests
 - Always use these in `beforeEach`/`afterEach` — never leave test state leaking

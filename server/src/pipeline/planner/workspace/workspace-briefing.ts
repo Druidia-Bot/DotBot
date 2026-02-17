@@ -78,8 +78,10 @@ export async function buildWorkspaceBriefing(
     ? "\n**Note:** This step requires external data. Fetch what you need and save it to the workspace."
     : "";
 
-  return loadPrompt("planner/prompts/workspace-briefing.md", {
+  return loadPrompt("pipeline/planner/prompts/workspace-briefing.md", {
     "Workspace Path": workspacePath,
+    "Output Path": `${workspacePath}/output`,
+    "Research Path": `${workspacePath}/research`,
     "Workspace Files": workspaceFiles,
     "Step Title": currentStep.title,
     "Step ID": currentStep.id,
@@ -115,7 +117,7 @@ export async function buildStepUserMessage(
     previousResults = parts.join("\n");
   }
 
-  return loadPrompt("planner/prompts/step-user-message.md", {
+  return loadPrompt("pipeline/planner/prompts/step-user-message.md", {
     "Step Title": currentStep.title,
     "Step Description": currentStep.description,
     "Expected Output": currentStep.expectedOutput,

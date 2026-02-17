@@ -4,7 +4,7 @@
  * Runs the heartbeat check: loads persona, delegates prompt building,
  * tool resolution, LLM execution, and result parsing to focused modules.
  *
- * No WS transport concerns — called by the thin handler in ws/heartbeat-handler.ts.
+ * No WS transport concerns — called by the thin handler in ws/handlers/heartbeat.ts.
  */
 
 import { createComponentLogger } from "#logging.js";

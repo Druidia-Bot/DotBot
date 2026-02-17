@@ -62,18 +62,9 @@ export class DeepSeekClient implements ILLMClient {
     }
 
     if (options?.responseFormat === "json_object") {
-      if (options.responseSchema) {
-        body.response_format = {
-          type: "json_schema",
-          json_schema: {
-            name: options.responseSchema.name,
-            strict: true,
-            schema: options.responseSchema.schema,
-          },
-        };
-      } else {
-        body.response_format = { type: "json_object" };
-      }
+      // DeepSeek only supports { type: "json_object" } — NOT json_schema.
+      // Schema guidance must come from the prompt itself.
+      body.response_format = { type: "json_object" };
     }
 
     if (options?.thinking) {
@@ -87,7 +78,8 @@ export class DeepSeekClient implements ILLMClient {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${this.apiKey}`
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120_000),
     });
     
     if (!response.ok) {
@@ -143,7 +135,8 @@ export class DeepSeekClient implements ILLMClient {
         temperature: options?.temperature ?? 0.5,
         max_tokens: options?.maxTokens ?? 4096,
         stream: true
-      })
+      }),
+      signal: AbortSignal.timeout(120_000),
     });
     
     if (!response.ok) {
