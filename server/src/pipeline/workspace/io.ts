@@ -83,6 +83,19 @@ export async function listWorkspaceDir(
   try {
     return JSON.parse(raw);
   } catch {
-    return raw.split("\n").map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+    // directory.list returns lines like "[DIR]  agent_abc123" and "[FILE] foo.txt (123 bytes)"
+    // Strip prefixes and extract bare entry names
+    return raw.split("\n")
+      .map((l: string) => l.trim())
+      .filter((l: string) => l.length > 0)
+      .map((l: string) => {
+        // Strip [DIR] or [FILE] prefix + any trailing size info
+        const stripped = l
+          .replace(/^\[DIR]\s+/, "")
+          .replace(/^\[FILE]\s+/, "")
+          .replace(/\s+\(\d+\s+bytes?\)$/, "");
+        return stripped.trim();
+      })
+      .filter((l: string) => l.length > 0);
   }
 }

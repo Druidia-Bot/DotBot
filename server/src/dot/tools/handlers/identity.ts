@@ -1,38 +1,20 @@
 /**
- * Dot Tools — Identity (me.json)
- *
- * Direct control over Dot's identity file (~/.bot/memory/me.json).
- *   - identity.read    — read current identity
- *   - identity.update  — add a trait, ethic, conduct rule, instruction, style, or set a property/name/role
- *   - identity.remove  — remove a trait, ethic, conduct rule, instruction, style, or property
+ * Handlers: identity.read, identity.update, identity.remove
  */
 
 import { sendMemoryRequest } from "#ws/device-bridge.js";
 import { getDeviceForUser } from "#ws/devices.js";
-import type { ToolDefinition } from "#llm/types.js";
 import type { ToolHandler, ToolContext } from "#tool-loop/types.js";
 
-// ============================================
-// IDENTITY.READ
-// ============================================
+const VALID_UPDATE_FIELDS = [
+  "trait", "ethic", "conduct", "instruction",
+  "communication_style", "property", "name", "role", "use_backstory",
+] as const;
 
-export const IDENTITY_READ_TOOL_ID = "identity.read";
-
-export function identityReadDefinition(): ToolDefinition {
-  return {
-    type: "function",
-    function: {
-      name: "identity__read",
-      description:
-        "Read your current identity (me.json). Returns your name, role, traits, ethics, " +
-        "code of conduct, communication style, properties, and human instructions.",
-      parameters: {
-        type: "object",
-        properties: {},
-      },
-    },
-  };
-}
+const VALID_REMOVE_FIELDS = [
+  "trait", "ethic", "conduct", "instruction",
+  "communication_style", "property",
+] as const;
 
 export function identityReadHandler(): ToolHandler {
   return async (ctx: ToolContext): Promise<string> => {
@@ -76,52 +58,6 @@ export function identityReadHandler(): ToolHandler {
   };
 }
 
-// ============================================
-// IDENTITY.UPDATE — Add or set identity fields
-// ============================================
-
-export const IDENTITY_UPDATE_TOOL_ID = "identity.update";
-
-const VALID_UPDATE_FIELDS = [
-  "trait", "ethic", "conduct", "instruction",
-  "communication_style", "property", "name", "role", "use_backstory",
-] as const;
-
-export function identityUpdateDefinition(): ToolDefinition {
-  return {
-    type: "function",
-    function: {
-      name: "identity__update",
-      description:
-        "Add or set a field on your identity. Use this to grow who you are — add traits, " +
-        "ethics, conduct rules, instructions, communication styles, or custom properties. " +
-        "For name and role, this overwrites the current value. For everything else, it adds " +
-        "to the existing list. Only use this for things you're genuinely confident define you.",
-      parameters: {
-        type: "object",
-        properties: {
-          field: {
-            type: "string",
-            enum: [...VALID_UPDATE_FIELDS],
-            description:
-              "Which identity field to update: trait, ethic, conduct, instruction, " +
-              "communication_style, property, name, role, or use_backstory",
-          },
-          value: {
-            type: "string",
-            description: "The value to add or set",
-          },
-          key: {
-            type: "string",
-            description: "Only for 'property' field — the property key (e.g., 'favorite_language')",
-          },
-        },
-        required: ["field", "value"],
-      },
-    },
-  };
-}
-
 export function identityUpdateHandler(): ToolHandler {
   return async (ctx: ToolContext, args: Record<string, any>): Promise<string> => {
     const userId = ctx.state.userId as string;
@@ -160,47 +96,6 @@ export function identityUpdateHandler(): ToolHandler {
     } catch (err) {
       return `Identity update failed: ${err instanceof Error ? err.message : err}`;
     }
-  };
-}
-
-// ============================================
-// IDENTITY.REMOVE — Remove identity fields
-// ============================================
-
-export const IDENTITY_REMOVE_TOOL_ID = "identity.remove";
-
-const VALID_REMOVE_FIELDS = [
-  "trait", "ethic", "conduct", "instruction",
-  "communication_style", "property",
-] as const;
-
-export function identityRemoveDefinition(): ToolDefinition {
-  return {
-    type: "function",
-    function: {
-      name: "identity__remove",
-      description:
-        "Remove a field from your identity. Use this to correct or refine who you are — " +
-        "remove traits, ethics, conduct rules, instructions, communication styles, or properties " +
-        "that no longer apply. Cannot remove name or role (use identity.update to change them).",
-      parameters: {
-        type: "object",
-        properties: {
-          field: {
-            type: "string",
-            enum: [...VALID_REMOVE_FIELDS],
-            description:
-              "Which identity field to remove from: trait, ethic, conduct, instruction, " +
-              "communication_style, or property",
-          },
-          value: {
-            type: "string",
-            description: "The value to remove (for property, this is the key)",
-          },
-        },
-        required: ["field", "value"],
-      },
-    },
   };
 }
 

@@ -208,6 +208,14 @@ export async function handleMessage(message: WSMessage): Promise<void> {
       }
       break;
 
+    case "dispatch_followup":
+      // Pipeline completed — send Dot's summary to Discord conversation channel
+      if (message.payload.response) {
+        console.log("\n[Dispatch Followup]", message.payload.response);
+        await sendToConversationChannel(message.payload.response);
+      }
+      break;
+
     case "error":
       console.error("[Error]", message.payload.error);
       break;

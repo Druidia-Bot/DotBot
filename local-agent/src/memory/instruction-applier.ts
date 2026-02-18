@@ -431,6 +431,7 @@ async function handleCreateModel(inst: Extract<CondenserInstruction, { action: "
 async function handleUpdateModelMeta(inst: Extract<CondenserInstruction, { action: "update_model_meta" }>): Promise<boolean> {
   const model = await store.getMentalModel(inst.modelSlug);
   if (!model) return false;
+  if (!inst.updates) return false;
 
   if (inst.updates.name) model.name = inst.updates.name;
   if (inst.updates.description) model.description = inst.updates.description;

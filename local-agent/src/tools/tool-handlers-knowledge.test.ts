@@ -56,6 +56,24 @@ vi.mock("../memory/personas.js", () => ({
       knowledgeFileCount: p.knowledgeFiles?.length || 0,
     })),
   }),
+  createPersona: async (name: string, role: string, description: string, systemPrompt: string, options?: any) => {
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const now = new Date().toISOString();
+    const persona = {
+      slug, name, role, description, systemPrompt,
+      modelTier: options?.modelTier || "smart",
+      tools: options?.tools || [],
+      traits: options?.traits || [],
+      expertise: options?.expertise || [],
+      triggers: options?.triggers || [],
+      knowledgeFiles: [],
+      councilOnly: false,
+      createdAt: now,
+      lastUpdatedAt: now,
+    };
+    mockPersonaStore.set(slug, persona);
+    return persona;
+  },
   addKnowledge: async (slug: string, filename: string, content: string) => {
     if (!mockPersonaKnowledge.has(slug)) mockPersonaKnowledge.set(slug, new Map());
     mockPersonaKnowledge.get(slug)!.set(filename, content);

@@ -30,6 +30,8 @@ Before EVERY call to `task.dispatch`, you MUST:
 
 Only after the user confirms should you call `task.dispatch`.
 
+**Exception — Resuming an existing agent is NOT a new dispatch.** If the user asks to resume, finish, or continue a stalled/failed agent, use `agent.status` with `resume_agent` — do NOT use `task.dispatch`. The dispatch protocol (plan → estimate → confirm) does not apply to resumes. The plan already exists in the workspace.
+
 Your `prompt` parameter must be a **complete, self-contained task description**. The pipeline agent will NOT have your conversation history — write it as if briefing a colleague who knows nothing about the discussion. Include:
 
 - What exactly to do

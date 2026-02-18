@@ -14,14 +14,17 @@
  * Dot uses the workhorse LLM role for her tool loop.
  */
 
+import { nanoid } from "nanoid";
 import { createComponentLogger } from "#logging.js";
 import { resolveModelAndClient } from "#llm/selection/resolve.js";
 import { buildDotSystemPrompt } from "./system-prompt.js";
 import { buildSingleTopicMessages, buildSegmentMessages } from "./message-builder.js";
 import { runToolLoop } from "#tool-loop/loop.js";
-import { sendRunLog } from "#ws/device-bridge.js";
+import { sendRunLog, sendSaveToThread } from "#ws/device-bridge.js";
+import { broadcastToUser } from "#ws/devices.js";
 import { runPipeline } from "#pipeline/pipeline.js";
 import { buildDotTools } from "./tools/index.js";
+import type { PipelineResult } from "#pipeline/pipeline.js";
 import type { DotInternalContext } from "./pre-dot/index.js";
 import type { DotOptions, DotPreparedContext, DotResult } from "./types.js";
 import type { ToolContext } from "#tool-loop/types.js";
@@ -65,33 +68,44 @@ export async function runDot(opts: DotOptions, prepared: DotPreparedContext): Pr
   // ── Select model (assistant — fast, non-reasoning) ──
   const { selectedModel, client } = await resolveModelAndClient(llm, { explicitRole: "assistant" }, deviceId);
 
-  // ── Dispatch closure ──
+  // ── Dispatch closure (fire-and-forget so Dot responds immediately) ──
   let dispatchResult: DotResult["dispatch"] | undefined;
 
   const onDispatch = async (enrichedPrompt: string) => {
-    log.info("Dot dispatching to pipeline", {
+    log.info("Dot dispatching to pipeline (async)", {
       promptLength: enrichedPrompt.length,
       messageId,
     });
 
-    const pipelineResult = await runPipeline({
+    // Fire pipeline in background — don't block the tool loop
+    runPipeline({
       llm,
       userId,
       deviceId,
       prompt: enrichedPrompt,
       messageId,
       source: "dot-dispatch",
+    }).then(async (pipelineResult) => {
+      log.info("Background pipeline completed", {
+        messageId,
+        agentId: pipelineResult.agentId,
+        success: pipelineResult.executionSuccess,
+      });
+      await deliverDispatchFollowup({
+        llm, userId, deviceId, messageId,
+        enhancedRequest, modelSpines, platform,
+        pipelineResult,
+      });
+    }).catch((err) => {
+      log.error("Background pipeline failed", {
+        messageId,
+        error: err instanceof Error ? err.message : String(err),
+      });
     });
 
-    const result = {
-      agentId: pipelineResult.agentId,
-      workspacePath: pipelineResult.workspacePath,
-      success: pipelineResult.executionSuccess,
-      executionResponse: pipelineResult.executionResponse,
-    };
-
-    dispatchResult = result;
-    return result;
+    // Return immediately so Dot can respond to the user
+    dispatchResult = { success: true };
+    return { success: true };
   };
 
   // ── Build tool set ──
@@ -261,4 +275,103 @@ export async function runDot(opts: DotOptions, prepared: DotPreparedContext): Pr
     threadId: prepared.threadId,
     dispatch: dispatchResult,
   };
+}
+
+// ============================================
+// DISPATCH FOLLOWUP
+// ============================================
+
+interface DispatchFollowupOpts {
+  llm: import("#llm/types.js").ILLMClient;
+  userId: string;
+  deviceId: string;
+  messageId: string;
+  enhancedRequest: any;
+  modelSpines: { model: any; spine: string }[];
+  platform?: "windows" | "linux" | "macos" | "web";
+  pipelineResult: PipelineResult;
+}
+
+async function deliverDispatchFollowup(opts: DispatchFollowupOpts): Promise<void> {
+  const { llm, userId, deviceId, messageId, enhancedRequest, modelSpines, platform, pipelineResult } = opts;
+
+  try {
+    const systemPrompt = await buildDotSystemPrompt(enhancedRequest, modelSpines, platform);
+    const { selectedModel, client } = await resolveModelAndClient(llm, { explicitRole: "assistant" }, deviceId);
+
+    const summary = buildPipelineSummary(pipelineResult);
+
+    const messages = [
+      { role: "system" as const, content: systemPrompt },
+      {
+        role: "user" as const,
+        content: [
+          "SYSTEM: A task you previously dispatched has completed. Present the results to the user in your natural voice.",
+          "Be concise but informative. Mention what was accomplished, whether it succeeded, and where output files are if applicable.",
+          "If the task failed, be honest about it and suggest next steps.",
+          "",
+          "--- Pipeline Result ---",
+          summary,
+        ].join("\n"),
+      },
+    ];
+
+    const response = await client.chat(messages, {
+      model: selectedModel.model,
+      maxTokens: DOT_MAX_TOKENS,
+      temperature: 0.3,
+    });
+
+    const followupText = response.content || "(Pipeline completed but I couldn't summarize the results.)";
+
+    log.info("Dispatch followup generated", {
+      messageId,
+      responseLength: followupText.length,
+    });
+
+    // Save to conversation thread
+    sendSaveToThread(userId, "conversation", {
+      role: "assistant",
+      content: followupText,
+      source: "dot",
+      messageId: `followup_${messageId}`,
+      dispatched: false,
+    });
+
+    // Push to user via dispatch_followup (local agent routes to Discord)
+    broadcastToUser(userId, {
+      type: "dispatch_followup",
+      id: nanoid(),
+      timestamp: Date.now(),
+      payload: {
+        response: followupText,
+        messageId,
+        agentId: pipelineResult.agentId,
+        success: pipelineResult.executionSuccess ?? true,
+        workspacePath: pipelineResult.workspacePath,
+      },
+    });
+  } catch (err) {
+    log.error("Dispatch followup failed", {
+      messageId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+function buildPipelineSummary(result: PipelineResult): string {
+  const lines: string[] = [];
+  lines.push(`Success: ${result.executionSuccess ?? "unknown"}`);
+  if (result.agentId) lines.push(`Agent: ${result.agentId}`);
+  if (result.workspacePath) lines.push(`Workspace: ${result.workspacePath}`);
+  if (result.knowledgebasePath) lines.push(`Knowledgebase: ${result.knowledgebasePath}`);
+  if (result.resurfacedModels?.length) lines.push(`Resurfaced models: ${result.resurfacedModels.join(", ")}`);
+  if (result.newModelsCreated?.length) lines.push(`New models created: ${result.newModelsCreated.join(", ")}`);
+  if (result.knowledgeGathered) lines.push(`Knowledge gathered: ${result.knowledgeGathered} items`);
+  if (result.executionResponse) {
+    lines.push("");
+    lines.push("--- Execution Output ---");
+    lines.push(result.executionResponse.slice(0, 3000));
+  }
+  return lines.join("\n");
 }

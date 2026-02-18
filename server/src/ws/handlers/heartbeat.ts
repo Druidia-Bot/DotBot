@@ -11,11 +11,11 @@
  */
 
 import { nanoid } from "nanoid";
-import type { WSMessage, HeartbeatResult } from "../../types.js";
 import { createComponentLogger } from "#logging.js";
-import { devices, sendMessage } from "../devices.js";
+import { devices, sendMessage, broadcastToUser } from "../devices.js";
 import { runHeartbeat } from "../../services/heartbeat/index.js";
-import { scanForDeadAgents } from "#pipeline/agent-recovery.js";
+import { scanForDeadAgents, resumeOrphanedAgents } from "#pipeline/agent-recovery.js";
+import type { WSMessage, HeartbeatResult } from "../../types.js";
 
 export type { ScheduledTaskCounts } from "../../services/heartbeat/index.js";
 
@@ -58,7 +58,66 @@ export async function handleHeartbeatRequest(
     });
 
     // Proactive dead agent scan — runs after heartbeat response, non-blocking
-    scanForDeadAgents(deviceId).catch(err => {
+    scanForDeadAgents(deviceId).then(async (deadAgents) => {
+      if (deadAgents.length === 0) return;
+
+      const userId = device.session.userId;
+      const failed = deadAgents.filter(d => !d.resumable);
+      const resumable = deadAgents.filter(d => d.resumable);
+
+      // Notify about non-resumable (failed) agents
+      for (const agent of failed) {
+        const progress = agent.completedSteps > 0
+          ? `It completed ${agent.completedSteps} of ${agent.completedSteps + agent.remainingSteps} steps before being interrupted.`
+          : "It was interrupted before completing any steps.";
+
+        broadcastToUser(userId, {
+          type: "dispatch_followup",
+          id: nanoid(),
+          timestamp: Date.now(),
+          payload: {
+            response: `⚠️ A previously running task (\`${agent.agentId}\`) was interrupted and cannot be automatically resumed. ${progress} The workspace is preserved at \`${agent.workspacePath}\` — you can ask me to review it.`,
+            agentId: agent.agentId,
+            success: false,
+            workspacePath: agent.workspacePath,
+            interrupted: true,
+          },
+        });
+      }
+
+      // Auto-resume resumable agents
+      if (resumable.length > 0) {
+        for (const agent of resumable) {
+          broadcastToUser(userId, {
+            type: "dispatch_followup",
+            id: nanoid(),
+            timestamp: Date.now(),
+            payload: {
+              response: `🔄 Restarting interrupted task (\`${agent.agentId}\`) — it had ${agent.completedSteps} of ${agent.completedSteps + agent.remainingSteps} steps done. Picking up where it left off.`,
+              agentId: agent.agentId,
+              success: true,
+              workspacePath: agent.workspacePath,
+              interrupted: true,
+              resuming: true,
+            },
+          });
+        }
+
+        const { createClientForSelection } = await import("#llm/factory.js");
+        const { selectModel } = await import("#llm/selection/model-selector.js");
+        const modelConfig = selectModel({ explicitRole: "workhorse" });
+        const llm = createClientForSelection(modelConfig, deviceId);
+
+        resumeOrphanedAgents(resumable, llm, userId, deviceId).catch(err => {
+          log.error("Failed to resume orphaned agents", { error: err });
+        });
+      }
+
+      log.info("Dead agent scan processed", {
+        failed: failed.length,
+        resuming: resumable.length,
+      });
+    }).catch(err => {
       log.debug("Dead agent scan failed", { error: err });
     });
   } catch (error) {

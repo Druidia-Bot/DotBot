@@ -1,9 +1,8 @@
 /**
- * Dot Tool — backstory.generate
+ * Handler: backstory.generate
  *
  * Generates a fictional origin backstory using the architect model,
- * saves it to ~/.bot/backstory.md on the local agent, and sets
- * the useBackstory identity flag.
+ * saves it to ~/.bot/backstory.md on the local agent.
  */
 
 import { createComponentLogger } from "#logging.js";
@@ -11,41 +10,9 @@ import { selectModel } from "#llm/selection/model-selector.js";
 import { createClientForSelection } from "#llm/factory.js";
 import { sendMemoryRequest } from "#ws/device-bridge.js";
 import type { MemoryRequest } from "#ws/devices.js";
-import type { ToolDefinition } from "#llm/types.js";
 import type { ToolHandler, ToolContext } from "#tool-loop/types.js";
 
 const log = createComponentLogger("dot.tools.backstory");
-
-export const BACKSTORY_GENERATE_TOOL_ID = "backstory.generate";
-
-export function backstoryGenerateDefinition(): ToolDefinition {
-  return {
-    type: "function",
-    function: {
-      name: "backstory__generate",
-      description:
-        "Generate your origin backstory using the architect model. Pass the user's personality " +
-        "transfer text (everything they pasted from ChatGPT/Claude) and your chosen name. " +
-        "The backstory will be saved to ~/.bot/backstory.md and injected into your system prompt " +
-        "from that point forward. This is a one-time operation during onboarding.",
-      parameters: {
-        type: "object",
-        properties: {
-          user_info: {
-            type: "string",
-            description:
-              "The full personality transfer text the user pasted — everything they shared about themselves.",
-          },
-          agent_name: {
-            type: "string",
-            description: "The name you chose (or were given) in onboarding.",
-          },
-        },
-        required: ["user_info", "agent_name"],
-      },
-    },
-  };
-}
 
 export function backstoryGenerateHandler(): ToolHandler {
   return async (ctx: ToolContext, args: Record<string, any>) => {
@@ -101,7 +68,6 @@ export function backstoryGenerateHandler(): ToolHandler {
         provider: response.provider,
       });
 
-      // Save backstory and set the identity flag on the local agent
       const saveResult = await sendMemoryRequest(ctx.deviceId, {
         action: "save_backstory",
         data: { content: backstory },

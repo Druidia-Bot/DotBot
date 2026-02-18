@@ -2,13 +2,13 @@
  * Persona Management Handler
  */
 
-import { promises as fs } from "fs";
-import { resolve, join } from "path";
+import { resolve } from "path";
 import * as os from "os";
 import type { ToolExecResult } from "../_shared/types.js";
 import {
   getPersona,
   getPersonasIndex,
+  createPersona,
 } from "../../memory/personas.js";
 import {
   savePersonaFile,
@@ -63,12 +63,15 @@ export async function handlePersonas(toolId: string, args: Record<string, any>):
         triggers: parseList(args.triggers),
       };
 
-      // Save as .md file
+      // Save as directory-based persona.json (primary) + .md file (secondary)
+      await createPersona(name, role, persona.description, systemPrompt, {
+        modelTier: persona.modelTier as "fast" | "smart" | "powerful",
+        tools: persona.tools,
+        traits: persona.traits,
+        expertise: persona.expertise,
+        triggers: persona.triggers,
+      });
       await savePersonaFile(persona);
-
-      // Create knowledge directory for this persona
-      const knowledgeDir = join(PERSONAS_DIR, slug, "knowledge");
-      await fs.mkdir(knowledgeDir, { recursive: true });
 
       return {
         success: true,

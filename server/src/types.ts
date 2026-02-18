@@ -434,7 +434,8 @@ export type WSMessageType =
   | "auth_failed"
   | "admin_request"
   | "admin_response"
-  | "task_acknowledged";
+  | "task_acknowledged"
+  | "dispatch_followup";
 
 export interface WSMessage {
   type: WSMessageType;
