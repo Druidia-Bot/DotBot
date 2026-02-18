@@ -1,5 +1,5 @@
 /**
- * Pipeline — Orchestrator
+ * Pipeline — Orchestrator - Spawned Agents
  *
  * The single pipeline function that runs the full chain for each user message:
  *   Context Builder → Intake → Receptionist → Recruiter → Planner → Step Executor
@@ -29,17 +29,12 @@ import { executeQueuedTasks } from "./queue-executor.js";
 import { updatePersonaStatus, readPersonaJson } from "./workspace/persona.js";
 import { updateAgentAssignmentStatus } from "./receptionist/agent-exec.js";
 import {
-  sendMemoryRequest,
   sendRunLog,
   sendSaveToThread,
 } from "#ws/device-bridge.js";
 
 import type { PipelineOptions, PipelineResult } from "./types.js";
 export type { PipelineOptions, PipelineResult } from "./types.js";
-import {
-  FAST_PATH_CONTEXT_THRESHOLD,
-  FAST_PATH_AUTOMATABLE_CEILING,
-} from "./types.js";
 
 const log = createComponentLogger("pipeline");
 
@@ -80,63 +75,8 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
     intakeRequestType: intakeResult.requestType as string,
   }, "Conversation");
 
-  // ── Step 4: Fast-path check ──
-  // If we have high context confidence and the request is NOT automatable
-  // (e.g. conversational, needs human input), respond directly and log.
-  const contextConfidence = (intakeResult.contextConfidence as number) ?? 0;
-  const automatableConfidence = (intakeResult.automatableConfidence as number) ?? 1;
+  // ── Step 4: Check for existing agents on matched models (routing) ──
   const relevantMemories = (intakeResult.relevantMemories as any[]) || [];
-
-  if (contextConfidence >= FAST_PATH_CONTEXT_THRESHOLD && automatableConfidence < FAST_PATH_AUTOMATABLE_CEILING) {
-    log.info("Fast-path: responding directly (high context, low automatable)", {
-      contextConfidence, automatableConfidence, messageId,
-    });
-
-    // Save message to the highest-confidence memory model
-    const topModel = relevantMemories
-      .filter((m: any) => m.name && m.confidence)
-      .sort((a: any, b: any) => b.confidence - a.confidence)[0];
-
-    if (topModel) {
-      try {
-        await sendMemoryRequest(deviceId, {
-          action: "save_model",
-          modelSlug: topModel.name,
-          data: {
-            slug: topModel.name,
-            conversations: [{
-              role: "user",
-              content: prompt,
-              timestamp: new Date().toISOString(),
-            }],
-          },
-        } as any);
-        log.info("Fast-path: saved message to model", { model: topModel.name });
-      } catch (err) {
-        log.warn("Fast-path: failed to save message to model", { model: topModel.name, error: err });
-      }
-    }
-
-    sendRunLog(userId, {
-      stage: "fast-path",
-      messageId,
-      contextConfidence,
-      automatableConfidence,
-      topModel: topModel?.name || null,
-      intakeResult,
-      timestamp: new Date().toISOString(),
-    });
-
-    return {
-      intakeResult,
-      shortCircuited: true,
-      resurfacedModels: [],
-      newModelsCreated: [],
-      knowledgeGathered: 0,
-    };
-  }
-
-  // ── Step 4b: Check for existing agents on matched models (routing) ──
   const routingResult = await checkAgentRouting(llm, deviceId, prompt, relevantMemories);
   if (routingResult) {
     sendRunLog(userId, {
@@ -241,7 +181,6 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
     intakeResult,
     restatedRequest,
     intakeKnowledgebase: result.intakeKnowledgebase,
-    toolManifest,
   });
 
   sendRunLog(userId, {
@@ -250,7 +189,6 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
     agentId: result.agentId,
     selectedPersonas: recruiterResult.selectedPersonas,
     council: recruiterResult.council,
-    toolCount: recruiterResult.tools.length,
     modelRole: recruiterResult.modelRole,
     personaPath: recruiterResult.personaPath,
     timestamp: new Date().toISOString(),
@@ -295,7 +233,6 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
     agentId: result.agentId,
     workspacePath: result.workspacePath,
     customPrompt: recruiterResult.customPrompt,
-    selectedToolIds: recruiterResult.tools,
     modelRole: recruiterResult.modelRole,
     restatedRequest,
     toolManifest,

@@ -116,7 +116,7 @@ export interface PlanProgress {
     title: string;
     description: string;
     expectedOutput: string;
-    toolHints: string[];
+    toolIds: string[];
     requiresExternalData: boolean;
   }>;
   progress: {

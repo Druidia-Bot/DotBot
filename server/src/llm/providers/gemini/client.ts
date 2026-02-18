@@ -14,7 +14,7 @@ import type {
   LLMProvider,
   ToolCall,
 } from "../../types.js";
-import { PROVIDER_CONFIGS } from "../../config.js";
+import { PROVIDER_CONFIGS } from "../../providers.js";
 import {
   formatContentsForGemini,
   extractSystemInstruction,

@@ -20,9 +20,7 @@
  *     - knowledge.ingest (overrides the static handler when ctx.state callback exists)
  */
 
-import { nanoid } from "nanoid";
 import { createComponentLogger } from "#logging.js";
-import { sendExecutionCommand } from "#ws/device-bridge.js";
 import type { ToolHandler, ToolContext } from "../types.js";
 import type { ToolManifestEntry } from "#tools/types.js";
 
@@ -40,6 +38,9 @@ import { handleKnowledgeList } from "./knowledge-list.js";
 import { handleKnowledgeRead } from "./knowledge-read.js";
 import { handleKnowledgeDelete } from "./knowledge-delete.js";
 import { handleKnowledgeIngest } from "./knowledge-ingest.js";
+
+// Static handler imports — search (server-side, xAI Responses API)
+import { handleGrokWebSearch, handleGrokXSearch, handleUnifiedWebSearch } from "./grok-search.js";
 
 const log = createComponentLogger("tool-loop.server-handlers");
 
@@ -62,6 +63,12 @@ const KNOWLEDGE_HANDLERS: [string, ToolHandler][] = [
   ["knowledge.read", handleKnowledgeRead],
   ["knowledge.delete", handleKnowledgeDelete],
   ["knowledge.ingest", handleKnowledgeIngest],
+];
+
+const SEARCH_HANDLERS: [string, ToolHandler][] = [
+  ["search.grok_web", handleGrokWebSearch],
+  ["search.grok_x", handleGrokXSearch],
+  ["search.web", handleUnifiedWebSearch],
 ];
 
 // ============================================
@@ -124,6 +131,9 @@ export function buildServerSideHandlers(
   for (const [id, handler] of KNOWLEDGE_HANDLERS) {
     handlers.set(id, handler);
   }
+  for (const [id, handler] of SEARCH_HANDLERS) {
+    handlers.set(id, handler);
+  }
 
   // Dynamic: registered per manifest category
   const dynamicHandlerCache = new Map<string, ToolHandler>();
@@ -144,75 +154,13 @@ export function buildServerSideHandlers(
     handlers.set("knowledge.ingest", buildDynamicHandler("executeKnowledgeIngest", "knowledge ingest"));
   }
 
-  // tools.list_tools override: proxy to local agent, then append server-side tools
-  const serverTools = manifest.filter(t => DYNAMIC_CATEGORIES[t.category]);
-  if (serverTools.length > 0) {
-    handlers.set("tools.list_tools", buildToolsListHandler(serverTools));
-  }
-
   log.info("Built server-side handlers", {
-    static: MEMORY_HANDLERS.length + KNOWLEDGE_HANDLERS.length,
+    static: MEMORY_HANDLERS.length + KNOWLEDGE_HANDLERS.length + SEARCH_HANDLERS.length,
     dynamic: dynamicHandlerCache.size,
     total: handlers.size,
   });
 
   return handlers;
-}
-
-// ============================================
-// TOOLS.LIST_TOOLS OVERRIDE
-// ============================================
-
-/**
- * Build a handler for tools.list_tools that proxies to the local agent
- * and appends server-side tools (imagegen, premium, schedule) to the output.
- * This closes the discovery gap — Dot can now find server-side tools via tools.list_tools.
- */
-function buildToolsListHandler(serverTools: ToolManifestEntry[]): ToolHandler {
-  return async (ctx: ToolContext, args: Record<string, any>) => {
-    const category = args.category as string | undefined;
-
-    // Filter server-side tools by category if requested
-    const matchingServerTools = category
-      ? serverTools.filter(t => t.category === category)
-      : serverTools;
-
-    // Proxy to local agent for local tools
-    let localOutput = "";
-    try {
-      localOutput = await sendExecutionCommand(ctx.deviceId, {
-        id: `proxy_${nanoid(8)}`,
-        type: "tool_execute",
-        payload: { toolId: "tools.list_tools", toolArgs: args },
-        dryRun: false,
-        timeout: 30_000,
-        sandboxed: false,
-        requiresApproval: false,
-      });
-    } catch {
-      localOutput = "(Could not reach local agent for local tools)";
-    }
-
-    // Append server-side tools
-    if (matchingServerTools.length === 0) return localOutput;
-
-    const grouped = new Map<string, ToolManifestEntry[]>();
-    for (const t of matchingServerTools) {
-      if (!grouped.has(t.category)) grouped.set(t.category, []);
-      grouped.get(t.category)!.push(t);
-    }
-
-    const lines: string[] = [`\n\n--- Server-side tools (${matchingServerTools.length}) ---\n`];
-    for (const [cat, catTools] of grouped) {
-      lines.push(`[${cat}] (${catTools.length})`);
-      for (const t of catTools) {
-        const desc = t.description.length > 80 ? t.description.substring(0, 80) + "..." : t.description;
-        lines.push(`  ${t.id} — ${desc} (server)`);
-      }
-    }
-
-    return localOutput + lines.join("\n");
-  };
 }
 
 /**

@@ -5,7 +5,7 @@
  */
 
 import type { ILLMClient, LLMMessage, LLMRequestOptions, LLMResponse, LLMStreamChunk, LLMProvider, ToolCall, ToolDefinition } from "../types.js";
-import { PROVIDER_CONFIGS } from "../config.js";
+import { PROVIDER_CONFIGS } from "../providers.js";
 
 /**
  * Convert OpenAI-style tool definitions to Anthropic format.

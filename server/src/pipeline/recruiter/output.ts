@@ -9,7 +9,6 @@
  */
 
 import { loadPrompt } from "../../prompt-template.js";
-import { generateCompactCatalog } from "#tools/catalog.js";
 import { getPersona } from "../../personas/loader.js";
 import { getLocalPersona } from "../../personas/local-loader.js";
 import {
@@ -18,7 +17,6 @@ import {
   formatPersonasBulletList,
   formatCouncilsBulletList,
 } from "../../personas/summaries.js";
-import type { ToolManifestEntry } from "#tools/types.js";
 import type { RecruiterLLMResponse, RecruiterPhase1Response } from "./types.js";
 
 // ============================================
@@ -91,24 +89,21 @@ function formatPersonaProfiles(profiles: { id: string; name: string; content: st
 }
 
 // ============================================
-// PHASE 2: WRITER PROMPT (custom prompt + tools)
+// PHASE 2: WRITER PROMPT (custom prompt)
 // ============================================
 
 export async function buildWriterPrompt(
   intakeKB: string,
   restatedRequest: string,
   phase1: RecruiterPhase1Response,
-  manifest: ToolManifestEntry[],
 ): Promise<string> {
   const selectedIds = phase1.selectedPersonas.map(p => p.id);
   const profiles = fetchPersonaContent(selectedIds);
-  const toolCatalog = generateCompactCatalog(manifest);
 
   const fields: Record<string, string> = {
     "Restated Request": restatedRequest,
     "Intake Knowledgebase": intakeKB || "(intake file not available)",
     "Persona Profiles": formatPersonaProfiles(profiles),
-    "Tool Catalog": toolCatalog,
   };
 
   return loadPrompt("pipeline/recruiter/writer.md", fields);
@@ -140,7 +135,6 @@ export interface AgentPersonaFile {
   customPrompt: string;
   selectedPersonas: { id: string; reason: string }[];
   council: string | null;
-  tools: string[];
   modelRole: string;
   restatedRequests: string[];
   status: AgentStatus;
@@ -161,7 +155,6 @@ export function buildAgentPersonaFile(
     customPrompt: llmResponse.customPrompt,
     selectedPersonas: llmResponse.selectedPersonas,
     council: llmResponse.council,
-    tools: llmResponse.tools,
     modelRole: llmResponse.modelRole,
     restatedRequests: [restatedRequest, ...(opts?.extraRequests ?? [])],
     status: "queued",

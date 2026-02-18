@@ -12,7 +12,8 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { createLLMClient, createClientForSelection } from "../factory.js";
-import { PROVIDER_CONFIGS, MODEL_ROLE_CONFIGS } from "../config.js";
+import { MODEL_ROLE_CONFIGS } from "../config.js";
+import { PROVIDER_CONFIGS } from "../providers.js";
 import { LocalLLMClient, isCloudReachable, isLocalModelReady, getLocalStatus } from "../providers/local-llm/index.js";
 import { selectModel, registerApiKeys } from "../selection/model-selector.js";
 

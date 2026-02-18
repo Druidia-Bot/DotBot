@@ -31,10 +31,10 @@
             "type": "string",
             "description": "What success looks like"
           },
-          "toolHints": {
+          "toolIds": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Suggested tool IDs"
+            "description": "Exact tool IDs from the catalog that this step needs"
           },
           "requiresExternalData": {
             "type": "boolean",
@@ -46,7 +46,7 @@
             "description": "Step IDs that must complete first"
           }
         },
-        "required": ["id", "title", "description", "expectedOutput", "toolHints", "requiresExternalData", "dependsOn"],
+        "required": ["id", "title", "description", "expectedOutput", "toolIds", "requiresExternalData", "dependsOn"],
         "additionalProperties": false
       },
       "description": "Updated remaining steps. Can add new steps, remove steps, or modify existing ones."

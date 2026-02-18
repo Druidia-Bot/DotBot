@@ -16,6 +16,8 @@ import {
 import type { TailorResult, TopicSegment } from "./pre-dot/types.js";
 import type { LLMMessage } from "#llm/types.js";
 
+const SKILL_NUDGE_CALL_ID = "prefetch_skill_search";
+
 // ============================================
 // SINGLE-TOPIC MESSAGE BUILDER
 // ============================================
@@ -27,7 +29,8 @@ import type { LLMMessage } from "#llm/types.js";
  *   1. System prompt
  *   2. Synthetic "remind me" turn pair (if relevant models found)
  *   3. Manufactured topic-relevant history turns
- *   4. User message (tailored principles preamble + resolved prompt)
+ *   4. Synthetic skill.search tool call + result (if skillNudge provided)
+ *   5. User message (tailored principles preamble + resolved prompt)
  */
 export async function buildSingleTopicMessages(opts: {
   systemPrompt: string;
@@ -36,8 +39,9 @@ export async function buildSingleTopicMessages(opts: {
   consolidatedPrinciples: string;
   resolvedPrompt: string;
   forceDispatch: boolean;
+  skillNudge: string | null;
 }): Promise<LLMMessage[]> {
-  const { systemPrompt, deviceId, tailorResult, consolidatedPrinciples, resolvedPrompt, forceDispatch } = opts;
+  const { systemPrompt, deviceId, tailorResult, consolidatedPrinciples, resolvedPrompt, forceDispatch, skillNudge } = opts;
 
   const messages: LLMMessage[] = [
     { role: "system", content: systemPrompt },
@@ -52,6 +56,11 @@ export async function buildSingleTopicMessages(opts: {
   const manufacturedHistory = tailorResult.manufacturedHistory || [];
   for (const turn of manufacturedHistory) {
     messages.push({ role: turn.role, content: turn.content });
+  }
+
+  // Inject synthetic skill.search turn if pre-fetched results exist
+  if (skillNudge) {
+    messages.push(...buildSkillNudgeTurns(skillNudge));
   }
 
   // Current user message — tailored principles + resolved prompt
@@ -75,7 +84,8 @@ export async function buildSingleTopicMessages(opts: {
  *   1. System prompt
  *   2. Synthetic "remind me" turn pair (if segment has a model)
  *   3. Per-segment manufactured history turns
- *   4. User message (tailored principles preamble + segment text)
+ *   4. Synthetic skill.search tool call + result (if skillNudge provided, first segment only)
+ *   5. User message (tailored principles preamble + segment text)
  */
 export async function buildSegmentMessages(opts: {
   systemPrompt: string;
@@ -84,8 +94,9 @@ export async function buildSegmentMessages(opts: {
   tailorResult: TailorResult;
   consolidatedPrinciples: string;
   forceDispatch: boolean;
+  skillNudge: string | null;
 }): Promise<LLMMessage[]> {
-  const { systemPrompt, deviceId, segment, tailorResult, consolidatedPrinciples, forceDispatch } = opts;
+  const { systemPrompt, deviceId, segment, tailorResult, consolidatedPrinciples, forceDispatch, skillNudge } = opts;
 
   const messages: LLMMessage[] = [
     { role: "system", content: systemPrompt },
@@ -104,6 +115,11 @@ export async function buildSegmentMessages(opts: {
     messages.push({ role: turn.role, content: turn.content });
   }
 
+  // Inject synthetic skill.search turn if pre-fetched results exist
+  if (skillNudge) {
+    messages.push(...buildSkillNudgeTurns(skillNudge));
+  }
+
   // Segment user message — tailored principles + segment text
   const tailoredPreamble = buildTailoredSection(tailorResult, consolidatedPrinciples, forceDispatch);
   const segmentUserMessage = tailoredPreamble
@@ -112,4 +128,34 @@ export async function buildSegmentMessages(opts: {
   messages.push({ role: "user", content: segmentUserMessage });
 
   return messages;
+}
+
+// ============================================
+// SKILL NUDGE TURNS
+// ============================================
+
+/**
+ * Build a synthetic assistant tool_call + tool result turn pair.
+ * Makes it look like Dot already called skill.search and got results.
+ */
+function buildSkillNudgeTurns(skillNudge: string): LLMMessage[] {
+  return [
+    {
+      role: "assistant",
+      content: "",
+      tool_calls: [{
+        id: SKILL_NUDGE_CALL_ID,
+        type: "function",
+        function: {
+          name: "skill__search",
+          arguments: JSON.stringify({ query: "(auto-searched based on request)" }),
+        },
+      }],
+    },
+    {
+      role: "tool",
+      content: skillNudge,
+      tool_call_id: SKILL_NUDGE_CALL_ID,
+    },
+  ];
 }

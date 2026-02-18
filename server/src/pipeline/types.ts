@@ -37,14 +37,6 @@ export interface PipelineResult {
 }
 
 // ============================================
-// CONSTANTS
-// ============================================
-
-// Fast-path thresholds: skip receptionist when context is rich and task is not automatable
-export const FAST_PATH_CONTEXT_THRESHOLD = 0.9;
-export const FAST_PATH_AUTOMATABLE_CEILING = 0.4;
-
-// ============================================
 // ROUTING TYPES
 // ============================================
 

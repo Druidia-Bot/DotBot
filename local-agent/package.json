@@ -13,13 +13,15 @@
   },
   "dependencies": {
     "@dotbot/shared": "*",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "express": "^5.2.1",
     "nanoid": "^5.0.9",
     "node-llama-cpp": "^3.5.1",
     "playwright": "^1.58.2",
     "re2": "^1.23.3",
     "ws": "^8.18.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

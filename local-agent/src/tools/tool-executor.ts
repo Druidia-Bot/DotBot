@@ -440,6 +440,11 @@ async function executeRegisteredTool(toolId: string, args: Record<string, any>):
     return { success: false, output: "", error: `Unknown tool: ${toolId}` };
   }
 
+  if (tool.runtime === "mcp") {
+    const { executeMcpTool } = await import("./mcp/executor.js");
+    return executeMcpTool(toolId, tool, args);
+  }
+
   if (tool.runtime === "http" && tool.apiSpec) {
     return executeApiTool(toolId, tool, args);
   }

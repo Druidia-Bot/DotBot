@@ -2,22 +2,6 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "multipleTopics": {
-      "type": "boolean",
-      "description": "Does the conversation history span multiple topics, projects, places, or people?"
-    },
-    "continuationScore": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 10,
-      "description": "How much does the user's current input continue the last topic discussed (0-10)"
-    },
-    "contextConfidence": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 1,
-      "description": "Confidence (0.0-1.0) that enough context exists in the chat thread to accurately respond. 0.98+ means virtually certain."
-    },
     "restatedRequest": {
       "type": "string",
       "description": "The user's request restated in conversation context, with ambiguous references resolved to concrete meaning."
@@ -27,6 +11,33 @@
       "minimum": 0,
       "maximum": 1,
       "description": "How automatable is this request (0.0-1.0). High (0.8+) = fully computer-automatable. Low (<0.3) = needs human input/clarification."
+    },
+    "steps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Ordered steps to gather all the information needed to answer the user's question"
+    },
+    "singleTurn": {
+      "type": "boolean",
+      "description": "Could all the steps be consolidated and completed in a single turn?"
+    },
+    "estimatedMinutes": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Estimated minutes to complete all the steps, assuming web/file lookups take ~10 seconds each"
+    },
+    "webSearch": {
+      "type": "object",
+      "properties": {
+        "helpful": { "type": "boolean" },
+        "queries": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["helpful", "queries"],
+      "description": "Whether a web search would help and suggested queries"
+    },
+    "directResponse": {
+      "type": "string",
+      "description": "How the assistant would respond to the user knowing the steps outlined above"
     },
     "relevantMemories": {
       "type": "array",
@@ -46,29 +57,11 @@
       "maxItems": 3,
       "description": "Up to 3 other memory topics that might relate to this topic"
     },
-    "steps": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Ordered steps to gather all the information needed to answer the user's question"
-    },
-    "singleTurn": {
-      "type": "boolean",
-      "description": "Could all the steps be consolidated and completed in a single turn?"
-    },
-    "estimatedMinutes": {
-      "type": "number",
-      "minimum": 0,
-      "description": "Estimated minutes to complete all the steps, assuming web/file lookups take ~10 seconds each"
-    },
-    "directResponse": {
-      "type": "string",
-      "description": "How the assistant would respond to the user knowing the steps outlined above"
-    },
     "requestType": {
       "type": "string",
       "enum": ["simple_command", "direct_task", "compound_task", "conversational", "rfi"],
       "description": "Classification of the request type"
     }
   },
-  "required": ["multipleTopics", "continuationScore", "contextConfidence", "restatedRequest", "automatableConfidence", "relevantMemories", "relatedMemories", "steps", "singleTurn", "estimatedMinutes", "directResponse", "requestType"]
+  "required": ["restatedRequest", "automatableConfidence", "relevantMemories", "steps", "singleTurn", "estimatedMinutes", "directResponse", "requestType"]
 }

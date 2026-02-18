@@ -10,7 +10,7 @@
  * 2. Offline? → local (Qwen 2.5 0.5B via node-llama-cpp)
  * 3. Massive context needed (>50K tokens, large files, video)? → deep_context (Gemini 3 Pro)
  * 4. Architect-level task (complex design, planning, second opinion)? → architect (Claude Opus 4.6)
- * 5. Everything else → workhorse (DeepSeek V3.2)
+ * 5. Everything else → workhorse (Grok 4.1 Fast Thinking)
  *
  * Fallback chain: if the selected provider's API key is missing,
  * fall back to the next best option.
@@ -23,7 +23,8 @@ import type {
   ModelSelectionCriteria,
   LLMProvider,
 } from "../types.js";
-import { MODEL_ROLE_CONFIGS, PROVIDER_CONFIGS, FALLBACK_CHAINS } from "../config.js";
+import { MODEL_ROLE_CONFIGS, FALLBACK_CHAINS } from "../config.js";
+import { PROVIDER_CONFIGS } from "../providers.js";
 import type { FallbackEntry } from "../config.js";
 
 const log = createComponentLogger("model-selector");
@@ -35,8 +36,6 @@ const log = createComponentLogger("model-selector");
 /** Token count above which we escalate to deep_context (Gemini 3 Pro) */
 const DEEP_CONTEXT_TOKEN_THRESHOLD = 50_000;
 
-/** Token count above which workhorse can't handle it (DeepSeek context = 64K) */
-const WORKHORSE_MAX_TOKENS = 60_000;
 
 // ============================================
 // AVAILABLE API KEYS (set at startup)
@@ -169,12 +168,13 @@ export function selectModel(criteria: ModelSelectionCriteria): ModelSelection {
   }
 
   // 5. Safety guard: if estimated tokens exceed workhorse context window, escalate
-  if (criteria.estimatedTokens && criteria.estimatedTokens > WORKHORSE_MAX_TOKENS) {
-    return resolveRole("deep_context", `estimated ${criteria.estimatedTokens} tokens exceeds workhorse limit (${WORKHORSE_MAX_TOKENS}) → deep_context`);
+  const workhorseContextWindow = MODEL_ROLE_CONFIGS.workhorse.contextWindow;
+  if (criteria.estimatedTokens && criteria.estimatedTokens > workhorseContextWindow) {
+    return resolveRole("deep_context", `estimated ${criteria.estimatedTokens} tokens exceeds workhorse limit (${workhorseContextWindow}) → deep_context`);
   }
 
-  // 7. Default → workhorse (DeepSeek V3.2)
-  return resolveRole("workhorse", "default → DeepSeek V3.2 workhorse");
+  // 7. Default → workhorse (Grok 4.1 Fast Thinking)
+  return resolveRole("workhorse", "default → Grok 4.1 Fast Thinking workhorse");
 }
 
 /**
@@ -225,14 +225,13 @@ function resolveRole(role: ModelRole, reason: string): ModelSelection {
 }
 
 /**
- * Selection-time fallback: find the first available provider in the chain,
- * skipping the role's primary provider (which was already tried).
+ * Selection-time fallback: find the first available provider in the chain.
+ * The chain only contains alternatives (primary is in MODEL_ROLE_CONFIGS).
  */
 function getFallback(role: ModelRole): FallbackEntry | null {
-  const primary = MODEL_ROLE_CONFIGS[role]?.provider;
   const chain = FALLBACK_CHAINS[role] || [];
   for (const option of chain) {
-    if (option.provider !== primary && isProviderAvailable(option.provider)) {
+    if (isProviderAvailable(option.provider)) {
       return option;
     }
   }

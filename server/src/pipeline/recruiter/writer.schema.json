@@ -5,16 +5,8 @@
     "customPrompt": {
       "type": "string",
       "description": "A custom system prompt (200-500 words) written specifically for this task, incorporating the selected personas' strengths and style"
-    },
-    "tools": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "description": "Exact tool ID from the catalog (e.g. 'filesystem.read_file', 'shell.execute')"
-      },
-      "description": "All tool IDs the agent will need to accomplish the task"
     }
   },
-  "required": ["customPrompt", "tools"],
+  "required": ["customPrompt"],
   "additionalProperties": false
 }

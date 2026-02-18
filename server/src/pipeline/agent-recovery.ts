@@ -101,14 +101,16 @@ export async function scanForDeadAgents(deviceId: string): Promise<DeadAgentInfo
     const persona = await readPersonaJson(deviceId, workspacePath);
     if (!persona?.agentId) continue;
 
-    // Skip completed/stopped agents — those finished intentionally
+    // Skip agents that are already in a terminal state — completed/stopped
+    // finished intentionally, interrupted/failed were already reported in a
+    // previous scan and must not be re-reported every heartbeat.
     const status = persona.status as string;
-    if (status === "completed" || status === "stopped") continue;
+    if (status === "completed" || status === "stopped" || status === "interrupted" || status === "failed") continue;
 
     // "running" agents that ARE registered are alive — skip them
     if (status === "running" && isAgentRegistered(persona.agentId)) continue;
 
-    // Dead/orphaned agent: status is "running" (no executor), "interrupted", or "failed"
+    // Dead/orphaned agent: status is "running" but no executor is registered
     log.warn("Dead agent detected during scan", {
       agentId: persona.agentId,
       workspacePath,

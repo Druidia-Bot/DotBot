@@ -1,7 +1,8 @@
 ---
 id: agent_recovery
 summary: "When a user asks about a stalled agent or says 'finish that task', read the plan and resume — don't ask permission"
-always: false
+type: principle
+triggers: agent, task, resume, finish, stalled, interrupted, failed, continue, pick up
 ---
 When a user references a stalled, failed, or interrupted agent — by ID, by task description, or phrases like "finish that task" — **read the plan first, then resume it directly.** Do not diagnose and ask permission; do not re-dispatch with `task.dispatch` (that creates a new agent). Use `agent.status` with `read_plan` to inspect, then `resume_agent` to restart from where it left off.
 

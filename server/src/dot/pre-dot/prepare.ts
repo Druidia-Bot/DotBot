@@ -14,15 +14,18 @@
 import { createComponentLogger } from "#logging.js";
 import { buildRequestContext } from "#pipeline/context/context-builder.js";
 import { fetchAllModelSpines, fetchResearchCacheIndex } from "#pipeline/context/memory.js";
-import { sendRunLog } from "#ws/device-bridge.js";
+import { sendRunLog, sendSkillRequest } from "#ws/device-bridge.js";
+import { devices, sendMessage, getDeviceForUser } from "#ws/devices.js";
 import { loadPrinciples } from "./loader.js";
 import { tailorPrinciples } from "./tailor.js";
+import { selectPrinciples } from "./selector.js";
 import { consolidatePrinciples } from "./consolidator.js";
 import type { DotOptions, DotPreparedContext } from "../types.js";
 
 const log = createComponentLogger("dot.prepare");
 
 const AUTO_DISPATCH_THRESHOLD = 8;
+const SKILL_NUDGE_THRESHOLD = 4;
 
 // ============================================
 // INTERNAL CONTEXT (opaque to callers)
@@ -37,6 +40,8 @@ export interface DotInternalContext {
   consolidatedPrinciples: string;
   resolvedPrompt: string;
   forceDispatch: boolean;
+  /** Pre-fetched skill search results injected as a synthetic first turn (complexity >= 4). */
+  skillNudge: string | null;
   contextMs: number;
   dotStartTime: number;
 }
@@ -74,15 +79,22 @@ export async function prepareDot(opts: DotOptions): Promise<DotPreparedContext> 
   const attachmentBlocks = prompt.match(attachmentRegex) || [];
   const strippedPrompt = prompt.replace(attachmentRegex, "").trim();
 
-  // ── Step 1b: Tailor principles (runs against fast LLM with conversation context) ──
+  // ── Step 2: Tailor — context resolution only (no principle selection) ──
   const tailorResult = await tailorPrinciples({
     llm,
     prompt: strippedPrompt,
     recentHistory: enhancedRequest.recentHistory,
-    principles,
     modelSpines,
     cacheIndex,
     deviceId,
+  });
+
+  // ── Step 2b: Select principles — rule-based (no LLM call) ──
+  const { rules, selectedPrinciples } = selectPrinciples(principles, {
+    prompt: strippedPrompt,
+    tailorResult,
+    historyLength: enhancedRequest.recentHistory?.length || 0,
+    hasCacheEntries: (cacheIndex?.length || 0) > 0,
   });
 
   const contextMs = Date.now() - dotStartTime;
@@ -117,8 +129,42 @@ export async function prepareDot(opts: DotOptions): Promise<DotPreparedContext> 
     timestamp: new Date().toISOString(),
   });
 
-  // ── Forced-dispatch flag: complexity >= threshold means Dot MUST dispatch ──
+  // ── Skill nudge: pre-fetch skill index when complexity warrants it ──
   const complexity = tailorResult.complexity ?? 0;
+  let skillNudge: string | null = null;
+  if (complexity >= SKILL_NUDGE_THRESHOLD && tailorResult.skillSearchQuery) {
+    // Send immediate feedback to the user so they see engagement
+    if (tailorResult.skillFeedback) {
+      const agentDevice = devices.get(deviceId);
+      if (agentDevice) {
+        sendMessage(agentDevice.ws, {
+          type: "user_notification",
+          id: `skill_feedback_${messageId}`,
+          timestamp: Date.now(),
+          payload: { title: "Dot", message: tailorResult.skillFeedback },
+        });
+      }
+    }
+
+    try {
+      const skillDeviceId = deviceId || getDeviceForUser(userId);
+      if (skillDeviceId) {
+        const results = await sendSkillRequest(skillDeviceId, { action: "search_skills", query: tailorResult.skillSearchQuery });
+        if (results && Array.isArray(results) && results.length > 0) {
+          const formatted = results.map((s: any) =>
+            `- **${s.name}** (slug: \`${s.slug}\`): ${s.description || "no description"}` +
+            (s.tags?.length ? ` [${s.tags.join(", ")}]` : "")
+          ).join("\n");
+          skillNudge = `Found ${results.length} matching skill(s):\n${formatted}\n\nUse \`skill.read\` to load the full instructions before acting.`;
+          log.info("Skill nudge prepared", { matchCount: results.length, complexity, query: tailorResult.skillSearchQuery });
+        }
+      }
+    } catch (err) {
+      log.warn("Skill pre-fetch failed (non-fatal)", { error: err instanceof Error ? err.message : err });
+    }
+  }
+
+  // ── Forced-dispatch flag: complexity >= threshold means Dot MUST dispatch ──
   const forceDispatch = complexity >= AUTO_DISPATCH_THRESHOLD;
   if (forceDispatch) {
     log.info("Force-dispatch flagged (complexity >= threshold)", {
@@ -128,8 +174,8 @@ export async function prepareDot(opts: DotOptions): Promise<DotPreparedContext> 
     });
   }
 
-  // ── Step 1c: Consolidate principles (pass 2 — merges applicable principle bodies into one briefing) ──
-  const consolidatedPrinciples = await consolidatePrinciples({ llm, tailorResult, userId, deviceId });
+  // ── Step 3: Consolidate rules + principles into unified briefing (LLM call) ──
+  const consolidatedPrinciples = await consolidatePrinciples({ llm, rules, selectedPrinciples, tailorResult, userId, deviceId });
 
   const threadId = enhancedRequest.activeThreadId || "conversation";
 
@@ -145,6 +191,7 @@ export async function prepareDot(opts: DotOptions): Promise<DotPreparedContext> 
       consolidatedPrinciples,
       resolvedPrompt,
       forceDispatch,
+      skillNudge,
       contextMs,
       dotStartTime,
     } satisfies DotInternalContext,

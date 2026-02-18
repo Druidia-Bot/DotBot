@@ -13,7 +13,7 @@ import type {
   ImageEditRequest,
   ImageResult,
 } from "../../types.js";
-import { PROVIDER_CONFIGS } from "../../config.js";
+import { PROVIDER_CONFIGS } from "../../providers.js";
 
 const log = createComponentLogger("llm.gemini.image");
 

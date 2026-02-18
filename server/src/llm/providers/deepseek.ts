@@ -6,7 +6,7 @@
 
 import { createComponentLogger } from "#logging.js";
 import type { ILLMClient, LLMMessage, LLMRequestOptions, LLMResponse, LLMStreamChunk, LLMProvider, ToolCall } from "../types.js";
-import { PROVIDER_CONFIGS } from "../config.js";
+import { PROVIDER_CONFIGS } from "../providers.js";
 
 const log = createComponentLogger("llm.deepseek");
 

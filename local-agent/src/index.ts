@@ -148,7 +148,7 @@ Commands:
   connect();
   startKeepalivePing();
 
-  // Clean shutdown: stop background systems + kill Python daemon on exit
+  // Clean shutdown: stop background systems + kill Python daemon + disconnect MCP on exit
   const cleanup = () => {
     stopPeriodicManager();
     stopHeartbeat();
@@ -156,6 +156,9 @@ Commands:
     stopDiscordAdapter();
     import("./tools/gui/python-bridge.js")
       .then(({ shutdownDaemon }) => shutdownDaemon())
+      .catch(() => {});
+    import("./tools/mcp/index.js")
+      .then(({ shutdownMcpServers }) => shutdownMcpServers())
       .catch(() => {});
   };
   process.on("exit", cleanup);

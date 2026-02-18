@@ -102,8 +102,8 @@ export async function buildStepUserMessage(
   currentStep: Step,
   completedSteps: StepResult[],
 ): Promise<string> {
-  const toolHints = currentStep.toolHints.length > 0
-    ? `**Suggested tools:** ${currentStep.toolHints.join(", ")}`
+  const toolHints = currentStep.toolIds.length > 0
+    ? `**Assigned tools:** ${currentStep.toolIds.join(", ")}`
     : "";
 
   let previousResults = "";

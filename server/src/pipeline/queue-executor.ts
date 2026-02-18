@@ -85,7 +85,6 @@ export async function executeQueuedTasks(
       intakeResult,
       restatedRequest: combinedRequest,
       intakeKnowledgebase: handoffContext,
-      toolManifest,
       previousAgentId,
     });
 
@@ -127,7 +126,6 @@ export async function executeQueuedTasks(
       agentId: newAgentId,
       workspacePath,
       customPrompt: recruiterResult.customPrompt,
-      selectedToolIds: recruiterResult.tools,
       modelRole: recruiterResult.modelRole,
       restatedRequest: combinedRequest,
       toolManifest,

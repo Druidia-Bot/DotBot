@@ -32,11 +32,11 @@ beforeEach(() => {
 // ============================================
 
 describe("selectModel — core routing", () => {
-  it("defaults to workhorse (DeepSeek) with no criteria", () => {
+  it("defaults to workhorse (xAI Grok reasoning) with no criteria", () => {
     const result = selectModel({});
     expect(result.role).toBe("workhorse");
-    expect(result.provider).toBe("deepseek");
-    expect(result.model).toBe("deepseek-chat");
+    expect(result.provider).toBe("xai");
+    expect(result.model).toBe("grok-4-1-fast-reasoning");
   });
 
   it("routes to deep_context for large file tasks", () => {
@@ -55,7 +55,7 @@ describe("selectModel — core routing", () => {
   it("stays workhorse when tokens are under threshold", () => {
     const result = selectModel({ estimatedTokens: 10_000 });
     expect(result.role).toBe("workhorse");
-    expect(result.provider).toBe("deepseek");
+    expect(result.provider).toBe("xai");
   });
 
   it("routes to architect for complex design tasks", () => {
@@ -91,7 +91,7 @@ describe("selectModel — core routing", () => {
       isArchitectTask: true,
     });
     expect(result.role).toBe("workhorse");
-    expect(result.provider).toBe("deepseek");
+    expect(result.provider).toBe("xai");
   });
 
   it("routes to intake role with xAI Grok", () => {
@@ -128,17 +128,18 @@ describe("selectModel — priority order", () => {
 // ============================================
 
 describe("selectModel — fallbacks when providers are unavailable", () => {
-  it("falls back from DeepSeek to Gemini Flash when DeepSeek unavailable", () => {
+  it("falls back from xAI to DeepSeek when xAI unavailable", () => {
     registerApiKeys({
-      deepseek: "",
+      deepseek: "sk-test",
       anthropic: "sk-test",
       gemini: "test-key",
       openai: "sk-test",
+      xai: "",
     });
     const result = selectModel({});
     expect(result.role).toBe("workhorse");
-    expect(result.provider).toBe("gemini");
-    expect(result.model).toBe("gemini-2.5-flash");
+    expect(result.provider).toBe("deepseek");
+    expect(result.model).toBe("deepseek-chat");
     expect(result.reason).toContain("FALLBACK");
   });
 

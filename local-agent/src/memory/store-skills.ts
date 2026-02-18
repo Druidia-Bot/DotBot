@@ -165,11 +165,16 @@ export async function createSkill(
   const slug = slugify(name);
   const now = new Date().toISOString();
 
+  // LLMs often send double-escaped strings where JSON.parse yields literal
+  // backslash-n instead of real newlines. Normalize before storing.
+  const normalizedContent = content.replace(/\\n/g, "\n").replace(/\\t/g, "\t");
+  const normalizedDescription = description.replace(/\\n/g, "\n").replace(/\\t/g, "\t");
+
   const skill: Skill = {
     slug,
     name,
-    description,
-    content,
+    description: normalizedDescription,
+    content: normalizedContent,
     tags,
     disableModelInvocation: options?.disableModelInvocation || false,
     userInvocable: options?.userInvocable !== false,

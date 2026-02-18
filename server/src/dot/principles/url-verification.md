@@ -1,7 +1,8 @@
 ---
 id: url_verification
 summary: "Rules for verifying URLs before sharing them — never guess download links"
-always: false
+type: principle
+triggers: download, install, URL, link, binary, exe, msi, driver
 ---
 When giving users installer/download links (especially for binaries like Tesseract, CLIs, or drivers), you must **verify first**.
 

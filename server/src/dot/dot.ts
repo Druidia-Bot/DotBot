@@ -20,7 +20,7 @@ import { resolveModelAndClient } from "#llm/selection/resolve.js";
 import { buildDotSystemPrompt } from "./system-prompt.js";
 import { buildSingleTopicMessages, buildSegmentMessages } from "./message-builder.js";
 import { runToolLoop } from "#tool-loop/loop.js";
-import { sendRunLog, sendSaveToThread } from "#ws/device-bridge.js";
+import { sendRunLog, sendSaveToThread, sendExecutionCommand } from "#ws/device-bridge.js";
 import { broadcastToUser } from "#ws/devices.js";
 import { runPipeline } from "#pipeline/pipeline.js";
 import { buildDotTools } from "./tools/index.js";
@@ -56,6 +56,7 @@ export async function runDot(opts: DotOptions, prepared: DotPreparedContext): Pr
     consolidatedPrinciples,
     resolvedPrompt,
     forceDispatch,
+    skillNudge,
     contextMs,
     dotStartTime,
   } = ctx;
@@ -65,8 +66,11 @@ export async function runDot(opts: DotOptions, prepared: DotPreparedContext): Pr
   // ── Build Dot's system prompt (stable identity + knowledge — no per-message content) ──
   const systemPrompt = await buildDotSystemPrompt(enhancedRequest, modelSpines, platform);
 
-  // ── Select model (assistant — fast, non-reasoning) ──
-  const { selectedModel, client } = await resolveModelAndClient(llm, { explicitRole: "assistant" }, deviceId);
+  // ── Select model based on complexity (0-4 assistant, 5-7 workhorse/reasoning) ──
+  const complexity = tailorResult?.complexity ?? 0;
+  const modelRole = complexity >= 5 ? "workhorse" : "assistant";
+  const { selectedModel, client } = await resolveModelAndClient(llm, { explicitRole: modelRole }, deviceId);
+  log.info("Dot model selected", { complexity, modelRole, model: selectedModel.model });
 
   // ── Dispatch closure (fire-and-forget so Dot responds immediately) ──
   let dispatchResult: DotResult["dispatch"] | undefined;
@@ -117,6 +121,25 @@ export async function runDot(opts: DotOptions, prepared: DotPreparedContext): Pr
     state: {
       userId,
       llmClient: client,
+      // Server-side imagegen executor
+      executeImageGenTool: async (toolId: string, args: Record<string, any>) => {
+        const { executeImageGenTool } = await import("#tools-server/imagegen/executor.js");
+        const executeCommand = async (cmd: any) => {
+          const cmdId = `imgcmd_${nanoid(8)}`;
+          return sendExecutionCommand(deviceId, { id: cmdId, ...cmd });
+        };
+        return executeImageGenTool(toolId, args, executeCommand);
+      },
+      // Server-side premium executor
+      executePremiumTool: async (toolId: string, args: Record<string, any>) => {
+        const { executePremiumTool } = await import("#tools-server/premium/executor.js");
+        return executePremiumTool(userId, toolId, args, deviceId);
+      },
+      // Server-side schedule executor
+      executeScheduleTool: async (toolId: string, args: Record<string, any>) => {
+        const { executeScheduleTool } = await import("#tools-server/schedule/executor.js");
+        return executeScheduleTool(userId, toolId, args);
+      },
     },
   };
 
@@ -148,6 +171,7 @@ export async function runDot(opts: DotOptions, prepared: DotPreparedContext): Pr
         tailorResult,
         consolidatedPrinciples,
         forceDispatch,
+        skillNudge: i === 0 ? skillNudge : null,
       });
 
       log.info(`Running topic segment ${i + 1}/${topicSegments.length}`, {
@@ -199,6 +223,7 @@ export async function runDot(opts: DotOptions, prepared: DotPreparedContext): Pr
       consolidatedPrinciples,
       resolvedPrompt,
       forceDispatch,
+      skillNudge,
     });
 
     log.info("Starting Dot tool loop", {

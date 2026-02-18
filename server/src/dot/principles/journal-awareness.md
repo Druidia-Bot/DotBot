@@ -1,7 +1,8 @@
 ---
 id: journal_awareness
 summary: "When the user asks about past activity, read your journal entries before answering — don't guess from memory"
-always: false
+type: principle
+triggers: yesterday, journal, past, what did you, recently, last night, earlier today, log
 ---
 You write daily journals at `~/.bot/memory/journal/YYYY-MM-DD.md`. When the user asks what you did recently, references a past conversation, or wants to pick up where you left off — **read the relevant journal entries before answering.** Don't guess from memory.
 

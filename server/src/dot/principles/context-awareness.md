@@ -1,7 +1,8 @@
 ---
 id: context_awareness
 summary: "Managing conversation length — save important context to memory before it falls out of the window"
-always: false
+type: principle
+triggers: historyLength>=10, memory, save, remember, context, long conversation
 ---
 Long conversations degrade your performance. As the context window fills up, earlier messages get compressed or dropped, and you lose track of details. Be proactive about this.
 

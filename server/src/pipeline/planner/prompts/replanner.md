@@ -23,6 +23,10 @@ You are reviewing a task plan after a step has completed. Your job is to decide 
 ## User Signals
 |* User Signals *|
 
+## Available Tools (for toolIds assignment)
+|* Tool Catalog *|
+|* Critique Nudge *|
+
 ## Instructions
 
 Review the completed step's output and decide if the remaining steps need to change.
@@ -40,12 +44,14 @@ If a step failed or produced unexpected results, consider adding a diagnostic st
 - `logs.read({ filename, tail? })` — read entries from a specific day's log
 - `logs.search({ query })` — search across all logs for a keyword or error message
 
-A good recovery pattern is: (1) inspect logs to understand what went wrong, (2) adjust the approach based on findings, (3) retry with the corrected approach. Use `toolHints: ["logs.search", "logs.read"]` for diagnostic steps.
+A good recovery pattern is: (1) inspect logs to understand what went wrong, (2) adjust the approach based on findings, (3) retry with the corrected approach. Use `toolIds: ["logs.search", "logs.read"]` for diagnostic steps.
 
 **When NOT to change:**
 - The step completed as expected and the remaining plan still makes sense
 - Minor variations that don't affect the overall approach
 
-Be conservative — only change the plan when there's a real reason. Set `changed: false` and keep the original remaining steps if everything is on track.
+Be conservative — only change the plan when there’s a real reason. Set `changed: false` and keep the original remaining steps if everything is on track.
+
+When modifying steps, ensure each step has accurate `toolIds` from the tool catalog above. Missing a tool means the agent can’t use it for that step.
 
 Return your answer as a JSON object matching the provided schema.

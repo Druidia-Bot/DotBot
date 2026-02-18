@@ -43,8 +43,8 @@ export interface Step {
   description: string;
   /** What success looks like (e.g. "A markdown file with 5 competitor profiles") */
   expectedOutput: string;
-  /** Suggested tool IDs for this step (subset of persona's tools, not restrictive) */
-  toolHints: string[];
+  /** Exact tool IDs selected by the planner for this step */
+  toolIds: string[];
   /** Whether this step needs external data (web, APIs, email, etc.) */
   requiresExternalData: boolean;
   /** Step IDs that must complete before this one (for future parallel execution) */
@@ -131,8 +131,6 @@ export interface StepExecutorOptions {
   workspacePath: string;
   /** Custom system prompt from the persona picker */
   customPrompt: string;
-  /** Validated tool IDs from the persona picker */
-  selectedToolIds: string[];
   /** Model role hint from the persona picker */
   modelRole: string;
   /** The restated user request */

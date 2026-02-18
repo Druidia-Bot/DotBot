@@ -5,7 +5,7 @@
  * - Core tools (built-in)
  * - Custom tools from ~/.bot/tools/custom/
  * - API tools from ~/.bot/tools/api/
- * - (Future) MCP tools from ~/.bot/mcp/ servers
+ * - MCP tools from ~/.bot/mcp/ servers
  * 
  * Provides the tool manifest for the server to generate prompts,
  * and resolves tool IDs for execution.
@@ -62,6 +62,10 @@ export async function initToolRegistry(): Promise<void> {
   const botDir = resolve(process.env.USERPROFILE || process.env.HOME || "", ".bot");
   await loadToolsFromDir(join(botDir, "tools", "api"), "api");
   await loadToolsFromDir(join(botDir, "tools", "custom"), "custom");
+
+  // Connect to MCP servers and discover their tools
+  const { initMcpServers } = await import("./mcp/index.js");
+  await initMcpServers();
 
   initialized = true;
   console.log(`[ToolRegistry] Initialized with ${toolMap.size} tools (${CORE_TOOLS.length} core)`);

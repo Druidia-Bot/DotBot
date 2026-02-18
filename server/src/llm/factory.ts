@@ -20,7 +20,7 @@ import type {
   IVideoClient,
   ModelSelection,
 } from "./types.js";
-import { PROVIDER_CONFIGS } from "./config.js";
+import { PROVIDER_CONFIGS } from "./providers.js";
 import { DeepSeekClient } from "./providers/deepseek.js";
 import { AnthropicClient } from "./providers/anthropic.js";
 import { OpenAICompatibleClient, OpenAIImageClient } from "./providers/openai-compatible/index.js";

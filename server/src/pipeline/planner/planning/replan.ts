@@ -8,7 +8,9 @@
 import { createComponentLogger } from "#logging.js";
 import { resolveModelAndClient } from "#llm/selection/resolve.js";
 import { loadPrompt, loadSchema } from "../../../prompt-template.js";
+import { generateMinimalCatalog } from "#tools/catalog.js";
 import type { ILLMClient } from "#llm/types.js";
+import type { ToolManifestEntry } from "#tools/types.js";
 import type { StepPlan, Step, ReplanResult, StepResult } from "../types.js";
 
 const log = createComponentLogger("planner.replan");
@@ -23,8 +25,18 @@ export async function replan(
   completedStep: StepResult,
   remainingSteps: Step[],
   workspaceFiles: string,
-  signals?: string[],
+  options?: {
+    signals?: string[];
+    toolManifest?: ToolManifestEntry[];
+    completedStepCount?: number;
+  },
 ): Promise<ReplanResult> {
+  const { signals, toolManifest, completedStepCount = 0 } = options ?? {};
+
+  // Critique checkpoint: first replan (step 1) and every 3 steps thereafter (4, 7, 10, ...)
+  const CRITIQUE_INTERVAL = 3;
+  const isCritiqueCheckpoint = completedStepCount === 1 ||
+    (completedStepCount > 1 && (completedStepCount - 1) % CRITIQUE_INTERVAL === 0);
   log.info("Re-evaluating plan", {
     completedStep: completedStep.step.id,
     remainingCount: remainingSteps.length,
@@ -39,6 +51,12 @@ export async function replan(
     ? `The user sent the following instructions while work was in progress. Incorporate them into the remaining steps:\n${signals.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
     : "(none)";
 
+  const toolCatalog = toolManifest ? generateMinimalCatalog(toolManifest) : "(tool catalog not available)";
+
+  const critiqueNudge = isCritiqueCheckpoint
+    ? `\n\n**IMPORTANT — Review checkpoint (step ${completedStepCount}).** Before continuing, critically evaluate the remaining plan: Is anything missing? Are the tool assignments thorough? Are there gaps, redundant steps, or a better ordering? Has the work so far revealed a better approach? Err on the side of improving the plan now rather than discovering problems later. Set \`changed: true\` if you find ANY improvements.`
+    : "";
+
   const prompt = await loadPrompt("pipeline/planner/prompts/replanner.md", {
     "Original Plan": formatPlanForPrompt(originalPlan),
     "Step Title": completedStep.step.title,
@@ -48,10 +66,13 @@ export async function replan(
     "Remaining Steps": formatStepsForPrompt(remainingSteps),
     "Workspace Files": workspaceFiles,
     "User Signals": signalsText,
+    "Tool Catalog": toolCatalog,
+    "Critique Nudge": critiqueNudge,
   });
 
-  // Use architect for complex replans (high blast radius or recovery situations)
+  // Use architect for complex replans, recovery situations, or critique checkpoints
   const needsDeepReasoning =
+    isCritiqueCheckpoint ||
     remainingSteps.length >= 4 ||
     completedStep.escalated === true ||
     !completedStep.success;
@@ -117,6 +138,7 @@ export function formatPlanForPrompt(plan: StepPlan): string {
     lines.push(`### ${step.id}: ${step.title}`);
     lines.push(step.description);
     lines.push(`Expected output: ${step.expectedOutput}`);
+    if (step.toolIds.length > 0) lines.push(`Tools: ${step.toolIds.join(", ")}`);
     lines.push("");
   }
   return lines.join("\n");
@@ -124,7 +146,8 @@ export function formatPlanForPrompt(plan: StepPlan): string {
 
 export function formatStepsForPrompt(steps: Step[]): string {
   if (steps.length === 0) return "(no remaining steps)";
-  return steps.map(s =>
-    `- **${s.id}: ${s.title}** — ${s.description} (expected: ${s.expectedOutput})`
-  ).join("\n");
+  return steps.map(s => {
+    const tools = s.toolIds.length > 0 ? ` [tools: ${s.toolIds.join(", ")}]` : "";
+    return `- **${s.id}: ${s.title}** — ${s.description} (expected: ${s.expectedOutput})${tools}`;
+  }).join("\n");
 }

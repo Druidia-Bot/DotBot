@@ -55,10 +55,15 @@ export async function loadPrinciples(): Promise<PrincipleFile[]> {
         log.warn("Skipping principle file with missing frontmatter", { filename });
         continue;
       }
+      const fileType = parsed.meta.type === "rule" ? "rule" as const : "principle" as const;
+      const triggers = parsed.meta.triggers
+        ? parsed.meta.triggers.split(",").map((t: string) => t.trim()).filter(Boolean)
+        : [];
       principles.push({
         id: parsed.meta.id,
         summary: parsed.meta.summary,
-        always: parsed.meta.always === "true",
+        type: fileType,
+        triggers,
         body: parsed.body,
       });
     }

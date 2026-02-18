@@ -6,7 +6,6 @@
  */
 
 import type { ClassifyResult } from "../intake/intake.js";
-import type { ToolManifestEntry } from "#tools/types.js";
 
 // ============================================
 // INPUT
@@ -21,8 +20,6 @@ export interface RecruiterInput {
   restatedRequest: string;
   /** Full content of intake_knowledge.md (includes all sections: memory, files, web, polymarket) */
   intakeKnowledgebase: string;
-  /** Tool manifest from context builder — passed through pipeline, not re-fetched */
-  toolManifest: ToolManifestEntry[];
   /** Link to predecessor agent when continuing in same workspace (queue execution) */
   previousAgentId?: string;
 }
@@ -41,10 +38,9 @@ export interface RecruiterPhase1Response {
   modelRole: "workhorse" | "deep_context" | "architect" | "gui_fast";
 }
 
-/** Phase 2: custom prompt + tool selection (after reading full persona files) */
+/** Phase 2: custom prompt (after reading full persona files) */
 export interface RecruiterPhase2Response {
   customPrompt: string;
-  tools: string[];
 }
 
 /** Combined result from both phases */
@@ -55,7 +51,6 @@ export interface RecruiterLLMResponse {
   }[];
   council: string | null;
   customPrompt: string;
-  tools: string[];
   modelRole: "workhorse" | "deep_context" | "architect" | "gui_fast";
 }
 
@@ -70,7 +65,5 @@ export interface RecruiterResult {
   council: string | null;
   /** The custom system prompt written by the recruiter */
   customPrompt: string;
-  /** Validated tool IDs selected for this task */
-  tools: string[];
   modelRole: string;
 }

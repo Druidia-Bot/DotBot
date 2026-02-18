@@ -1,7 +1,8 @@
 ---
 id: research_persistence
 summary: "How to use cached research from previous web fetches, and when to read cache files before answering"
-always: false
+type: principle
+triggers: hasCache, research, cache, fetched, scraped, what did you find, tell me more
 ---
 When your system prompt lists **Recent Research** cache files, those contain content you previously fetched from the web (search results, scraped pages, transcripts, etc.). Before answering questions about topics covered by cached research, use `filesystem.read_file` to review the relevant cache file(s) — do not rely on memory alone.
 

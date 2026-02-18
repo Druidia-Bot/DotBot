@@ -9,8 +9,8 @@
 import { createComponentLogger } from "#logging.js";
 import { resolveModelAndClient } from "#llm/selection/resolve.js";
 import { loadPrompt, loadSchema } from "../../../prompt-template.js";
-import { generateMinimalCatalog } from "#tools/catalog.js";
-import { requestTools } from "#ws/device-bridge.js";
+import { generateCompactCatalog } from "#tools/catalog.js";
+import { requestTools, sendSkillRequest } from "#ws/device-bridge.js";
 import type { ILLMClient } from "#llm/types.js";
 import type { ToolManifestEntry } from "#tools/types.js";
 import type { PlannerInput, StepPlan } from "../types.js";
@@ -34,12 +34,16 @@ export async function createPlan(
     fetchManifest(input.deviceId),
   ]);
 
-  const toolSummary = generateMinimalCatalog(toolManifest);
+  const toolSummary = generateCompactCatalog(toolManifest);
+
+  // Pre-fetch matching skills so the planner can structure around learned workflows
+  const skillContent = await fetchRelevantSkill(input.deviceId, restatedRequest);
 
   const prompt = await loadPrompt("pipeline/planner/prompts/planner.md", {
     "Intake Knowledgebase": intakeKnowledgebase || "(none gathered)",
     "Restated Request": restatedRequest,
     "Tool Summary": toolSummary,
+    "Relevant Skills": skillContent || "(no matching skills found)",
   });
 
   const { selectedModel: modelConfig, client } = await resolveModelAndClient(
@@ -79,7 +83,7 @@ export async function createPlan(
         title: "Execute task",
         description: restatedRequest,
         expectedOutput: "Task completed",
-        toolHints: recruiterResult.tools.slice(0, 10),
+        toolIds: toolManifest.map(t => t.id).slice(0, 20),
         requiresExternalData: false,
         dependsOn: [],
       }],
@@ -99,6 +103,42 @@ export async function createPlan(
 // ============================================
 // HELPERS
 // ============================================
+
+/**
+ * Search for a matching skill and return its full content for the planner.
+ * Returns null if no match or on error (non-blocking).
+ */
+async function fetchRelevantSkill(deviceId: string, query: string): Promise<string | null> {
+  try {
+    const results = await sendSkillRequest(deviceId, { action: "search_skills", query });
+    if (!results || !Array.isArray(results) || results.length === 0) return null;
+
+    const topMatch = results[0];
+    log.info("Skill match found for planner", { slug: topMatch.slug, name: topMatch.name });
+
+    // Read full content of the top match
+    const skill = await sendSkillRequest(deviceId, { action: "get_skill", skillSlug: topMatch.slug });
+    if (!skill?.content) return null;
+
+    // Format: header with metadata + full content
+    let output = `## ${skill.name} (slug: \`${topMatch.slug}\`)\n`;
+    if (topMatch.description) output += `${topMatch.description}\n`;
+    output += `\n${skill.content}`;
+
+    // If there are additional matches, list them briefly
+    if (results.length > 1) {
+      output += "\n\n### Other potentially relevant skills:\n";
+      for (const s of results.slice(1, 4)) {
+        output += `- **${s.name}** (slug: \`${s.slug}\`): ${s.description || "no description"}\n`;
+      }
+    }
+
+    return output;
+  } catch (err) {
+    log.debug("Skill fetch failed (non-blocking)", { error: err });
+    return null;
+  }
+}
 
 async function fetchManifest(deviceId: string): Promise<ToolManifestEntry[]> {
   try {

@@ -23,7 +23,8 @@ import { nanoid } from "nanoid";
 import { createComponentLogger } from "#logging.js";
 import { resolveModelAndClient } from "#llm/selection/resolve.js";
 import { sendAgentLifecycle, sendExecutionCommand, sendTaskProgress } from "#ws/device-bridge.js";
-import { manifestToNativeTools } from "#tools/manifest.js";
+import { manifestToNativeTools, sanitizeToolName } from "#tools/manifest.js";
+import { tools as toolDiscoveryDefs } from "#tools/definitions/server-tools.js";
 import { runToolLoop, buildStepExecutorHandlers } from "#tool-loop/index.js";
 import {
   ESCALATE_TOOL_ID,
@@ -61,6 +62,24 @@ export type { StepExecutorOptions } from "../types.js";
 const log = createComponentLogger("step-executor");
 
 // ============================================
+// ESCAPE-HATCH TOOLS (always available to every step)
+// ============================================
+
+/** Convert server tool definitions to native LLM ToolDefinition format. */
+const ESCAPE_HATCH_TOOLS: import("#llm/types.js").ToolDefinition[] = toolDiscoveryDefs.map(t => ({
+  type: "function" as const,
+  function: {
+    name: sanitizeToolName(t.id),
+    description: t.description,
+    parameters: {
+      type: "object",
+      properties: t.inputSchema?.properties || {},
+      required: t.inputSchema?.required || [],
+    },
+  },
+}));
+
+// ============================================
 // MAIN ENTRY
 // ============================================
 
@@ -70,7 +89,7 @@ export async function executeSteps(
 ): Promise<PlannerExecutionResult> {
   const {
     llm, userId, deviceId, agentId, workspacePath, customPrompt,
-    selectedToolIds, modelRole, restatedRequest, toolManifest,
+    modelRole, restatedRequest, toolManifest,
   } = options;
 
   log.info("Starting step execution", {
@@ -87,30 +106,6 @@ export async function executeSteps(
 
   // Write initial plan to workspace (all steps pending)
   await updatePlanProgress(deviceId, agentId, workspacePath, plan, [], [...plan.steps]);
-
-  // Filter tool manifest to selected IDs
-  const idSet = new Set(selectedToolIds);
-  let filteredManifest = toolManifest.filter(t => idSet.has(t.id));
-  if (filteredManifest.length === 0) {
-    log.warn("No tools matched selectedToolIds, using full manifest as fallback", {
-      selectedCount: selectedToolIds.length,
-      manifestSize: toolManifest.length,
-    });
-    filteredManifest = toolManifest;
-  }
-
-  // Build handler map once — reused across all steps.
-  // Layers: local-agent proxy → research persistence → server-side overrides
-  const handlers = buildStepExecutorHandlers(filteredManifest, workspacePath);
-
-  // Register escalation handler (uses stopTool mechanism)
-  handlers.set(ESCALATE_TOOL_ID, escalateHandler());
-
-  // Build native tool definitions for the LLM (manifest → ToolDefinition[])
-  const nativeTools = [
-    ...manifestToNativeTools(filteredManifest),
-    escalateToolDefinition(),
-  ];
 
   const completedSteps: StepResult[] = [];
   let remainingSteps = [...plan.steps];
@@ -204,6 +199,40 @@ export async function executeSteps(
         },
       },
     };
+
+    // Build per-step tool set from planner's toolIds
+    const stepToolIds = new Set(currentStep.toolIds);
+    let stepManifest = toolManifest.filter(t => stepToolIds.has(t.id));
+    if (stepManifest.length === 0) {
+      log.warn("No tools matched step toolIds, using full manifest as fallback", {
+        stepId: currentStep.id,
+        requestedCount: currentStep.toolIds.length,
+        manifestSize: toolManifest.length,
+      });
+      stepManifest = toolManifest;
+    }
+
+    // Handlers use the FULL manifest so tools.execute can reach any tool
+    const handlers = buildStepExecutorHandlers(toolManifest, workspacePath);
+    handlers.set(ESCALATE_TOOL_ID, escalateHandler());
+
+    // tools.execute: passthrough handler that delegates to the full handler map
+    handlers.set("tools.execute", async (handlerCtx, args) => {
+      const toolId = args.tool_id;
+      if (!toolId || typeof toolId !== "string") return "Error: tool_id is required";
+      const handler = handlers.get(toolId);
+      if (!handler) return `Error: Unknown tool '${toolId}'. Use tools.list_tools to see available tools.`;
+      return handler(handlerCtx, args.args || {});
+    });
+
+    // Native tool definitions: per-step tools + escape hatches (always available)
+    const stepDefs = manifestToNativeTools(stepManifest);
+    const stepNames = new Set(stepDefs.map(d => d.function.name));
+    const nativeTools = [
+      ...stepDefs,
+      ...ESCAPE_HATCH_TOOLS.filter(d => !stepNames.has(d.function.name)),
+      escalateToolDefinition(),
+    ];
 
     // Accumulator for real-time tool call tracking in plan.json
     const liveToolCalls: ToolCallEntry[] = [];
@@ -306,7 +335,11 @@ export async function executeSteps(
           stepResult,
           remainingSteps,
           updatedFiles,
-          signals.length > 0 ? signals : undefined,
+          {
+            signals: signals.length > 0 ? signals : undefined,
+            toolManifest,
+            completedStepCount: completedSteps.length,
+          },
         );
 
         if (replanResult.changed) {

@@ -17,6 +17,7 @@ import {
   buildProxyHandlers,
   buildServerSideHandlers,
 } from "#tool-loop/handlers/index.js";
+import { buildToolsListHandler } from "#tool-loop/handlers/tools-list.js";
 import type { ToolDefinition } from "#llm/types.js";
 import type { ToolHandler } from "#tool-loop/types.js";
 import type { ToolManifestEntry } from "#tools/types.js";
@@ -103,12 +104,16 @@ export function buildDotTools(
   // Layer 3b: Closure-based handlers
   handlers.set("task.dispatch", taskDispatchHandler(onDispatch));
 
-  // Layer 4: tools.execute — generic passthrough (needs complete handler map)
+  // Layer 4: tools.list_tools — unified listing across all sources
+  handlers.set("tools.list_tools", buildToolsListHandler(manifest));
+
+  // Layer 5: tools.execute — generic passthrough (needs complete handler map)
   handlers.set("tools.execute", toolExecuteHandler(handlers));
 
   // Build native tool definitions — only curated categories + Dot-specific
   const proxyDefs = manifestToNativeTools(dotManifest) || [];
-  const dotDefs = dotToolsToNative(DOT_NATIVE_TOOLS);
+  const proxyNames = new Set(proxyDefs.map(d => d.function.name));
+  const dotDefs = dotToolsToNative(DOT_NATIVE_TOOLS).filter(d => !proxyNames.has(d.function.name));
 
   // Hints: manifest-derived + dot-native (from definitions)
   const toolHintsById = buildCombinedHints(manifest);

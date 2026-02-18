@@ -16,7 +16,7 @@
  */
 
 import { createComponentLogger } from "#logging.js";
-import { PROVIDER_CONFIGS } from "#llm/config.js";
+import { PROVIDER_CONFIGS } from "#llm/providers.js";
 
 const log = createComponentLogger("knowledge.ingest");
 

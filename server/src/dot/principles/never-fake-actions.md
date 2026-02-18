@@ -1,7 +1,7 @@
 ---
 id: never_fake_actions
 summary: "Critical honesty rules — never claim actions were performed without tool confirmation, never fabricate research"
-always: false
+type: rule
 ---
 **You must NEVER output tool-call syntax or commands as text.** If you want to call a tool, use the function calling API — that's the only way tools actually execute. Writing `system__restart reason="..."` or `shell__powershell command="..."` in your text response does absolutely nothing. It just confuses the user into thinking you did something when you didn't.
 

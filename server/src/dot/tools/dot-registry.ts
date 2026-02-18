@@ -1,16 +1,17 @@
 /**
  * Dot Tool Registry
  *
- * Canonical registry of Dot-native tool definitions.
- * Provides lookup functions and LLM-native format conversion,
- * mirroring server/src/tools/core-registry.ts.
+ * Canonical registry of Dot tool definitions.
+ * DOT_NATIVE_TOOLS = DOT_EXCLUSIVE_TOOLS + SHARED_SERVER_TOOLS.
+ * Provides lookup functions and LLM-native format conversion.
  */
 
 import type { ToolDefinition } from "#llm/types.js";
 import type { DotToolDefinition, DotToolCategory, DotToolHints } from "./types.js";
-import { DOT_NATIVE_TOOLS } from "./definitions/dot-native.js";
+import { DOT_NATIVE_TOOLS, DOT_EXCLUSIVE_TOOLS } from "./definitions/dot-native.js";
 
-export { DOT_NATIVE_TOOLS } from "./definitions/dot-native.js";
+export { DOT_NATIVE_TOOLS, DOT_EXCLUSIVE_TOOLS } from "./definitions/dot-native.js";
+export { SHARED_SERVER_TOOLS } from "#tools/definitions/server-tools.js";
 
 // ── Index ─────────────────────────────────────────────────
 

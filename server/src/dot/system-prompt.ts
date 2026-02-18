@@ -15,7 +15,6 @@
  */
 
 import { loadPrompt } from "../prompt-template.js";
-import { assembleTailoredPrinciples } from "./pre-dot/index.js";
 import type { TailorResult } from "./pre-dot/index.js";
 import type { EnhancedPromptRequest } from "../types/agent.js";
 
@@ -93,34 +92,8 @@ function buildPlatformLabel(platform?: string): string {
   return "Unknown";
 }
 
-/**
- * Build a context preamble from conversation references stored on relevant memory models.
- * These are condensed summaries of past discussions — injected into the user message
- * so Dot has topic continuity without needing the full conversation thread.
- */
-export function buildModelContextPreamble(
-  modelConversations: { slug: string; name: string; conversations: { timestamp: string; summary: string; keyPoints: string[] }[] }[],
-): string {
-  if (modelConversations.length === 0) return "";
-
-  const sections: string[] = [];
-  for (const model of modelConversations) {
-    if (model.conversations.length === 0) continue;
-    const refs = model.conversations.slice(-10); // last 10 conversation refs per model
-    const lines = refs.map(c => {
-      const date = c.timestamp.slice(0, 10);
-      const points = c.keyPoints.length > 0 ? ` Key points: ${c.keyPoints.join("; ")}` : "";
-      return `- **${date}**: ${c.summary}${points}`;
-    });
-    sections.push(`### Previous Context — ${model.name}\n\n${lines.join("\n")}`);
-  }
-
-  return sections.length > 0 ? sections.join("\n\n") : "";
-}
-
 export function buildTailoredSection(tailorResult?: TailorResult, consolidatedPrinciples?: string, forceDispatch?: boolean): string {
-  let text = consolidatedPrinciples
-    || (tailorResult ? assembleTailoredPrinciples(tailorResult) : "");
+  let text = consolidatedPrinciples || "";
 
   // Inject complexity score as a routing signal for dispatch decisions
   if (tailorResult?.complexity !== null && tailorResult?.complexity !== undefined) {

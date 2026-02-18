@@ -108,7 +108,7 @@ export interface LLMProviderConfig {
  * Unlike the old tier system (fast/smart/powerful), roles represent WHY a model
  * is chosen, not just how capable it is.
  *
- * - workhorse:    DeepSeek V3.2 — 98% of tasks. Fast, cheap, very capable.
+ * - workhorse:    Grok 4.1 Fast Thinking — reasoning-enabled for medium-complexity tasks.
  * - deep_context: Gemini 3 Pro — 1M token context. Video, large PDFs, huge codebases.
  * - architect:    Claude Opus 4.6 — Complex system design, second opinions, planning.
  * - local:        Qwen 2.5 0.5B via node-llama-cpp — Offline fallback for basic tasks.

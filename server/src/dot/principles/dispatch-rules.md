@@ -1,7 +1,8 @@
 ---
 id: dispatch_rules
 summary: "When and how to hand off complex tasks to the execution pipeline via task.dispatch"
-always: false
+type: principle
+triggers: complexity>=5, dispatch, pipeline, agent, codex, claude code, build, project, workspace
 ---
 ## When to Dispatch (task.dispatch)
 

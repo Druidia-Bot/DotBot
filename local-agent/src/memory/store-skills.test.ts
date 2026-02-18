@@ -337,6 +337,22 @@ describe("SKILL.md CRUD", () => {
     expect(loaded!.disableModelInvocation).toBe(original.disableModelInvocation);
     expect(loaded!.allowedTools).toEqual(original.allowedTools);
   });
+
+  it("createSkill normalizes literal backslash-n to real newlines", async () => {
+    const skill = await createSkill(
+      "escaped-newlines",
+      "Has escaped\\nnewlines",
+      "# Title\\n\\nParagraph one.\\n\\nParagraph two.",
+      ["test"],
+    );
+
+    expect(skill.content).toBe("# Title\n\nParagraph one.\n\nParagraph two.");
+    expect(skill.description).toBe("Has escaped\nnewlines");
+
+    // Verify roundtrip from disk
+    const loaded = await getSkill("escaped-newlines");
+    expect(loaded!.content).toContain("# Title\n\nParagraph one.");
+  });
 });
 
 // ============================================

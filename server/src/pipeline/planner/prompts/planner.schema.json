@@ -31,10 +31,10 @@
             "type": "string",
             "description": "What success looks like (e.g. 'A markdown file with 5 competitor profiles saved to research/')"
           },
-          "toolHints": {
+          "toolIds": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Suggested tool IDs from the catalog that this step will likely need"
+            "description": "Exact tool IDs from the catalog that this step needs. Be thorough — missing a tool means the agent can't use it for this step."
           },
           "requiresExternalData": {
             "type": "boolean",
@@ -46,7 +46,7 @@
             "description": "Step IDs that must complete before this one. Empty for first step or independent steps."
           }
         },
-        "required": ["id", "title", "description", "expectedOutput", "toolHints", "requiresExternalData", "dependsOn"],
+        "required": ["id", "title", "description", "expectedOutput", "toolIds", "requiresExternalData", "dependsOn"],
         "additionalProperties": false
       },
       "minItems": 1,

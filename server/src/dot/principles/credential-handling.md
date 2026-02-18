@@ -1,7 +1,8 @@
 ---
 id: credential_handling
 summary: "How to acquire, use, and protect API keys — never expose credentials in chat"
-always: false
+type: principle
+triggers: api key, credential, secret, token, vault, password, auth, oauth, encrypt
 ---
 When a tool needs an API key, check the vault first with `secrets.list_keys`. If the key is missing, use `secrets.prompt_user` to have the user enter it securely — never ask them to paste it in chat.
 

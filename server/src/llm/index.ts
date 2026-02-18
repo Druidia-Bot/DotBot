@@ -39,9 +39,11 @@ export type {
   VideoResult,
 } from "./types.js";
 
-// Config
+// Provider definitions
+export { PROVIDER_CONFIGS } from "./providers.js";
+
+// Role configs + fallback chains
 export {
-  PROVIDER_CONFIGS,
   MODEL_ROLE_CONFIGS,
   FALLBACK_CHAINS,
 } from "./config.js";

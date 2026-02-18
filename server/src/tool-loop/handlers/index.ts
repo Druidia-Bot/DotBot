@@ -15,6 +15,7 @@ import type { ToolDefinition } from "#llm/types.js";
 import { buildProxyHandlers } from "./local-agent-proxy.js";
 import { wrapHandlersWithResearch } from "./research-wrapper.js";
 import { buildServerSideHandlers } from "./server-side-handlers.js";
+import { buildToolsListHandler } from "./tools-list.js";
 import { withScreenshotExtraction } from "./screenshot-handler.js";
 import { buildSyntheticTools, type SyntheticToolsConfig } from "./synthetic-tools.js";
 
@@ -23,6 +24,7 @@ import { buildSyntheticTools, type SyntheticToolsConfig } from "./synthetic-tool
 export { buildProxyHandlers } from "./local-agent-proxy.js";
 export { wrapHandlersWithResearch, withResearchPersistence } from "./research-wrapper.js";
 export { buildServerSideHandlers, getMemoryHandlers, getKnowledgeHandlers } from "./server-side-handlers.js";
+export { buildToolsListHandler } from "./tools-list.js";
 export { withScreenshotExtraction } from "./screenshot-handler.js";
 export {
   buildSyntheticTools,
@@ -67,6 +69,7 @@ export function buildStepExecutorHandlers(
 
   const wrapped = wrapHandlersWithResearch(handlers, workspacePath, categoryMap);
   mergeInto(wrapped, buildServerSideHandlers(manifest));
+  wrapped.set("tools.list_tools", buildToolsListHandler(manifest));
 
   return wrapped;
 }
@@ -89,6 +92,7 @@ export function buildExecutionHandlers(
 
   // Server-side overrides
   mergeInto(handlers, buildServerSideHandlers(manifest));
+  handlers.set("tools.list_tools", buildToolsListHandler(manifest));
 
   // Screenshot extraction (wraps every handler registered so far)
   for (const [id, handler] of handlers) {

@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { createLLMClient } from "../factory.js";
-import { PROVIDER_CONFIGS } from "../config.js";
+import { PROVIDER_CONFIGS } from "../providers.js";
 import { DeepSeekClient } from "../providers/deepseek.js";
 import { AnthropicClient } from "../providers/anthropic.js";
 import { OpenAICompatibleClient } from "../providers/openai-compatible/index.js";

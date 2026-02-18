@@ -1,7 +1,8 @@
 ---
 id: personas
 summary: "Personas are identities (not procedures) — when building one from research, persist the research as knowledge files first"
-always: false
+type: principle
+triggers: persona, identity, character, personality, knowledge directory
 ---
 Personas are specialized AI identities with expertise, traits, and their own knowledge directories. Do not confuse them with skills — personas are identities, skills are procedures.
 
