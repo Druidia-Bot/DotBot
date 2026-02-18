@@ -329,8 +329,23 @@ WS_PORT=3001
 
   KEY_COUNT=0
 
+  # xAI
+  echo -e "  ${BOLD}xAI API Key${NC} (recommended — primary workhorse, intake, assistant)"
+  echo "    Get one: https://console.x.ai/"
+  ask "    XAI_API_KEY: "
+  read -r KEY_VAL
+  if [ -n "$KEY_VAL" ]; then
+    ENV_CONTENT+="XAI_API_KEY=$KEY_VAL\n"
+    KEY_COUNT=$((KEY_COUNT + 1))
+    log "XAI_API_KEY set"
+  else
+    ENV_CONTENT+="# XAI_API_KEY=\n"
+    echo "    Skipped"
+  fi
+  echo ""
+
   # DeepSeek
-  echo -e "  ${BOLD}DeepSeek API Key${NC} (workhorse — recommended)"
+  echo -e "  ${BOLD}DeepSeek API Key${NC} (fallback workhorse — cheapest option)"
   echo "    Get one: https://platform.deepseek.com/api_keys"
   ask "    DEEPSEEK_API_KEY: "
   read -r KEY_VAL
@@ -345,7 +360,7 @@ WS_PORT=3001
   echo ""
 
   # Gemini
-  echo -e "  ${BOLD}Google Gemini API Key${NC} (deep context — 1M tokens)"
+  echo -e "  ${BOLD}Google Gemini API Key${NC} (deep context — 1M tokens, image generation)"
   echo "    Get one: https://aistudio.google.com/apikey"
   ask "    GEMINI_API_KEY: "
   read -r KEY_VAL
@@ -360,7 +375,7 @@ WS_PORT=3001
   echo ""
 
   # Anthropic
-  echo -e "  ${BOLD}Anthropic API Key${NC} (architect — complex reasoning)"
+  echo -e "  ${BOLD}Anthropic API Key${NC} (architect — complex reasoning, planning)"
   echo "    Get one: https://console.anthropic.com/settings/keys"
   ask "    ANTHROPIC_API_KEY: "
   read -r KEY_VAL
@@ -375,7 +390,7 @@ WS_PORT=3001
   echo ""
 
   # OpenAI
-  echo -e "  ${BOLD}OpenAI API Key${NC} (optional fallback)"
+  echo -e "  ${BOLD}OpenAI API Key${NC} (optional — fallback for multiple roles)"
   echo "    Get one: https://platform.openai.com/api-keys"
   ask "    OPENAI_API_KEY: "
   read -r KEY_VAL
@@ -389,23 +404,8 @@ WS_PORT=3001
   fi
   echo ""
 
-  # xAI
-  echo -e "  ${BOLD}xAI API Key${NC} (optional — oracle persona, market sentiment)"
-  echo "    Get one: https://console.x.ai/"
-  ask "    XAI_API_KEY: "
-  read -r KEY_VAL
-  if [ -n "$KEY_VAL" ]; then
-    ENV_CONTENT+="XAI_API_KEY=$KEY_VAL\n"
-    KEY_COUNT=$((KEY_COUNT + 1))
-    log "XAI_API_KEY set"
-  else
-    ENV_CONTENT+="# XAI_API_KEY=\n"
-    echo "    Skipped"
-  fi
-  echo ""
-
   # ScrapingDog
-  echo -e "  ${BOLD}ScrapingDog API Key${NC} (optional — premium web tools)"
+  echo -e "  ${BOLD}ScrapingDog API Key${NC} (optional — 42 premium web APIs)"
   echo "    Get one: https://www.scrapingdog.com/"
   ask "    SCRAPING_DOG_API_KEY: "
   read -r KEY_VAL
@@ -660,7 +660,7 @@ step "7/7 — Starting services"
 if grep -q "your_key_here" "$ENV_FILE" 2>/dev/null || [ "$(grep -c '=.\+' "$ENV_FILE" 2>/dev/null | head -1)" -lt 3 ]; then
   # Check if at least one real API key was set
   HAS_KEY=false
-  for KEY_NAME in DEEPSEEK_API_KEY GEMINI_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY; do
+  for KEY_NAME in XAI_API_KEY DEEPSEEK_API_KEY GEMINI_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY; do
     if grep -q "^${KEY_NAME}=.\+" "$ENV_FILE" 2>/dev/null; then
       HAS_KEY=true
       break

@@ -5,9 +5,26 @@
  * knowledge test, and thread search.
  */
 
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Hono } from "hono";
 import * as memory from "../memory/manager.js";
 import { getConnectedDevices } from "#ws/server.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const SERVER_VERSION = (() => {
+  const candidates = [
+    path.resolve(__dirname, "..", "..", "VERSION"),
+    path.resolve(__dirname, "..", "..", "..", "VERSION"),
+  ];
+  for (const p of candidates) {
+    try { return readFileSync(p, "utf-8").trim(); } catch {}
+  }
+  return "unknown";
+})();
 
 // ============================================
 // PUBLIC / BASIC API
@@ -17,7 +34,7 @@ export function registerApiRoutes(app: Hono, config: { llmProvider: string; llmA
   // Health check
   app.get("/", (c) => c.json({ 
     service: "DotBot Server",
-    version: "0.1.0",
+    version: SERVER_VERSION,
     status: "running"
   }));
 

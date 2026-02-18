@@ -59,7 +59,7 @@ export class GeminiImageClient implements IImageClient {
   }
 
   private async callImageAPI(model: string, parts: any[], aspectRatio: string): Promise<ImageResult> {
-    const url = `${this.baseUrl}/v1beta/models/${model}:streamGenerateContent?key=${this.apiKey}`;
+    const url = `${this.baseUrl}/v1beta/models/${model}:generateContent?key=${this.apiKey}`;
 
     const body = {
       contents: [{ role: "user", parts }],
@@ -68,7 +68,6 @@ export class GeminiImageClient implements IImageClient {
         imageConfig: {
           aspectRatio,
           imageSize: "1K",
-          personGeneration: "",
         },
       },
     };
@@ -85,8 +84,9 @@ export class GeminiImageClient implements IImageClient {
       throw new Error(`Gemini image API error: ${response.status} ${errorText.substring(0, 500)}`);
     }
 
-    const data = await response.json() as any[];
-    if (!Array.isArray(data) || data.length === 0) {
+    const data = await response.json() as any;
+    const candidate = data?.candidates?.[0];
+    if (!candidate?.content?.parts) {
       throw new Error("Gemini image response empty or invalid");
     }
 
@@ -94,15 +94,11 @@ export class GeminiImageClient implements IImageClient {
     let mimeType = "image/png";
     let description = "";
 
-    for (const chunk of data) {
-      const candidate = chunk.candidates?.[0];
-      if (!candidate?.content?.parts) continue;
-      for (const part of candidate.content.parts) {
-        if (part.text) description += part.text;
-        else if (part.inlineData) {
-          base64 = part.inlineData.data;
-          mimeType = part.inlineData.mimeType || "image/png";
-        }
+    for (const part of candidate.content.parts) {
+      if (part.text) description += part.text;
+      else if (part.inlineData) {
+        base64 = part.inlineData.data;
+        mimeType = part.inlineData.mimeType || "image/png";
       }
     }
 

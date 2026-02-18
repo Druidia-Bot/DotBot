@@ -11,7 +11,7 @@ export const IMAGEGEN_TOOLS: ToolManifestEntry[] = [
   {
     id: "imagegen.generate",
     name: "generate_image",
-    description: "Generate an image from a text prompt. Saves the result to the user's machine and returns the file path. Supports aspect ratios, style references (via reference_images), and provider selection. Default provider: Gemini (Nano Banana). Use this for creating new images from scratch — logos, illustrations, ads, social media graphics, etc.",
+    description: "Generate an image from a text prompt. Saves the result to the user's machine and returns the file path. IMPORTANT: Before generating, ask the user what aspect ratio they want if they haven't specified one. Offer: '1:1' (square — profile pics, icons), '16:9' (landscape — wallpapers, banners), '9:16' (portrait — stories, phone wallpaper), '4:3' (standard photo), '3:4' (portrait photo). Default: '1:1'. Also ask where to save it if not specified. Supports style references (via reference_images) and provider selection. Use this for creating new images from scratch — logos, illustrations, ads, social media graphics, etc.",
     category: "imagegen",
     inputSchema: {
       type: "object",

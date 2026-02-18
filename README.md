@@ -9,7 +9,7 @@
 | Principle            | Why It Matters                                                                                                                                                                                     |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Affordable**       | Most AI agents burn through API credits. Dot routes 98% of work through the cheapest capable model and only escalates when the task demands it. Real utility shouldn't require a corporate budget. |
-| **Accurate**         | More tools, fewer hallucinations. 174 purpose-built tools mean the model doesn't have to guess shell syntax or invent API calls. Structured execution beats hope.                                  |
+| **Accurate**         | More tools, fewer hallucinations. 179 purpose-built tools mean the model doesn't have to guess shell syntax or invent API calls. Structured execution beats hope.                                  |
 | **You Own the Data** | Your conversations, memory, skils, personas, and knowledge live on your machine as flat files. The server is a stateless processing layer — it can't leak what it doesn't store.                   |
 | **Headless**         | No UI is the UI. The server is the agent. Connect from Windows, Discord, a browser, a CLI, or something you build yourself. Dot doesn't care how you talk to her.                                  |
 | **Just Works**       | One install script. One invite link. No YAML pipelines, no Docker compose files, no prompt engineering. Tell her what you need in plain language and she figures out the rest.                     |
@@ -90,7 +90,7 @@ Dot wakes up every few minutes, evaluates if anything needs her attention, and o
 
 Credentials never enter the LLM's context — architecturally impossible, not just policy. The server holds the master key, your machine holds encrypted blobs, and decryption is domain-scoped. A token encrypted for `github.com` literally cannot be decrypted for `attacker.com`. Even a successful prompt injection can't exfiltrate secrets because tool commands execute on your machine, not the server.
 
-### 174 Tools, Not Plugins
+### 179 Tools, Not Plugins
 
 Filesystem, shell, browser automation, GUI vision, git, HTTP, PDF, databases, package managers, audio, monitoring — built-in and platform-aware. Not a marketplace. Not plugins you install and pray work. Purpose-built tools that execute reliably because the model doesn't have to guess syntax or wrestle with shell escaping.
 
@@ -137,7 +137,7 @@ The installer will:
 5. Build and start the server with auto-restarts
 6. **Print an invite URL** — this is how you connect agents
 
-**Minimum to start:** One LLM API key. DeepSeek is cheapest — [get one here](https://platform.deepseek.com/api_keys).
+**Minimum to start:** One LLM API key. xAI offers the best value — [get one here](https://console.x.ai/). DeepSeek is the cheapest fallback — [get one here](https://platform.deepseek.com/api_keys).
 
 **Security:** The installer prompts for `ADMIN_API_KEY` to protect HTTP endpoints (`/api/scheduler`, `/api/memory`, etc.). Without this key, **anyone who can reach your server can access these endpoints**. Generate a random key:
 
@@ -402,18 +402,18 @@ This tells the bootstrap "version 99 is installed" — since source versions are
 
 ## API Keys
 
-DotBot uses **6 model roles** that auto-select per task. You need API keys for the providers you want to use.
+DotBot is **BYOK (Bring Your Own Keys)**. Every model role has a fallback chain — the system picks the best available provider from your keys. More keys = better results, but one key is enough to start.
 
-|     | Provider          | Model Role    | What It Does                                           | Required?                     |
-| --- | ----------------- | ------------- | ------------------------------------------------------ | ----------------------------- |
-|     | **DeepSeek**      | Workhorse     | 98% of execution — chat, tool calls, writing           | **Yes** (recommended default) |
-|     | **xAI**           | Intake        | Request classification & routing (fast first response) | Recommended                   |
-|     | **Google Gemini** | Deep Context  | 1M token context — large files, video, PDFs            | Recommended                   |
-|     | **Anthropic**     | Architect     | Complex reasoning, planning, design decisions          | Recommended                   |
-|     | **OpenAI**        | Fallback      | Optional fallback if other providers are down          | Optional                      |
-|     | **ScrapingDog**   | Premium Tools | 39 APIs — Google Search, Amazon, YouTube, etc.         | Optional                      |
+| Provider          | What It Powers                                                    | Required?                     |
+| ----------------- | ----------------------------------------------------------------- | ----------------------------- |
+| **xAI**           | Primary workhorse, intake classification, conversational assistant | **Recommended** (best value)  |
+| **DeepSeek**      | Workhorse fallback, reasoning tasks                               | **Recommended** (cheapest)    |
+| **Google Gemini** | 1M token context (large files, video, PDFs), image generation     | Recommended                   |
+| **Anthropic**     | Complex reasoning, planning, architectural decisions              | Recommended                   |
+| **OpenAI**        | Fallback for multiple roles, image generation fallback            | Optional                      |
+| **ScrapingDog**   | 42 premium APIs — Google Search, Amazon, YouTube, LinkedIn, etc.  | Optional                      |
 
-**Minimum to start**: One LLM key (DeepSeek is cheapest). The server will start with just one provider — missing providers are skipped, and the available ones handle all roles.
+**Minimum to start**: One LLM key. The server auto-assigns all roles to whatever providers you have — missing providers are skipped, and fallback chains fill the gaps.
 
 **Get your keys**:
 
@@ -428,14 +428,14 @@ DotBot uses **6 model roles** that auto-select per task. You need API keys for t
 
 ```bash
 # --- LLM Providers (at least one required) ---
-DEEPSEEK_API_KEY=                # Workhorse — 98% of execution (fast, cheap, very capable)
-XAI_API_KEY=                     # Intake — fast request classification & routing
+XAI_API_KEY=                     # Primary — workhorse, intake, assistant (recommended)
+DEEPSEEK_API_KEY=                # Fallback workhorse — cheapest option
+GEMINI_API_KEY=                  # Deep context (1M tokens), image generation
 ANTHROPIC_API_KEY=               # Architect — complex reasoning, planning
-GEMINI_API_KEY=                  # Deep Context — 1M tokens (video, PDFs, huge files)
-# OPENAI_API_KEY=                # Optional fallback
+# OPENAI_API_KEY=                # Optional fallback for multiple roles
 
 # --- Premium Tools (optional) ---
-# SCRAPING_DOG_API_KEY=          # ScrapingDog — 39 APIs (Google Search, Amazon, YouTube, etc.)
+# SCRAPING_DOG_API_KEY=          # ScrapingDog — 42 APIs (Google Search, Amazon, YouTube, etc.)
 
 # --- Security (IMPORTANT for production) ---
 ADMIN_API_KEY=                   # Required for production self-hosting

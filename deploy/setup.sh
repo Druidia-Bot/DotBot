@@ -186,11 +186,12 @@ if [ ! -f "$DEPLOY_DIR/.env" ]; then
 # DotBot Server Environment
 # ============================================================
 
-# LLM Provider (pick one)
-DEEPSEEK_API_KEY=your_key_here
+# LLM Providers (at least one required)
+XAI_API_KEY=your_key_here
+# DEEPSEEK_API_KEY=
+# GEMINI_API_KEY=
 # ANTHROPIC_API_KEY=
 # OPENAI_API_KEY=
-# GEMINI_API_KEY=
 
 # Server ports (Caddy proxies these — don't expose directly)
 PORT=3000
@@ -198,6 +199,9 @@ WS_PORT=3001
 
 # Public URL (used for credential entry page URLs sent to clients)
 PUBLIC_URL=https://$DOMAIN
+
+# Security (IMPORTANT for production)
+# ADMIN_API_KEY=               # Protects HTTP admin endpoints — generate: openssl rand -hex 32
 
 # Premium tools (optional)
 # SCRAPING_DOG_API_KEY=
