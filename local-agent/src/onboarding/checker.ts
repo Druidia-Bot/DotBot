@@ -11,10 +11,15 @@ import { homedir } from "os";
 import {
   onboardingExists,
   readOnboarding,
+  completeStep,
   recordNag,
   getIncompleteSteps,
   isOnboardingComplete,
+  type OnboardingState,
 } from "./store.js";
+import { vaultHas } from "../credential-vault.js";
+import { loadIdentity } from "../memory/store-identity.js";
+import { fileExists, DOTBOT_DIR } from "../memory/store-core.js";
 import type { PeriodicTaskDef } from "../periodic/index.js";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -33,6 +38,7 @@ const NAG_MESSAGES: Record<string, string> = {
 
 let notifyCallback: ((message: string) => void) | null = null;
 let discordCallback: ((message: string) => void) | null = null;
+let sendPromptCallback: ((message: string) => void) | null = null;
 
 export function setOnboardingNotifyCallback(cb: (message: string) => void): void {
   notifyCallback = cb;
@@ -42,17 +48,114 @@ export function setOnboardingDiscordCallback(cb: (message: string) => void): voi
   discordCallback = cb;
 }
 
+export function setOnboardingSendPromptCallback(cb: (message: string) => void): void {
+  sendPromptCallback = cb;
+}
+
 /**
  * Check onboarding status and nag if needed.
  * Called by the periodic task manager.
  */
 let skillDeletedFlag = false;
 
+/**
+ * Auto-detect completed steps by checking real system state.
+ * Marks steps complete if their underlying work is actually done.
+ */
+async function autoDetectCompletedSteps(state: OnboardingState): Promise<boolean> {
+  let changed = false;
+
+  const pending = (id: string) => state.steps[id]?.status === "pending" || state.steps[id]?.status === "skipped";
+
+  // name_preference: identity exists with version > 1 (user interacted with it)
+  if (pending("name_preference")) {
+    try {
+      const identity = await loadIdentity();
+      if (identity && identity.version > 1) {
+        await completeStep("name_preference");
+        state.steps["name_preference"] = { status: "completed", completedAt: new Date().toISOString(), skippedAt: null };
+        changed = true;
+      }
+    } catch { /* ignore */ }
+  }
+
+  // phone_type: user profile mental model exists (personality transfer captures this)
+  if (pending("phone_type")) {
+    try {
+      const modelsDir = join(homedir(), ".bot", "memory", "models");
+      const files = await fs.readdir(modelsDir);
+      const hasProfile = files.some(f => f.includes("profile") || f.includes("user"));
+      if (hasProfile) {
+        await completeStep("phone_type");
+        state.steps["phone_type"] = { status: "completed", completedAt: new Date().toISOString(), skippedAt: null };
+        changed = true;
+      }
+    } catch { /* ignore */ }
+  }
+
+  // personality_transfer: backstory.md exists
+  if (pending("personality_transfer")) {
+    try {
+      const backstoryPath = join(DOTBOT_DIR, "backstory.md");
+      if (await fileExists(backstoryPath)) {
+        await completeStep("personality_transfer");
+        state.steps["personality_transfer"] = { status: "completed", completedAt: new Date().toISOString(), skippedAt: null };
+        changed = true;
+      }
+    } catch { /* ignore */ }
+  }
+
+  // discord_setup: token in vault + channel config in env
+  if (pending("discord_setup")) {
+    try {
+      const hasToken = await vaultHas("DISCORD_BOT_TOKEN");
+      const hasChannel = !!process.env.DISCORD_CHANNEL_CONVERSATION;
+      if (hasToken && hasChannel) {
+        await completeStep("discord_setup");
+        state.steps["discord_setup"] = { status: "completed", completedAt: new Date().toISOString(), skippedAt: null };
+        changed = true;
+      }
+    } catch { /* ignore */ }
+  }
+
+  // brave_search: API key in vault
+  if (pending("brave_search")) {
+    try {
+      if (await vaultHas("BRAVE_SEARCH_API_KEY")) {
+        await completeStep("brave_search");
+        state.steps["brave_search"] = { status: "completed", completedAt: new Date().toISOString(), skippedAt: null };
+        changed = true;
+      }
+    } catch { /* ignore */ }
+  }
+
+  // git_backup: .git directory exists in ~/.bot/
+  if (pending("git_backup")) {
+    try {
+      const gitDir = join(DOTBOT_DIR, ".git");
+      if (await fileExists(gitDir)) {
+        await completeStep("git_backup");
+        state.steps["git_backup"] = { status: "completed", completedAt: new Date().toISOString(), skippedAt: null };
+        changed = true;
+      }
+    } catch { /* ignore */ }
+  }
+
+  return changed;
+}
+
 export async function checkOnboarding(): Promise<void> {
   try {
     if (!(await onboardingExists())) return;
 
-    const state = await readOnboarding();
+    let state = await readOnboarding();
+
+    // Auto-detect steps that are actually done but not marked
+    const detected = await autoDetectCompletedSteps(state);
+    if (detected) {
+      state = await readOnboarding(); // re-read after mutations
+      console.log("[Onboarding] Auto-detected completed steps");
+    }
 
     // If complete, auto-delete onboarding skill directory (one-shot)
     if (isOnboardingComplete(state)) {
@@ -88,8 +191,19 @@ export async function checkOnboarding(): Promise<void> {
 
     const message = NAG_MESSAGES[target.id] || `We still have "${target.id}" to finish in your setup.`;
 
+    const fullMessage =
+      `[Onboarding Reminder] Incomplete step: ${target.id}\n` +
+      `${message}\n` +
+      `After completing this step, call onboarding.complete_step({ step: "${target.id}" }) to mark it done.`;
+
+    // Send as a prompt into Dot's conversation so she has context
+    if (sendPromptCallback) {
+      sendPromptCallback(fullMessage);
+    }
+
+    // Also post to Discord #updates for visibility
     if (notifyCallback) {
-      notifyCallback(`Hey, ${message}`);
+      notifyCallback(fullMessage);
     }
 
     // Escalate to Discord after 7+ nags (roughly 7 days since nags are daily)

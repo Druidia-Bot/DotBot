@@ -61,6 +61,24 @@ export async function sendToDiscord(channelId: string, content: string): Promise
   try {
     // Sanitize: prevent @everyone/@here pings from LLM output
     const sanitized = content.replace(/@(everyone|here)/g, "@\u200b$1");
+
+    // Detect base64 image markdown: ![alt](data:image/...;base64,...)
+    const base64ImageRegex = /!\[([^\]]*)\]\(data:(image\/[a-zA-Z+]+);base64,([A-Za-z0-9+/=\s]+)\)/g;
+    const images: { alt: string; mimeType: string; data: string }[] = [];
+    let textOnly = sanitized;
+    let match: RegExpExecArray | null;
+
+    while ((match = base64ImageRegex.exec(sanitized)) !== null) {
+      images.push({ alt: match[1] || "image", mimeType: match[2], data: match[3].replace(/\s/g, "") });
+    }
+
+    if (images.length > 0) {
+      // Strip base64 markdown from text, send images as attachments
+      textOnly = sanitized.replace(base64ImageRegex, "").trim();
+      await sendWithAttachments(channelId, textOnly, images);
+      return;
+    }
+
     const chunks = splitMessage(sanitized);
     for (const chunk of chunks) {
       const result = await credentialProxyFetch(`/channels/${channelId}/messages`, DISCORD_CREDENTIAL_NAME, {
@@ -79,6 +97,56 @@ export async function sendToDiscord(channelId: string, content: string): Promise
     }
   } catch (err: any) {
     console.error(`[Discord] Failed to send message: ${err.message}`);
+  }
+}
+
+/**
+ * Send a message with file attachments to Discord.
+ * Uses multipart/form-data via the credential proxy.
+ */
+async function sendWithAttachments(
+  channelId: string,
+  text: string,
+  images: { alt: string; mimeType: string; data: string }[],
+): Promise<void> {
+  const ext = (mime: string) => {
+    if (mime.includes("png")) return "png";
+    if (mime.includes("gif")) return "gif";
+    if (mime.includes("webp")) return "webp";
+    return "jpg";
+  };
+
+  const attachments = images.map((img, i) => ({
+    id: i,
+    filename: `${img.alt.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40) || "image"}.${ext(img.mimeType)}`,
+    description: img.alt,
+  }));
+
+  const files = images.map((img, i) => ({
+    fieldName: `files[${i}]`,
+    filename: attachments[i].filename,
+    contentType: img.mimeType,
+    data: img.data,
+  }));
+
+  const payload: any = { attachments };
+  if (text) payload.content = text.slice(0, DISCORD_MAX_LENGTH);
+
+  const result = await credentialProxyFetch(`/channels/${channelId}/messages`, DISCORD_CREDENTIAL_NAME, {
+    baseUrl: DISCORD_API,
+    method: "POST",
+    headers: { "User-Agent": USER_AGENT },
+    body: JSON.stringify(payload),
+    files,
+    placement: { header: "Authorization", prefix: "Bot " },
+  });
+
+  if (result && !result.ok) {
+    console.error(`[Discord] Attachment POST failed: status=${result.status} body=${result.body?.slice(0, 300)}`);
+    // Fallback: send text only if attachment upload failed
+    if (text) {
+      await sendToDiscord(channelId, text + "\n\n*(Image attachment failed to upload)*");
+    }
   }
 }
 

@@ -435,7 +435,8 @@ export type WSMessageType =
   | "admin_request"
   | "admin_response"
   | "task_acknowledged"
-  | "dispatch_followup";
+  | "dispatch_followup"
+  | "mcp_configs";
 
 export interface WSMessage {
   type: WSMessageType;

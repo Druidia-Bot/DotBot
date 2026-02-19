@@ -49,6 +49,7 @@ export const DEFAULT_SKILLS: DefaultSkill[] = [
   { slug: "onboarding", version: 2, promptFile: "onboarding-skill.md" },
   { slug: "install-doctor", version: 1, promptFile: "install-doctor-skill.md" },
   { slug: "run-log-diagnostics", version: 1, promptFile: "run-log-diagnostics-skill.md" },
+  { slug: "mcp-setup", version: 1, promptFile: "mcp-setup-skill.md" },
 ];
 
 /**

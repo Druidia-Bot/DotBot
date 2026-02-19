@@ -20,6 +20,7 @@
  *     - knowledge.ingest (overrides the static handler when ctx.state callback exists)
  */
 
+import { executeMcpTool } from "../../mcp/index.js";
 import { createComponentLogger } from "#logging.js";
 import type { ToolHandler, ToolContext } from "../types.js";
 import type { ToolManifestEntry } from "#tools/types.js";
@@ -107,6 +108,17 @@ function buildDynamicHandler(stateKey: string, label: string): ToolHandler {
 }
 
 // ============================================
+// MCP HANDLERS (server-side gateway)
+// ============================================
+
+function buildMcpHandler(toolId: string): ToolHandler {
+  return async (ctx: ToolContext, args: Record<string, any>) => {
+    log.info("Routing to MCP gateway", { toolId, deviceId: ctx.deviceId });
+    return executeMcpTool(ctx.deviceId, toolId, args);
+  };
+}
+
+// ============================================
 // PUBLIC API
 // ============================================
 
@@ -154,9 +166,19 @@ export function buildServerSideHandlers(
     handlers.set("knowledge.ingest", buildDynamicHandler("executeKnowledgeIngest", "knowledge ingest"));
   }
 
+  // MCP tools: server-side gateway handles credentialed MCP server calls
+  let mcpCount = 0;
+  for (const entry of manifest) {
+    if (entry.category.startsWith("mcp.")) {
+      handlers.set(entry.id, buildMcpHandler(entry.id));
+      mcpCount++;
+    }
+  }
+
   log.info("Built server-side handlers", {
     static: MEMORY_HANDLERS.length + KNOWLEDGE_HANDLERS.length + SEARCH_HANDLERS.length,
     dynamic: dynamicHandlerCache.size,
+    mcp: mcpCount,
     total: handlers.size,
   });
 

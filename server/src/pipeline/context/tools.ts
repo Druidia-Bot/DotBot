@@ -2,11 +2,12 @@
  * Context — Tool Manifest Fetching
  *
  * Fetches the tool manifest from the local agent and augments
- * it with server-side premium and imagegen tools.
+ * it with server-side premium, imagegen, and MCP gateway tools.
  */
 
 import { createComponentLogger } from "#logging.js";
 import { requestTools } from "#ws/device-bridge.js";
+import { getMcpManifestEntries } from "../../mcp/index.js";
 
 const log = createComponentLogger("context.tools");
 
@@ -30,7 +31,15 @@ export async function fetchToolManifest(deviceId: string): Promise<ToolManifestR
     const { PREMIUM_TOOLS } = await import("#tools-server/premium/manifest.js");
     const { IMAGEGEN_TOOLS } = await import("#tools-server/imagegen/manifest.js");
     toolManifest = [...toolManifest, ...PREMIUM_TOOLS, ...IMAGEGEN_TOOLS];
-    log.info(`Added ${PREMIUM_TOOLS.length} premium + ${IMAGEGEN_TOOLS.length} imagegen tools to manifest (total: ${toolManifest.length})`);
+
+    // Merge MCP gateway tools (credentialed servers connected server-side)
+    const mcpTools = getMcpManifestEntries(deviceId);
+    if (mcpTools.length > 0) {
+      toolManifest = [...toolManifest, ...mcpTools];
+      log.info(`Added ${mcpTools.length} MCP gateway tool(s) to manifest`);
+    }
+
+    log.info(`Tool manifest ready: ${toolManifest.length} total tools`);
 
     return { toolManifest, runtimeInfo };
   } catch (err) {

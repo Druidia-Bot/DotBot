@@ -250,7 +250,18 @@ function pushUpdateIfNeeded(
   agentVersion: string | undefined,
   serverVersion: string,
 ): void {
-  if (!agentVersion || serverVersion === "unknown" || agentVersion === serverVersion) return;
+  if (!agentVersion) {
+    log.debug("Agent did not send version — skipping update check", { deviceId });
+    return;
+  }
+  if (serverVersion === "unknown") {
+    log.warn("Server VERSION file not found — cannot compare versions for auto-update", { deviceId, agentVersion });
+    return;
+  }
+  if (agentVersion === serverVersion) {
+    log.debug("Agent version matches server", { deviceId, version: serverVersion });
+    return;
+  }
 
   const now = Date.now();
   const elapsed = now - lastUpdatePushAt;
@@ -263,11 +274,19 @@ function pushUpdateIfNeeded(
     return;
   }
 
-  lastUpdatePushAt = now;
   log.info("Agent version mismatch — pushing update", { deviceId, agentVersion, serverVersion });
 
-  // Small delay so the agent finishes its auth init before we trigger an update
+  // Small delay so the agent finishes its auth init before we trigger an update.
+  // Set the cooldown timestamp only AFTER the message is sent — if the WS closes
+  // before the timeout fires, we want the next reconnect to retry immediately.
   setTimeout(() => {
+    if (ws.readyState !== WebSocket.OPEN) {
+      log.warn("WS closed before system_update could be sent — will retry on next auth", {
+        deviceId, agentVersion, serverVersion,
+      });
+      return; // Don't set lastUpdatePushAt — let the next auth attempt try again
+    }
+    lastUpdatePushAt = Date.now();
     sendMessage(ws, {
       type: "system_update" as any,
       id: nanoid(),

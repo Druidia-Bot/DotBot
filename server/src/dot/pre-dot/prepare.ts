@@ -141,7 +141,7 @@ export async function prepareDot(opts: DotOptions): Promise<DotPreparedContext> 
           type: "user_notification",
           id: `skill_feedback_${messageId}`,
           timestamp: Date.now(),
-          payload: { title: "Dot", message: tailorResult.skillFeedback },
+          payload: { title: "Dot", message: tailorResult.skillFeedback, source: "skill_feedback" },
         });
       }
     }

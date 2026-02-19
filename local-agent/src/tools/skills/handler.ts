@@ -12,6 +12,13 @@ export async function handleSkillsManagement(toolId: string, args: Record<string
         return { success: false, output: "", error: "Missing required fields: name, description, content" };
       }
 
+      // LLMs sometimes double-escape JSON inside the content string (e.g. \" instead of ").
+      // Detect and fix: if content has \" but no unescaped " inside code blocks, unescape.
+      let content: string = args.content;
+      if (content.includes('\\"') && !content.includes('\\\\"')) {
+        content = content.replace(/\\"/g, '"');
+      }
+
       const tags = typeof args.tags === "string"
         ? args.tags.split(",").map((t: string) => t.trim())
         : (args.tags || []);
@@ -19,7 +26,7 @@ export async function handleSkillsManagement(toolId: string, args: Record<string
       const skill = await createSkill(
         args.name,
         args.description,
-        args.content,
+        content,
         tags,
         {
           disableModelInvocation: args.disableModelInvocation || false,

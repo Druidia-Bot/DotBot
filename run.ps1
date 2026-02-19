@@ -368,8 +368,11 @@ function Start-AgentLoop {
         Write-Log "Starting local agent (attempt $($restartCount + 1))..."
 
         if ($hasTsx) {
+            # Run tsx directly (not via npm) so exit codes pass through cleanly.
+            # npm wraps the child process and on Windows mangles exit code 42.
+            # Use plain tsx (no watch) — the launcher's own loop handles restarts.
             Set-Location "$Root\local-agent"
-            npm run dev
+            & "$Root\node_modules\.bin\tsx.cmd" src/index.ts
         } else {
             Set-Location $Root
             node local-agent/dist/index.js

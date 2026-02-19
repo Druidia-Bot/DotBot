@@ -64,6 +64,9 @@ import {
 // Lifecycle
 import { wireSchedulers } from "./lifecycle/scheduler.js";
 
+// MCP Gateway
+import { initMcpForDevice, storeMcpBlobs, clearMcpBlobs } from "../mcp/index.js";
+
 // Re-export for backwards compatibility
 export {
   getConnectedDevices,
@@ -94,8 +97,13 @@ const SERVER_VERSION = (() => {
     path.resolve(__dirname, "..", "..", "..", "VERSION"),  // deeper nesting
   ];
   for (const p of candidates) {
-    try { return readFileSync(p, "utf-8").trim(); } catch {}
+    try {
+      const ver = readFileSync(p, "utf-8").trim();
+      console.log(`[ws] SERVER_VERSION=${ver} (from ${p})`);
+      return ver;
+    } catch {}
   }
+  console.warn(`[ws] VERSION file not found — tried: ${candidates.join(", ")}`);
   return "unknown";
 })();
 
@@ -254,6 +262,18 @@ export function createWSServer(options: {
           case "admin_request":
             if (deviceId) handleAdminRequest(deviceId, message);
             break;
+          case "mcp_configs":
+            if (deviceId) {
+              const device = devices.get(deviceId);
+              if (device) {
+                const { configs, credentialBlobs } = message.payload;
+                if (credentialBlobs) storeMcpBlobs(deviceId, credentialBlobs);
+                initMcpForDevice(deviceId, device.session.userId, configs).catch(err => {
+                  log.error("MCP gateway init failed", err instanceof Error ? err : new Error(String(err)), { deviceId });
+                });
+              }
+            }
+            break;
           case "ping":
             sendMessage(ws, { type: "pong", id: nanoid(), timestamp: Date.now(), payload: {} });
             break;
@@ -304,7 +324,14 @@ function handleClose(ws: WebSocket, connectionKey: string | null, deviceId: stri
   if (isLocalAgent) {
     log.info("Local-agent disconnect: rejected pending requests", { deviceId });
   }
-  if (deviceId) cleanupResolveTracking(deviceId);
+  if (deviceId) {
+    cleanupResolveTracking(deviceId);
+    // NOTE: Do NOT shutdownMcpForDevice here — a late WS close event can race
+    // with a fresh initMcpForDevice from a reconnecting agent, killing the new
+    // MCP connections. initMcpForDevice already calls shutdown at the top.
+    // Blobs are cleared so they're re-sent on reconnect.
+    clearMcpBlobs(deviceId);
+  }
 
   // Clean up V2 orchestrator state if this was the user's last device
   if (!hasAnyConnectedDevices(userId)) {

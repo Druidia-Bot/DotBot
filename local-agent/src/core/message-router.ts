@@ -10,7 +10,7 @@ import type { WSMessage } from "../types.js";
 import { AGENT_VERSION, DEVICE_NAME, SERVER_URL, deviceCredentials, setDeviceCredentials } from "./config.js";
 import { send, handlePendingResponse, handlePong } from "./ws-client.js";
 import { cleanConsumedInviteToken } from "./env.js";
-import { initializeAfterAuth, notifyActivity } from "./post-auth-init.js";
+import { initializeAfterAuth, resendMcpConfigs, notifyActivity } from "./post-auth-init.js";
 import { writeClientLog } from "./client-log.js";
 import { saveDeviceCredentials } from "../auth/device-credentials.js";
 import { appendAgentWork } from "../memory/store-agent-work.js";
@@ -84,6 +84,12 @@ export async function handleMessage(message: WSMessage): Promise<void> {
           const fixes = pendingFormatFixes;
           pendingFormatFixes = [];
           await initializeAfterAuth(fixes);
+        } else {
+          // On WS reconnect: re-send MCP configs (server cleared blobs on disconnect).
+          // Server-side initMcpForDevice debounces, so rapid reconnects won't waste retries.
+          resendMcpConfigs().catch(err => {
+            console.error("[Agent] Failed to re-send MCP configs:", err);
+          });
         }
       }
       break;
@@ -278,6 +284,10 @@ export async function handleMessage(message: WSMessage): Promise<void> {
           const detail = message.payload.detail ? `\n${message.payload.detail}` : "";
           sendToUpdatesChannel(`🤖 ${message.payload.message}${detail}`);
           sendToLogsChannel(`🤖 **[${message.payload.event}]** ${message.payload.message}${detail}`);
+        } else if (message.payload?.source === "skill_feedback") {
+          // Skill feedback is a quick "I'm working on it" preview — skip #conversation
+          // because Dot's full response will arrive shortly via the response handler.
+          sendToUpdatesChannel(`🔔 **${message.payload.title || "Notification"}**\n${message.payload.message}`);
         } else {
           // Other notification sources go to both #conversation and #updates
           sendToConversationChannel(`🔔 **${message.payload.title || "Notification"}**\n${message.payload.message}`);
@@ -352,14 +362,16 @@ export async function handleMessage(message: WSMessage): Promise<void> {
       // Import dynamically to avoid circular dependency
       import("../tools/system/handler.js").then(async ({ handleSystem }) => {
         const result = await handleSystem("system.update", { reason: `Server-pushed: ${reason}` });
-        if (!result.success) {
+        if (result.success) {
+          await sendToUpdatesChannel(`✅ **Auto-update complete** — restarting to v${serverVersion}...\n${result.output}`);
+        } else {
           console.error(`[Agent] Server-pushed update failed: ${result.error}`);
-          sendToUpdatesChannel(`❌ **Auto-update failed:** ${result.error}`);
+          await sendToUpdatesChannel(`❌ **Auto-update failed:** ${result.error}`);
         }
         // handleSystem("system.update") already calls process.exit(42) on success
-      }).catch(err => {
+      }).catch(async (err) => {
         console.error("[Agent] Failed to run server-pushed update:", err);
-        sendToUpdatesChannel(`❌ **Auto-update failed:** ${err instanceof Error ? err.message : String(err)}`);
+        await sendToUpdatesChannel(`❌ **Auto-update failed:** ${err instanceof Error ? err.message : String(err)}`);
       });
       break;
     }

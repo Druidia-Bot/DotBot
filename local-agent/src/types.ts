@@ -74,6 +74,7 @@ export type WSMessageType =
   | "dispatch_followup"
   | "system_update"
   | "error"
+  | "mcp_configs"
   | "ping"
   | "pong";
 

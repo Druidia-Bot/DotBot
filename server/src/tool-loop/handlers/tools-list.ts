@@ -13,6 +13,7 @@ import { nanoid } from "nanoid";
 import { createComponentLogger } from "#logging.js";
 import { sendExecutionCommand } from "#ws/device-bridge.js";
 import { SHARED_SERVER_TOOLS } from "#tools/definitions/server-tools.js";
+import { getMcpManifestEntries, getMcpConnectionStatus } from "../../mcp/index.js";
 import type { ToolHandler, ToolContext } from "../types.js";
 import type { ToolManifestEntry } from "#tools/types.js";
 
@@ -88,6 +89,41 @@ export function buildToolsListHandler(manifest: ToolManifestEntry[]): ToolHandle
         }
         sections.push(`## Server Tools (${matching.length})\n` + lines.join("\n"));
       }
+    }
+
+    // ── 3. MCP gateway tools (credentialed servers connected server-side) ──
+    const mcpEntries = getMcpManifestEntries(ctx.deviceId);
+    const mcpStatus = getMcpConnectionStatus(ctx.deviceId);
+
+    if (mcpEntries.length > 0) {
+      const mcpTools: SimpleTool[] = mcpEntries.map(t => ({ id: t.id, description: t.description, category: t.category }));
+      const matching = category
+        ? mcpTools.filter(t => t.category === category || t.id.startsWith(category + "."))
+        : mcpTools;
+
+      if (matching.length > 0) {
+        const grouped = new Map<string, SimpleTool[]>();
+        for (const t of matching) {
+          if (!grouped.has(t.category)) grouped.set(t.category, []);
+          grouped.get(t.category)!.push(t);
+        }
+        const lines: string[] = [];
+        for (const [cat, catTools] of grouped) {
+          lines.push(`[${cat}] (${catTools.length})`);
+          for (const t of catTools) {
+            const desc = t.description.length > 80 ? t.description.substring(0, 80) + "..." : t.description;
+            lines.push(`  ${t.id} — ${desc} (mcp-gateway)`);
+          }
+        }
+        sections.push(`## MCP Gateway Tools (${matching.length})\n` + lines.join("\n"));
+      }
+    }
+
+    // Show MCP connection errors (even when no tools discovered)
+    const failedMcp = mcpStatus.filter(s => s.error);
+    if (failedMcp.length > 0) {
+      const errorLines = failedMcp.map(s => `  ${s.name}: ${s.error}`);
+      sections.push(`## MCP Gateway Errors (${failedMcp.length})\n` + errorLines.join("\n"));
     }
 
     if (sections.length === 0) {

@@ -73,6 +73,9 @@ export function runPowershell(script: string, timeout = 30_000): Promise<ToolExe
 export function runProcess(cmd: string, args: string[], timeout: number): Promise<ToolExecResult> {
   return new Promise((resolve) => {
     const proc = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"], timeout });
+    // Close stdin immediately — prevents child/grandchild processes from hanging
+    // on an open pipe (common cause of npm/git hangs on Windows)
+    proc.stdin.end();
     let stdout = "";
     let stderr = "";
 

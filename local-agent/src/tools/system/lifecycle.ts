@@ -84,8 +84,11 @@ export async function handleUpdate(_args: Record<string, any>): Promise<ToolExec
     await verifyGitRepo(safeDir);
     const beforeHash = await gitShortHash(safeDir);
 
+    console.log("[Update] git pull...");
     await gitPull(safeDir);
+    console.log("[Update] git pull done — building...");
     await buildAll(safeDir);
+    console.log("[Update] build done");
 
     const afterHash = await gitShortHash(safeDir);
     const changes = await gitChangeLog(safeDir, beforeHash);
@@ -96,7 +99,7 @@ export async function handleUpdate(_args: Record<string, any>): Promise<ToolExec
       "\nRestarting to apply update...",
     ].filter(Boolean).join("\n");
 
-    scheduleExit(1000);
+    scheduleExit(3000);
     return { success: true, output };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -260,6 +263,7 @@ async function buildAll(safeDir: string): Promise<void> {
     ["local-agent/ build",       `cd '${safeDir}'; npm run build -w local-agent 2>&1`, 60_000],
   ];
   for (const [label, cmd, timeout] of steps) {
+    console.log(`[Update]   ${label}...`);
     const r = await runPowershell(cmd, timeout);
     if (!r.success) throw new Error(`${label} failed: ${r.error}`);
   }

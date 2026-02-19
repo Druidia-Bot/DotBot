@@ -162,19 +162,23 @@ class MCPManager {
     }, RECONNECT_DELAY_MS);
   }
 
+  /** Disconnect and clean up a single server. */
+  async disconnectSingle(serverName: string): Promise<void> {
+    const client = this.clients.get(serverName);
+    if (!client) return;
+
+    const toolIds = this.serverToolIds.get(serverName) || [];
+    for (const id of toolIds) unregisterTool(id);
+
+    await client.disconnect();
+    this.clients.delete(serverName);
+    this.serverToolIds.delete(serverName);
+    console.log(`[MCP:${serverName}] Disconnected and cleaned up`);
+  }
+
   /** Reconnect a specific server (e.g., after config change). */
   async reconnectServer(serverName: string, config: MCPServerConfig): Promise<void> {
-    // Clean up existing connection
-    const existing = this.clients.get(serverName);
-    if (existing) {
-      const toolIds = this.serverToolIds.get(serverName) || [];
-      for (const id of toolIds) unregisterTool(id);
-      await existing.disconnect();
-      this.clients.delete(serverName);
-      this.serverToolIds.delete(serverName);
-    }
-
-    // Reconnect
+    await this.disconnectSingle(serverName);
     await this.connectServer(config);
   }
 }

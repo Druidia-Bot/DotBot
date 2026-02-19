@@ -49,6 +49,7 @@ import { handleData } from "./data/handler.js";
 import { handlePdf } from "./pdf/handler.js";
 import { handleDb } from "./db/handler.js";
 import { handleVision } from "./vision/handler.js";
+import { handleMcpManagement } from "./mcp/handler.js";
 import { getTool } from "./registry.js";
 import { vaultHas } from "../credential-vault.js";
 import { credentialProxyFetch } from "../credential-proxy.js";
@@ -768,6 +769,11 @@ export async function executeTool(toolId: string, args: Record<string, any>): Pr
       case "pdf":        result = await handlePdf(toolId, args); break;
       case "db":         result = await handleDb(toolId, args); break;
       case "vision":     result = await handleVision(toolId, args); break;
+      case "mcp": {
+        const mcpResult = await handleMcpManagement(toolId, args);
+        result = mcpResult ?? await executeRegisteredTool(toolId, args);
+        break;
+      }
       default:
         // Catch-all: check if this is a registered non-core tool (API or custom script)
         result = await executeRegisteredTool(toolId, args); break;

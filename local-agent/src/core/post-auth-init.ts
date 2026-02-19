@@ -22,14 +22,42 @@ import { initSleepCycle, setSleepCycleLoopCallback, getPeriodicTaskDef as getSle
 import { initHeartbeat, getPeriodicTaskDef as getHeartbeatTaskDef } from "../heartbeat/heartbeat.js";
 import { startPeriodicManager, notifyActivity } from "../periodic/index.js";
 import { setReminderNotifyCallback, getPeriodicTaskDef as getReminderTaskDef } from "../reminders/checker.js";
-import { setOnboardingNotifyCallback, setOnboardingDiscordCallback, getPeriodicTaskDef as getOnboardingTaskDef } from "../onboarding/checker.js";
+import { setOnboardingNotifyCallback, setOnboardingDiscordCallback, setOnboardingSendPromptCallback, getPeriodicTaskDef as getOnboardingTaskDef } from "../onboarding/checker.js";
 import { onboardingExists, initOnboarding } from "../onboarding/store.js";
 import { setUpdateNotifyCallback, getPeriodicTaskDef as getUpdateCheckTaskDef } from "../onboarding/update-checker.js";
 import { initDiscordAdapter, sendToConversationChannel, sendToUpdatesChannel } from "../discord/adapter.js";
 import { processFormatFixes } from "../handlers/format-fixer.js";
+import { getServerSideConfigs } from "../tools/mcp/index.js";
+import { vaultGetBlob } from "../credential-vault.js";
 import type { MalformedFile } from "../memory/startup-validator.js";
 
 export { notifyActivity };
+
+/**
+ * Re-send credentialed MCP configs to the server.
+ * Called on EVERY successful auth (including WS reconnects) because
+ * the server clears blobs on disconnect. Safe to call multiple times —
+ * the server debounces initMcpForDevice.
+ */
+export async function resendMcpConfigs(): Promise<void> {
+  const serverMcpConfigs = getServerSideConfigs();
+  if (serverMcpConfigs.length === 0) return;
+
+  const credentialBlobs: Record<string, string> = {};
+  for (const config of serverMcpConfigs) {
+    if (config.credentialRequired) {
+      const blob = await vaultGetBlob(config.credentialRequired);
+      if (blob) credentialBlobs[config.credentialRequired] = blob;
+    }
+  }
+  send({
+    type: "mcp_configs",
+    id: nanoid(),
+    timestamp: Date.now(),
+    payload: { configs: serverMcpConfigs, credentialBlobs },
+  });
+  console.log(`[MCP] Re-sent ${serverMcpConfigs.length} credentialed config(s) to server`);
+}
 
 let setupServerStarted = false;
 
@@ -81,6 +109,26 @@ export async function initializeAfterAuth(
   // Initialize subsystems with server sender
   initCredentialProxy(send);
   initServerLLM(send);
+
+  // Send credentialed MCP configs to server (server connects with decrypted credentials)
+  // Include encrypted vault blobs so the server can decrypt them internally
+  const serverMcpConfigs = getServerSideConfigs();
+  if (serverMcpConfigs.length > 0) {
+    const credentialBlobs: Record<string, string> = {};
+    for (const config of serverMcpConfigs) {
+      if (config.credentialRequired) {
+        const blob = await vaultGetBlob(config.credentialRequired);
+        if (blob) credentialBlobs[config.credentialRequired] = blob;
+      }
+    }
+    send({
+      type: "mcp_configs",
+      id: nanoid(),
+      timestamp: Date.now(),
+      payload: { configs: serverMcpConfigs, credentialBlobs },
+    });
+    console.log(`[MCP] Sent ${serverMcpConfigs.length} credentialed config(s) to server`);
+  }
 
   // Wire admin tool handler to send admin_request over WS
   setAdminRequestSender(async (payload: any) => {
@@ -173,7 +221,15 @@ export async function initializeAfterAuth(
     sendToUpdatesChannel(`${msg}\n_Scheduled for: ${reminder.scheduledFor}_`);
   });
 
-  // Wire onboarding nag notifications → Discord #updates
+  // Wire onboarding nag notifications → Dot's conversation + Discord #updates
+  setOnboardingSendPromptCallback((message) => {
+    send({
+      type: "prompt",
+      id: nanoid(),
+      timestamp: Date.now(),
+      payload: { prompt: message, source: "system" },
+    });
+  });
   setOnboardingNotifyCallback((message) => {
     sendToUpdatesChannel(`💡 ${message}`);
   });
