@@ -12,6 +12,7 @@
  *   4. Tool execution goes through the server's live MCP connection
  */
 
-export { initMcpForDevice, shutdownMcpForDevice, getMcpManifestEntries, executeMcpTool, hasMcpTools, getMcpConnectionStatus } from "./manager.js";
+export { initMcpForDevice, shutdownMcpForDevice, getMcpManifestEntries, executeMcpTool, executeMcpToolRaw, hasMcpTools, getMcpConnectionStatus } from "./manager.js";
+export { processMcpResult, getCollectionRef, getActiveCollections } from "./result-processor.js";
 export { storeMcpBlobs, clearMcpBlobs } from "./vault-bridge.js";
 export type { MCPServerConfig, MCPDiscoveredTool } from "./types.js";

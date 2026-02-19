@@ -13,6 +13,7 @@ import type { WSMessage } from "../types.js";
 import { SERVER_URL, DEVICE_NAME, deviceCredentials } from "./config.js";
 import { send, sendAndWaitForResponse, getWs } from "./ws-client.js";
 import { RESTART_QUEUE_PATH, resubmitRestartQueue } from "./restart-queue.js";
+import { LAST_UPDATE_INFO_PATH } from "../tools/system/lifecycle.js";
 import { startSetupServer } from "../setup-server.js";
 import { initCredentialProxy } from "../credential-proxy.js";
 import { initServerLLM } from "../server-llm.js";
@@ -291,4 +292,63 @@ export async function initializeAfterAuth(
   }).catch(err => {
     console.error("[Agent] Onboarding check failed:", err);
   });
+
+  // Post-update announcement: if we just restarted after an update, send a
+  // synthetic prompt so Dot announces she's back online with what changed.
+  // Delay slightly to let Discord adapter finish connecting.
+  setTimeout(() => {
+    announcePostUpdate().catch(err => {
+      console.error("[Agent] Post-update announcement failed:", err);
+    });
+  }, 5000);
+}
+
+// ============================================
+// POST-UPDATE ANNOUNCEMENT
+// ============================================
+
+async function announcePostUpdate(): Promise<void> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(LAST_UPDATE_INFO_PATH, "utf-8");
+  } catch {
+    return; // No update info file — not a post-update restart
+  }
+
+  // Delete the file immediately so we don't announce again on next restart
+  await fs.unlink(LAST_UPDATE_INFO_PATH).catch(() => {});
+
+  try {
+    const info = JSON.parse(raw);
+    const version = info.newVersion || "unknown";
+    const prev = info.previousVersion || "unknown";
+    const changes = info.changes || "";
+    const hash = info.afterHash || "";
+
+    const changeSummary = changes
+      ? `\n\nChanges:\n${changes.slice(0, 1500)}`
+      : "";
+
+    const prompt = [
+      `SYSTEM: You have just been updated and restarted.`,
+      `Previous version: ${prev}`,
+      `New version: ${version}${hash ? ` (${hash})` : ""}`,
+      changeSummary,
+      ``,
+      `Greet the user and let them know you're back online after the update.`,
+      `Briefly mention the version and what changed (if changes are listed above).`,
+      `Keep it short and natural — one or two sentences.`,
+    ].join("\n");
+
+    console.log(`[Agent] Post-update announcement: ${prev} → ${version}`);
+
+    send({
+      type: "prompt",
+      id: nanoid(),
+      timestamp: Date.now(),
+      payload: { prompt, source: "system" },
+    });
+  } catch (err) {
+    console.error("[Agent] Failed to parse update info:", err);
+  }
 }

@@ -20,7 +20,8 @@
  *     - knowledge.ingest (overrides the static handler when ctx.state callback exists)
  */
 
-import { executeMcpTool } from "../../mcp/index.js";
+import { executeMcpToolRaw, processMcpResult } from "../../mcp/index.js";
+import { sendExecutionCommand } from "#ws/device-bridge.js";
 import { createComponentLogger } from "#logging.js";
 import type { ToolHandler, ToolContext } from "../types.js";
 import type { ToolManifestEntry } from "#tools/types.js";
@@ -42,6 +43,9 @@ import { handleKnowledgeIngest } from "./knowledge-ingest.js";
 
 // Static handler imports — search (server-side, xAI Responses API)
 import { handleGrokWebSearch, handleGrokXSearch, handleUnifiedWebSearch } from "./grok-search.js";
+
+// Static handler imports — result navigation (collection browsing)
+import { handleResultOverview, handleResultGet, handleResultFilter, handleResultQuery } from "../../mcp/result-navigator.js";
 
 const log = createComponentLogger("tool-loop.server-handlers");
 
@@ -70,6 +74,13 @@ const SEARCH_HANDLERS: [string, ToolHandler][] = [
   ["search.grok_web", handleGrokWebSearch],
   ["search.grok_x", handleGrokXSearch],
   ["search.web", handleUnifiedWebSearch],
+];
+
+const RESULT_NAV_HANDLERS: [string, ToolHandler][] = [
+  ["result.overview", handleResultOverview],
+  ["result.get", handleResultGet],
+  ["result.filter", handleResultFilter],
+  ["result.query", handleResultQuery],
 ];
 
 // ============================================
@@ -113,8 +124,35 @@ function buildDynamicHandler(stateKey: string, label: string): ToolHandler {
 
 function buildMcpHandler(toolId: string): ToolHandler {
   return async (ctx: ToolContext, args: Record<string, any>) => {
-    log.info("Routing to MCP gateway", { toolId, deviceId: ctx.deviceId });
-    return executeMcpTool(ctx.deviceId, toolId, args);
+    let raw: string;
+
+    try {
+      // Try server-side MCP first (credentialed servers)
+      log.info("Routing to MCP gateway", { toolId, deviceId: ctx.deviceId });
+      raw = await executeMcpToolRaw(ctx.deviceId, toolId, args);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+
+      // If the tool isn't on the server (non-credentialed MCP), proxy to local agent
+      if (errMsg.includes("not found") || errMsg.includes("No MCP state")) {
+        log.info("MCP tool not on server — proxying to local agent", { toolId });
+        raw = await sendExecutionCommand(ctx.deviceId, {
+          id: `mcp_proxy_${toolId.replace(/\./g, "_")}`,
+          type: "tool_execute" as const,
+          payload: { toolId, toolArgs: args },
+          dryRun: false,
+          timeout: 60_000,
+          sandboxed: false,
+          requiresApproval: false,
+        });
+        if (!raw) return "(no output)";
+      } else {
+        throw err;
+      }
+    }
+
+    // Both paths go through the collection pipeline
+    return processMcpResult(ctx.deviceId, toolId, raw);
   };
 }
 
@@ -144,6 +182,9 @@ export function buildServerSideHandlers(
     handlers.set(id, handler);
   }
   for (const [id, handler] of SEARCH_HANDLERS) {
+    handlers.set(id, handler);
+  }
+  for (const [id, handler] of RESULT_NAV_HANDLERS) {
     handlers.set(id, handler);
   }
 
@@ -176,7 +217,7 @@ export function buildServerSideHandlers(
   }
 
   log.info("Built server-side handlers", {
-    static: MEMORY_HANDLERS.length + KNOWLEDGE_HANDLERS.length + SEARCH_HANDLERS.length,
+    static: MEMORY_HANDLERS.length + KNOWLEDGE_HANDLERS.length + SEARCH_HANDLERS.length + RESULT_NAV_HANDLERS.length,
     dynamic: dynamicHandlerCache.size,
     mcp: mcpCount,
     total: handlers.size,

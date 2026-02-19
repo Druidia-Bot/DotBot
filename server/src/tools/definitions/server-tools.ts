@@ -368,6 +368,133 @@ export const tools: ServerToolDefinition[] = [
   },
 ];
 
+// ── Result Navigation (collection browsing) ──────────────
+
+export const resultNav: ServerToolDefinition[] = [
+  {
+    id: "result.overview",
+    name: "result__overview",
+    description:
+      "Re-generate the summary table for a collection. Use this when the original overview " +
+      "has scrolled out of context, or to view different fields. Pass a collectionId from a " +
+      "previous MCP tool result.",
+    category: "tools",
+    inputSchema: {
+      type: "object",
+      properties: {
+        collectionId: {
+          type: "string",
+          description: "The collection ID (e.g., 'col_abc123') from a previous tool result",
+        },
+        fields: {
+          type: "array",
+          description: "Optional: specific fields to show instead of the default summary fields",
+          items: { type: "string" },
+        },
+      },
+      required: ["collectionId"],
+    },
+    hints: { mutating: false, verification: true },
+  },
+  {
+    id: "result.get",
+    name: "result__get",
+    description:
+      "Retrieve full data for a specific item in a collection by its index. " +
+      "Large items are automatically truncated with noise fields omitted — use the 'fields' " +
+      "parameter to request specific fields if needed.",
+    category: "tools",
+    inputSchema: {
+      type: "object",
+      properties: {
+        collectionId: {
+          type: "string",
+          description: "The collection ID from a previous tool result",
+        },
+        index: {
+          type: "number",
+          description: "The item index (0-based, from the overview table)",
+        },
+        fields: {
+          type: "array",
+          description: "Optional: specific fields to include (e.g., ['payload', 'body'])",
+          items: { type: "string" },
+        },
+      },
+      required: ["collectionId", "index"],
+    },
+    hints: { mutating: false, verification: true },
+  },
+  {
+    id: "result.filter",
+    name: "result__filter",
+    description:
+      "Filter items in a collection by a field value. Returns matching items with summary " +
+      "fields. Operators: 'contains' (substring match), 'equals', 'not_equals', 'gt', 'lt'.",
+    category: "tools",
+    inputSchema: {
+      type: "object",
+      properties: {
+        collectionId: {
+          type: "string",
+          description: "The collection ID from a previous tool result",
+        },
+        field: {
+          type: "string",
+          description: "Field to filter on (e.g., 'status', 'payload.headers[From]')",
+        },
+        operator: {
+          type: "string",
+          description: "Filter operator: 'contains', 'equals', 'not_equals', 'gt', 'lt'",
+          enum: ["contains", "equals", "not_equals", "gt", "lt"],
+        },
+        value: {
+          type: "string",
+          description: "Value to compare against",
+        },
+        fields: {
+          type: "array",
+          description: "Optional: fields to show in the results table",
+          items: { type: "string" },
+        },
+      },
+      required: ["collectionId", "field", "operator", "value"],
+    },
+    hints: { mutating: false, verification: true },
+  },
+  {
+    id: "result.query",
+    name: "result__query",
+    description:
+      "Run a JSONPath-like expression against a collection. Supports field projection, " +
+      "slicing, filtering, and aggregation. Examples:\n" +
+      "  [*].name                — all names\n" +
+      "  [0:5].name,email        — first 5 items, name + email\n" +
+      "  [?status==\"active\"]     — filter by field value\n" +
+      "  [?score>7].name         — filter then project\n" +
+      "  [*].status | count      — group and count by status\n" +
+      "  [*].price | sum         — sum all prices\n" +
+      "  .length                 — item count\n" +
+      "Pipe operators: unique, count, sum, avg, min, max.",
+    category: "tools",
+    inputSchema: {
+      type: "object",
+      properties: {
+        collectionId: {
+          type: "string",
+          description: "The collection ID from a previous tool result",
+        },
+        expression: {
+          type: "string",
+          description: "JSONPath-like expression (e.g., '[*].name', '[?status==\"active\"].email | unique')",
+        },
+      },
+      required: ["collectionId", "expression"],
+    },
+    hints: { mutating: false, verification: true },
+  },
+];
+
 // ── Combined ──────────────────────────────────────────────
 
 /** All shared server tool definitions — available to Dot AND pipeline agents. */
@@ -377,4 +504,5 @@ export const SHARED_SERVER_TOOLS: ServerToolDefinition[] = [
   ...agent,
   ...search,
   ...tools,
+  ...resultNav,
 ];

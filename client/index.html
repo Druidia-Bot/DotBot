@@ -936,6 +936,16 @@
           }
           break;
 
+        case 'dispatch_followup':
+          log('Dispatch followup received', 'server', {
+            agentId: msg.payload?.agentId,
+            success: msg.payload?.success,
+          });
+          if (msg.payload?.response) {
+            addMessage(msg.payload.response, 'assistant');
+          }
+          break;
+
         case 'run_log':
           log('Run log received', 'server', {
             elapsedMs: msg.payload?.elapsedMs,

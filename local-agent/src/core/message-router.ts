@@ -215,10 +215,13 @@ export async function handleMessage(message: WSMessage): Promise<void> {
       break;
 
     case "dispatch_followup":
-      // Pipeline completed — send Dot's summary to Discord conversation channel
+      // Pipeline completed — send Dot's summary to Discord conversation + updates channels
       if (message.payload.response) {
         console.log("\n[Dispatch Followup]", message.payload.response);
+        const success = message.payload.success !== false;
+        const icon = success ? "✅" : "❌";
         await sendToConversationChannel(message.payload.response);
+        await sendToUpdatesChannel(`${icon} **Task ${success ? "completed" : "failed"}**${message.payload.agentId ? ` (${message.payload.agentId})` : ""}`);
       }
       break;
 

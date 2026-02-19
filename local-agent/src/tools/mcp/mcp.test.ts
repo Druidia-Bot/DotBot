@@ -66,11 +66,11 @@ describe("formatMcpContent", () => {
     expect(formatMcpContent(content)).toBe("raw string\n42\ntrue");
   });
 
-  it("truncates output longer than 8000 chars", () => {
-    const longText = "x".repeat(9000);
+  it("truncates output longer than 50000 chars", () => {
+    const longText = "x".repeat(55000);
     const content = [{ type: "text", text: longText }];
     const result = formatMcpContent(content);
-    expect(result.length).toBeLessThanOrEqual(8000 + 20); // 8000 + "...[truncated]"
+    expect(result.length).toBeLessThanOrEqual(50000 + 20); // 50000 + "\n...[truncated]"
     expect(result).toContain("...[truncated]");
   });
 

@@ -4,7 +4,7 @@ description: Creates reusable tools that permanently extend DotBot's capabilitie
 tags: [tools, api, script, create, extend, capability, automation, reusable]
 disable-model-invocation: true
 user-invocable: true
-allowed-tools: [tools.save_tool, tools.list_tools, tools.delete_tool, search.brave, http.request, http.render, shell.python, shell.node, shell.powershell, filesystem.read_file, filesystem.create_file]
+allowed-tools: [tools.save_tool, tools.list_tools, tools.delete_tool, tools.execute, search.brave, http.request, http.render, shell.python, shell.node, shell.powershell, filesystem.read_file, filesystem.create_file]
 ---
 
 # Tool Creation — Extending DotBot's Capabilities

@@ -91,5 +91,5 @@ export function formatMcpContent(content: unknown[]): string {
   }
 
   const output = parts.join("\n");
-  return output.length > 8000 ? output.substring(0, 8000) + "\n...[truncated]" : output;
+  return output.length > 50_000 ? output.substring(0, 50_000) + "\n...[truncated]" : output;
 }

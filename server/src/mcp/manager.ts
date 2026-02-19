@@ -199,10 +199,12 @@ export function getMcpManifestEntries(deviceId: string): ToolManifestEntry[] {
 }
 
 /**
- * Execute an MCP tool call for a device.
- * Returns the formatted result string.
+ * Execute an MCP tool call and return the RAW result (no truncation).
+ *
+ * Use this when the caller handles its own truncation/processing
+ * (e.g., the collection pipeline in result-processor.ts).
  */
-export async function executeMcpTool(
+export async function executeMcpToolRaw(
   deviceId: string,
   toolId: string,
   args: Record<string, unknown>,
@@ -226,7 +228,27 @@ export async function executeMcpTool(
     throw new Error(`MCP tool error: ${errorText}`);
   }
 
-  return formatMcpContent(result.content);
+  return formatMcpContentRaw(result.content);
+}
+
+/**
+ * Execute an MCP tool call for a device.
+ * Returns the formatted + truncated result string.
+ *
+ * Backwards-compatible wrapper: calls executeMcpToolRaw then truncates.
+ * Prefer executeMcpToolRaw + processMcpResult for collection-aware handling.
+ */
+export async function executeMcpTool(
+  deviceId: string,
+  toolId: string,
+  args: Record<string, unknown>,
+): Promise<string> {
+  const raw = await executeMcpToolRaw(deviceId, toolId, args);
+  let output = raw;
+  if (output.length > MAX_OUTPUT_LENGTH) {
+    output = output.substring(0, MAX_OUTPUT_LENGTH) + "...[truncated]";
+  }
+  return output;
 }
 
 /**
@@ -399,7 +421,11 @@ function handleDisconnect(
 
 const MAX_OUTPUT_LENGTH = 8_000;
 
-function formatMcpContent(content: unknown[]): string {
+/**
+ * Convert MCP content items to a string — NO truncation.
+ * Used by executeMcpToolRaw for the collection pipeline.
+ */
+function formatMcpContentRaw(content: unknown[]): string {
   if (!Array.isArray(content) || content.length === 0) return "(no output)";
 
   const parts: string[] = [];
@@ -424,7 +450,15 @@ function formatMcpContent(content: unknown[]): string {
     }
   }
 
-  let output = parts.join("\n");
+  return parts.join("\n");
+}
+
+/**
+ * Convert MCP content items to a string WITH truncation.
+ * Used by executeMcpTool (backwards-compatible) and error formatting.
+ */
+function formatMcpContent(content: unknown[]): string {
+  let output = formatMcpContentRaw(content);
   if (output.length > MAX_OUTPUT_LENGTH) {
     output = output.substring(0, MAX_OUTPUT_LENGTH) + "...[truncated]";
   }

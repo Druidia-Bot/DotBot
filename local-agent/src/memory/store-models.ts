@@ -503,13 +503,16 @@ export async function searchAndPromote(query: string, promoteThreshold = 8): Pro
  *   - Objects → show keys only
  */
 export function buildModelSkeleton(model: MentalModel): string {
+  if (!model) return "(empty model)";
+
   const lines: string[] = [];
+  const safeArray = (v: unknown): any[] => Array.isArray(v) ? v : [];
 
   // Header
   lines.push(`**${model.name}** (${model.category}) — ${model.description || "no description"}`);
 
   // Beliefs — the core content
-  const activeBeliefs = model.beliefs.filter(b => !b.contradicted);
+  const activeBeliefs = safeArray(model.beliefs).filter(b => !b.contradicted);
   if (activeBeliefs.length > 0) {
     lines.push(`  Beliefs (${activeBeliefs.length}):`);
     for (const b of activeBeliefs) {
@@ -520,7 +523,7 @@ export function buildModelSkeleton(model: MentalModel): string {
   }
 
   // Open loops — unresolved items
-  const openLoops = (model.openLoops || []).filter(l => l.status === "open" || l.status === "investigating");
+  const openLoops = safeArray(model.openLoops).filter(l => l.status === "open" || l.status === "investigating");
   if (openLoops.length > 0) {
     lines.push(`  Open loops (${openLoops.length}):`);
     for (const l of openLoops) {
@@ -530,16 +533,17 @@ export function buildModelSkeleton(model: MentalModel): string {
   }
 
   // Relationships
-  if (model.relationships && model.relationships.length > 0) {
-    lines.push(`  Relationships (${model.relationships.length}):`);
-    for (const r of model.relationships) {
+  const relationships = safeArray(model.relationships);
+  if (relationships.length > 0) {
+    lines.push(`  Relationships (${relationships.length}):`);
+    for (const r of relationships) {
       const arrow = r.direction === "incoming" ? "←" : r.direction === "bidirectional" ? "↔" : "→";
       lines.push(`    ${arrow} ${r.targetSlug} (${r.type})`);
     }
   }
 
   // Constraints (summary only)
-  const activeConstraints = (model.constraints || []).filter(c => c.active);
+  const activeConstraints = safeArray(model.constraints).filter(c => c.active);
   if (activeConstraints.length > 0) {
     lines.push(`  Constraints (${activeConstraints.length}):`);
     for (const c of activeConstraints) {
@@ -548,7 +552,7 @@ export function buildModelSkeleton(model: MentalModel): string {
   }
 
   // Questions (summary only)
-  const unanswered = (model.questions || []).filter(q => !q.asked?.answer);
+  const unanswered = safeArray(model.questions).filter(q => !q.asked?.answer);
   if (unanswered.length > 0) {
     lines.push(`  Unanswered questions (${unanswered.length}):`);
     for (const q of unanswered.slice(0, 3)) {

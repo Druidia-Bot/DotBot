@@ -49,6 +49,7 @@ import { pdfTools } from "./pdf/defs.js";
 import { dbTools } from "./db/defs.js";
 import { visionTools } from "./vision/defs.js";
 import { mcpManagementTools } from "./mcp/defs.js";
+import { rulesTools } from "./rules/defs.js";
 
 // ============================================
 // EXPORT ALL CORE TOOLS
@@ -93,6 +94,7 @@ export const CORE_TOOLS: DotBotTool[] = [
   ...dbTools,
   ...visionTools,
   ...mcpManagementTools,
+  ...rulesTools,
 ];
 
 /**

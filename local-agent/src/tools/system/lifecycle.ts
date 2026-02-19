@@ -18,11 +18,9 @@ import { AGENT_VERSION } from "../../core/config.js";
 const RESTART_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 const RESTART_EXIT_CODE = 42;
 const INSTALL_DIR = process.env.DOTBOT_INSTALL_DIR || "C:\\.bot";
-const LAST_RESTART_PATH = join(
-  process.env.USERPROFILE || process.env.HOME || "",
-  ".bot",
-  ".last-restart",
-);
+const BOT_DIR = join(process.env.USERPROFILE || process.env.HOME || "", ".bot");
+const LAST_RESTART_PATH = join(BOT_DIR, ".last-restart");
+export const LAST_UPDATE_INFO_PATH = join(BOT_DIR, ".last-update-info");
 
 // Health check definitions: [display name, PowerShell command]
 const HEALTH_CHECKS: [string, string][] = [
@@ -94,10 +92,24 @@ export async function handleUpdate(_args: Record<string, any>): Promise<ToolExec
     const changes = await gitChangeLog(safeDir, beforeHash);
 
     const output = [
-      `Update complete: ${beforeHash} \u2192 ${afterHash}`,
+      `Update complete: ${beforeHash} → ${afterHash}`,
       changes ? `\nChanges:\n${changes}` : "",
       "\nRestarting to apply update...",
     ].filter(Boolean).join("\n");
+
+    // Save update info so Dot can announce she's back after restart
+    try {
+      const versionFile = join(INSTALL_DIR, "VERSION");
+      const newVersion = fs.readFileSync(versionFile, "utf-8").trim();
+      fs.writeFileSync(LAST_UPDATE_INFO_PATH, JSON.stringify({
+        previousVersion: AGENT_VERSION,
+        newVersion,
+        beforeHash,
+        afterHash,
+        changes: changes || "",
+        updatedAt: new Date().toISOString(),
+      }), "utf-8");
+    } catch { /* non-fatal — Dot just won't announce */ }
 
     scheduleExit(3000);
     return { success: true, output };
