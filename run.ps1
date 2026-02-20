@@ -360,6 +360,14 @@ function Start-AgentLoop {
         exit 1
     }
 
+    # Kill any existing DotBot node processes so two agents don't fight over the same WS
+    $existingPids = Find-DotBotPids
+    if ($existingPids.Count -gt 0) {
+        Write-Log "Killing $($existingPids.Count) existing DotBot process(es) before starting: $($existingPids -join ', ')"
+        foreach ($p in $existingPids) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 1
+    }
+
     $restartCount = 0
     $maxRestarts = 10
 

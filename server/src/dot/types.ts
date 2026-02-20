@@ -63,7 +63,8 @@ export interface DotResult {
 
 /** Categories from the tool manifest that Dot can call directly. */
 export const DOT_PROXY_CATEGORIES = new Set([
-  "search",      // search.brave, search.files
+  "search",      // search.brave, search.files, search.background, search.check_results
+  "directory",   // directory.grep, directory.find, directory.tree, directory.list, directory.size
   "system",      // system.update, system.restart
   "http",        // http.get, http.post
   "reminder",    // reminder.set, reminder.list, reminder.cancel
@@ -75,4 +76,5 @@ export const DOT_PROXY_CATEGORIES = new Set([
   "personas",    // personas.create, personas.list, personas.read
   "memory",      // memory.create_model, memory.save_message, memory.search, etc.
   "imagegen",    // imagegen.generate, imagegen.edit — image generation & editing
+  "schedule",    // schedule.create, schedule.list, schedule.cancel, schedule.pause, schedule.resume
 ]);

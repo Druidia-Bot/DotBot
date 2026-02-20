@@ -94,7 +94,6 @@ export async function handleUpdate(_args: Record<string, any>): Promise<ToolExec
     const output = [
       `Update complete: ${beforeHash} → ${afterHash}`,
       changes ? `\nChanges:\n${changes}` : "",
-      "\nRestarting to apply update...",
     ].filter(Boolean).join("\n");
 
     // Save update info so Dot can announce she's back after restart

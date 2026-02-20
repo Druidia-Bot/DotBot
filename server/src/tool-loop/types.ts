@@ -108,6 +108,12 @@ export interface ToolLoopOptions {
   // ── Extra LLM options ──
   /** Additional LLM request options (thinking, etc.) passed through to the client. */
   extraLLMOptions?: Partial<LLMRequestOptions>;
+
+  // ── Iteration-based model escalation ──
+  /** Called each iteration with the current iteration number. Returns a new client/model/maxTokens
+   *  if the tier should change, or null to keep the current model. The loop tracks the last-applied
+   *  tier so the callback only fires when a new threshold is crossed. */
+  onModelEscalate?: (iteration: number) => Promise<{ client: ILLMClient; model: string; maxTokens: number; tier: string } | null>;
 }
 
 /**

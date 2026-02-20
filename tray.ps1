@@ -43,7 +43,9 @@ $createdNew = $false
 try {
     $mutex = [System.Threading.Mutex]::new($true, $mutexName, [ref]$createdNew)
 } catch {
-    # Mutex creation failed (permissions, etc.) — proceed anyway
+    # Mutex creation failed (permissions, etc.) — fall through to the
+    # process-kill section below which handles duplicates as a safety net.
+    $mutex = $null
     $createdNew = $true
 }
 

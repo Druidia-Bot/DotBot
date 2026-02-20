@@ -35,8 +35,8 @@ cd "$DEPLOY_DIR"
 # Pull latest if git repo
 if [ -d ".git" ]; then
   echo "Pulling latest code..."
-  sudo -u "$BOT_USER" git reset --hard HEAD
-  sudo -u "$BOT_USER" git pull
+  sudo -u "$BOT_USER" git fetch origin
+  sudo -u "$BOT_USER" git reset --hard "origin/$(sudo -u "$BOT_USER" git rev-parse --abbrev-ref HEAD)"
   chmod +x deploy/*.sh local-agent/scripts/*.sh run-dev.sh install.sh 2>/dev/null || true
   log "Code updated"
 else

@@ -76,11 +76,16 @@ async function executeFileContentSearch(query: string): Promise<{ results: strin
     query,
   ];
 
-  // Search common user directories
+  // Search common user directories (broadest useful coverage)
   const searchDirs = [
     resolve(os.homedir(), "Documents"),
     resolve(os.homedir(), "Desktop"),
     resolve(os.homedir(), "Downloads"),
+    resolve(os.homedir(), "Projects"),
+    resolve(os.homedir(), "Source"),
+    resolve(os.homedir(), "repos"),
+    resolve(os.homedir(), "OneDrive", "Documents"),
+    DOTBOT_DIR,
   ];
 
   const allResults: string[] = [];

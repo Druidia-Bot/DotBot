@@ -2,7 +2,7 @@
  * Context — Tool Manifest Fetching
  *
  * Fetches the tool manifest from the local agent and augments
- * it with server-side premium, imagegen, and MCP gateway tools.
+ * it with server-side premium, imagegen, schedule, and MCP gateway tools.
  */
 
 import { createComponentLogger } from "#logging.js";
@@ -30,7 +30,8 @@ export async function fetchToolManifest(deviceId: string): Promise<ToolManifestR
 
     const { PREMIUM_TOOLS } = await import("#tools-server/premium/manifest.js");
     const { IMAGEGEN_TOOLS } = await import("#tools-server/imagegen/manifest.js");
-    toolManifest = [...toolManifest, ...PREMIUM_TOOLS, ...IMAGEGEN_TOOLS];
+    const { SCHEDULE_TOOLS } = await import("#tools-server/schedule/manifest.js");
+    toolManifest = [...toolManifest, ...PREMIUM_TOOLS, ...IMAGEGEN_TOOLS, ...SCHEDULE_TOOLS];
 
     // Merge MCP gateway tools (credentialed servers connected server-side)
     const mcpTools = getMcpManifestEntries(deviceId);

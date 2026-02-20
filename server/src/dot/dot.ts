@@ -11,7 +11,8 @@
  *   3. runDot()       — build system prompt, run tool loop, return response
  *
  * Intake classification only runs when Dot dispatches to the pipeline.
- * Dot uses the workhorse LLM role for her tool loop.
+ * Dot always starts with assistant. Tiered escalation mid-loop:
+ *   iteration 6+ → workhorse (reasoning), iteration 10+ → architect (Opus).
  *
  * Decomposed modules:
  *   - dispatch-followup.ts — pipeline completion delivery + onDispatch closure
@@ -35,7 +36,6 @@ import type { DotOptions, DotPreparedContext, DotResult } from "./types.js";
 const log = createComponentLogger("dot");
 
 const DOT_MAX_TOKENS = 4096;
-const DOT_REASONING_MAX_TOKENS = 16384;
 
 // ============================================
 // MAIN ENTRY
@@ -69,13 +69,9 @@ export async function runDot(opts: DotOptions, prepared: DotPreparedContext): Pr
   // ── Build Dot's system prompt (stable identity + knowledge — no per-message content) ──
   const systemPrompt = await buildDotSystemPrompt(enhancedRequest, modelSpines, platform);
 
-  // ── Select model based on complexity (0-4 assistant, 5-7 workhorse/reasoning) ──
-  const complexity = tailorResult?.complexity ?? 0;
-  const modelRole = complexity >= 5 ? "workhorse" : "assistant";
-  const { selectedModel, client } = await resolveModelAndClient(llm, { explicitRole: modelRole }, deviceId);
-  const isReasoning = modelRole === "workhorse";
-  const effectiveMaxTokens = isReasoning ? DOT_REASONING_MAX_TOKENS : DOT_MAX_TOKENS;
-  log.info("Dot model selected", { complexity, modelRole, model: selectedModel.model, maxTokens: effectiveMaxTokens });
+  // ── Always start with assistant — tiered escalation in loop-runner handles workhorse@6 and architect@10 ──
+  const { selectedModel, client } = await resolveModelAndClient(llm, { explicitRole: "assistant" }, deviceId);
+  log.info("Dot model selected", { model: selectedModel.model, maxTokens: DOT_MAX_TOKENS });
 
   // ── Dispatch closure (fire-and-forget so Dot responds immediately) ──
   const { onDispatch, getDispatchResult } = buildOnDispatch({
@@ -88,17 +84,43 @@ export async function runDot(opts: DotOptions, prepared: DotPreparedContext): Pr
 
   // ── Run tool loop (multi-topic or single-topic) ──
   const loopResult = await runDotToolLoop({
-    messageId, systemPrompt, deviceId, client, selectedModel, maxTokens: effectiveMaxTokens,
+    messageId, systemPrompt, deviceId, client, selectedModel, maxTokens: DOT_MAX_TOKENS,
     tools, toolHintsById, handlers, toolCtx,
     tailorResult, consolidatedPrinciples, resolvedPrompt,
     forceDispatch, skillNudge, onStream: opts.onStream,
+    llm,
   });
 
   let { response } = loopResult;
   const { toolCalls: totalToolCalls, iterations: totalIterations } = loopResult;
 
+  // ── Max iterations handoff: dispatch everything Dot knows to an agent ──
+  if (loopResult.maxIterationsReached && totalToolCalls.length > 0) {
+    log.info("Dot hit max iterations — handing off to agent", { messageId, iterations: totalIterations, toolCalls: totalToolCalls.length });
+
+    const handoffSummary = totalToolCalls
+      .map(tc => `- ${tc.tool}: ${tc.success ? "OK" : "FAILED"} — ${(tc.result || "").slice(0, 200)}`)
+      .join("\n");
+
+    const handoffPrompt = [
+      `Continue this task that I started but couldn't finish in ${totalIterations} iterations.`,
+      "",
+      `Original request: ${resolvedPrompt}`,
+      "",
+      `Here's what I've done so far (${totalToolCalls.length} tool calls):`,
+      handoffSummary,
+      "",
+      response ? `My last response/thinking:\n${response.slice(0, 1000)}` : "",
+      "",
+      "Pick up where I left off. Do NOT repeat work that already succeeded.",
+    ].filter(Boolean).join("\n");
+
+    await onDispatch(handoffPrompt);
+    response = "This task needs more work than I can handle in one go — I've dispatched it to an agent with everything I've done so far. I'll follow up when it's complete.";
+  }
+
   // ── Quality gate: detect truncated/garbage responses and retry with non-reasoning model ──
-  if (isReasoning && response && totalToolCalls.length > 0) {
+  if (!loopResult.maxIterationsReached && totalIterations >= 6 && response && totalToolCalls.length > 0) {
     response = await retryWithAssistantModel({
       llm, deviceId, messageId, systemPrompt, resolvedPrompt, response, toolCalls: totalToolCalls,
     });

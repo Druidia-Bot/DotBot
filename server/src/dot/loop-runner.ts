@@ -6,13 +6,32 @@
  */
 
 import { createComponentLogger } from "#logging.js";
+import { resolveModelAndClient } from "#llm/selection/resolve.js";
 import { runToolLoop } from "#tool-loop/loop.js";
 import { buildSingleTopicMessages, buildSegmentMessages } from "./message-builder.js";
 import type { ToolContext, ToolHandler } from "#tool-loop/types.js";
+import type { ILLMClient } from "#llm/types.js";
 
 const log = createComponentLogger("dot.loop");
 
-const DOT_MAX_ITERATIONS = 10;
+const DOT_MAX_ITERATIONS = 15;
+
+const DOT_WORKHORSE_AT_ITERATION = 6;
+const DOT_ARCHITECT_AT_ITERATION = 10;
+
+function buildTieredEscalation(llm: ILLMClient, deviceId: string) {
+  return async (iteration: number) => {
+    if (iteration >= DOT_ARCHITECT_AT_ITERATION) {
+      const { selectedModel, client } = await resolveModelAndClient(llm, { explicitRole: "architect" }, deviceId);
+      return { client, model: selectedModel.model, maxTokens: selectedModel.maxTokens, tier: "architect" };
+    }
+    if (iteration >= DOT_WORKHORSE_AT_ITERATION) {
+      const { selectedModel, client } = await resolveModelAndClient(llm, { explicitRole: "workhorse" }, deviceId);
+      return { client, model: selectedModel.model, maxTokens: selectedModel.maxTokens, tier: "workhorse" };
+    }
+    return null;
+  };
+}
 
 export interface LoopRunnerOpts {
   messageId: string;
@@ -31,12 +50,14 @@ export interface LoopRunnerOpts {
   forceDispatch: boolean;
   skillNudge: string | null;
   onStream?: (text: string) => void;
+  llm: ILLMClient;
 }
 
 export interface LoopRunnerResult {
   response: string;
   toolCalls: { tool: string; success: boolean; result?: string }[];
   iterations: number;
+  maxIterationsReached: boolean;
 }
 
 export async function runDotToolLoop(opts: LoopRunnerOpts): Promise<LoopRunnerResult> {
@@ -55,6 +76,7 @@ export async function runDotToolLoop(opts: LoopRunnerOpts): Promise<LoopRunnerRe
       messageId, systemPrompt, deviceId, client, selectedModel, maxTokens,
       tools, toolHintsById, handlers, toolCtx,
       tailorResult, consolidatedPrinciples, resolvedPrompt, forceDispatch, skillNudge, onStream,
+      llm: opts.llm,
       topicSegments,
     });
   }
@@ -64,6 +86,7 @@ export async function runDotToolLoop(opts: LoopRunnerOpts): Promise<LoopRunnerRe
     tools, toolHintsById, handlers, toolCtx,
     tailorResult, consolidatedPrinciples, resolvedPrompt,
     forceDispatch, skillNudge, onStream,
+    llm: opts.llm,
   });
 }
 
@@ -120,6 +143,7 @@ async function runMultiTopicLoop(opts: LoopRunnerOpts & { topicSegments: any[] }
       temperature: 0.3,
       context: toolCtx,
       personaId: "dot",
+      onModelEscalate: buildTieredEscalation(opts.llm, opts.deviceId),
       onStream: onStream
         ? (_personaId: string, chunk: string, _done: boolean) => onStream(chunk)
         : undefined,
@@ -143,6 +167,7 @@ async function runMultiTopicLoop(opts: LoopRunnerOpts & { topicSegments: any[] }
     response: segmentResponses.join("\n\n---\n\n") || "(Dot had nothing to say)",
     toolCalls: totalToolCalls,
     iterations: totalIterations,
+    maxIterationsReached: false,
   };
 }
 
@@ -186,6 +211,7 @@ async function runSingleTopicLoop(opts: Omit<LoopRunnerOpts, "topicSegments">): 
     temperature: 0.3,
     context: toolCtx,
     personaId: "dot",
+    onModelEscalate: buildTieredEscalation(opts.llm, opts.deviceId),
     onStream: onStream
       ? (_personaId: string, chunk: string, _done: boolean) => onStream(chunk)
       : undefined,
@@ -201,5 +227,6 @@ async function runSingleTopicLoop(opts: Omit<LoopRunnerOpts, "topicSegments">): 
     response: loopResult.finalContent || "(Dot had nothing to say)",
     toolCalls: loopResult.toolCallsMade,
     iterations: loopResult.iterations,
+    maxIterationsReached: !loopResult.completed,
   };
 }

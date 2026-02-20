@@ -32,8 +32,9 @@ function normalizeResult(raw: string | ToolHandlerResult): ToolHandlerResult {
 }
 
 export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopResult> {
+  let { client, model, maxTokens } = options;
   const {
-    client, model, maxTokens, messages, tools, handlers,
+    messages, tools, handlers,
     maxIterations, temperature = 0.1, stopTool, context,
     personaId = "unknown",
   } = options;
@@ -46,10 +47,12 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
   let neededToolCategories: string[] | undefined;
   let infrastructureDown = false;
   let dotNeedsVerification = false;
+  let diagnosticNudgeSent = false;
   const knownNativeToolIds = new Set(tools.map(t => unsanitizeToolName(t.function.name)));
 
   const toolCallsMade: ToolLoopResult["toolCallsMade"] = [];
   const stuckState = createStuckState();
+  let currentTier = "";
 
   for (let iteration = 1; iteration <= maxIterations; iteration++) {
     log.info(`Tool loop iteration ${iteration}/${maxIterations}`, { personaId });
@@ -69,6 +72,18 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
         role: "user",
         content: `⚠️ USER UPDATE (apply this to your current task):\n${injectionText}\n\nAcknowledge this update and adjust your plan accordingly.`,
       });
+    }
+
+    // ── Iteration-based model escalation (tier changes tracked by `currentTier`) ──
+    if (options.onModelEscalate) {
+      const escalation = await options.onModelEscalate(iteration);
+      if (escalation && escalation.tier !== currentTier) {
+        log.info("Model escalated mid-loop", { personaId, iteration, fromTier: currentTier || "initial", toTier: escalation.tier, model: escalation.model });
+        client = escalation.client;
+        model = escalation.model;
+        maxTokens = escalation.maxTokens;
+        currentTier = escalation.tier;
+      }
     }
 
     // ── Check abort before LLM call ──
@@ -280,6 +295,15 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
         toolMsg.images = handlerResult.images;
       }
       messages.push(toolMsg);
+
+      // ── Diagnostic nudge: when a tool fails, nudge Dot to check logs (once per loop) ──
+      if (!success && personaId === "dot" && !diagnosticNudgeSent && !infrastructureDown) {
+        diagnosticNudgeSent = true;
+        messages.push({
+          role: "user",
+          content: `Tool "${toolId}" failed. Rememebr you ca use \`logs.search\` with the error text or tool name to see what happened. Adapt your approach based on what you find — do not retry the exact same call.`,
+        });
+      }
 
       // Check stopTool
       if (stopTool && toolId === stopTool) {
