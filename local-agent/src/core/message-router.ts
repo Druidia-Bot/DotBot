@@ -32,6 +32,7 @@ import {
 import { handleServerLLMResponse } from "../server-llm.js";
 import { handleDiscordResponse, sendToConversationChannel, sendToUpdatesChannel, sendToLogsChannel } from "../discord/adapter.js";
 import { vaultSetServerBlob } from "../credential-vault.js";
+import { getServerSideConfigs } from "../tools/mcp/index.js";
 import type { MalformedFile } from "../memory/startup-validator.js";
 
 let pendingFormatFixes: MalformedFile[] = [];
@@ -258,6 +259,16 @@ export async function handleMessage(message: WSMessage): Promise<void> {
             } catch (err) {
               console.error("[Agent] Failed to restart Discord gateway after token update:", err);
             }
+          }
+
+          // If this credential is used by an MCP server, re-send configs so the
+          // server gateway can reconnect with the new/updated blob.
+          const mcpConfigs = getServerSideConfigs();
+          if (mcpConfigs.some(c => c.credentialRequired === stored.keyName)) {
+            console.log(`[MCP] Credential "${stored.keyName}" matches MCP server — re-sending configs`);
+            resendMcpConfigs().catch(err => {
+              console.error("[MCP] Failed to re-send configs after credential update:", err);
+            });
           }
         }).catch(err => {
           console.error(`[Agent] Failed to store credential blob:`, err);

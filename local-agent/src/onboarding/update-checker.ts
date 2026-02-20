@@ -1,7 +1,7 @@
 /**
  * Auto-Update Checker — Periodic task that checks for new DotBot versions
  * 
- * Runs `git fetch --dry-run` to see if the remote has new commits.
+ * Fetches latest refs, then compares local HEAD against origin/main.
  * Notifies via Discord #updates if an update is available.
  */
 
@@ -19,7 +19,7 @@ export function setUpdateNotifyCallback(cb: (message: string) => void): void {
 }
 
 /**
- * Check if updates are available via git fetch --dry-run.
+ * Check if updates are available by comparing local HEAD to origin/main.
  * Called by the periodic task manager.
  */
 export async function checkForUpdates(): Promise<void> {
@@ -30,16 +30,18 @@ export async function checkForUpdates(): Promise<void> {
     // Check if it's a git repo
     execSync(`git rev-parse --git-dir`, { cwd: INSTALL_DIR, timeout: 5_000, stdio: "pipe" });
 
-    // Fetch latest refs without downloading objects
-    const fetchOutput = execSync(`git fetch --dry-run 2>&1`, {
-      cwd: INSTALL_DIR,
-      timeout: 15_000,
-      encoding: "utf-8",
-      stdio: "pipe",
-    });
+    // Fetch latest refs (--dry-run always prints "From ..." so we do a real fetch)
+    execSync(`git fetch --quiet`, { cwd: INSTALL_DIR, timeout: 15_000, stdio: "pipe" });
 
-    // If fetch --dry-run produces output, there are new commits
-    if (fetchOutput.trim().length > 0) {
+    // Compare local HEAD against origin/main
+    const localHead = execSync(`git rev-parse HEAD`, {
+      cwd: INSTALL_DIR, timeout: 5_000, encoding: "utf-8", stdio: "pipe",
+    }).trim();
+    const remoteHead = execSync(`git rev-parse origin/main`, {
+      cwd: INSTALL_DIR, timeout: 5_000, encoding: "utf-8", stdio: "pipe",
+    }).trim();
+
+    if (localHead !== remoteHead) {
       lastNotifiedAt = Date.now();
       if (notifyCallback) {
         notifyCallback(

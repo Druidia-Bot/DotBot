@@ -42,7 +42,7 @@ export async function runHeartbeat(input: HeartbeatInput): Promise<HeartbeatResu
   const persona = getPersona("personal-assistant");
   const systemPrompt = persona?.systemPrompt || FALLBACK_ASSISTANT_PROMPT;
 
-  const modelConfig = selectModel({ explicitRole: "workhorse" });
+  const modelConfig = selectModel({ explicitRole: "assistant" });
   const llm = createClientForSelection(modelConfig, deviceId);
 
   // Build context-enriched prompt

@@ -9,6 +9,8 @@
 
 import { createComponentLogger } from "#logging.js";
 import { getUserTasks, getDueTasks } from "../scheduler/index.js";
+import { listRecurringTasks } from "../scheduler/index.js";
+import type { RecurringTask } from "../scheduler/index.js";
 
 const log = createComponentLogger("heartbeat.scheduler");
 
@@ -32,14 +34,31 @@ export interface ScheduledTaskCounts {
 export function fetchSchedulerData(userId: string): {
   dueTasks: any[];
   scheduledTasks: any[];
+  recurringProblems: RecurringTask[];
 } {
   try {
     const dueTasks = getDueTasks().filter((t) => t.userId === userId);
     const scheduledTasks = getUserTasks(userId, "scheduled");
-    return { dueTasks, scheduledTasks };
+    const recurringProblems = fetchRecurringTaskProblems(userId);
+    return { dueTasks, scheduledTasks, recurringProblems };
   } catch (error) {
     log.debug("Could not fetch scheduled tasks for heartbeat", { error });
-    return { dueTasks: [], scheduledTasks: [] };
+    return { dueTasks: [], scheduledTasks: [], recurringProblems: [] };
+  }
+}
+
+/**
+ * Find recurring tasks that have problems: recent failures or paused status.
+ * These need to be surfaced to the user via the heartbeat.
+ */
+function fetchRecurringTaskProblems(userId: string): RecurringTask[] {
+  try {
+    const active = listRecurringTasks(userId, "active");
+    const paused = listRecurringTasks(userId, "paused");
+    const all = [...active, ...paused];
+    return all.filter(t => t.consecutiveFailures > 0 || t.status === "paused");
+  } catch {
+    return [];
   }
 }
 
@@ -54,9 +73,10 @@ export function fetchSchedulerData(userId: string): {
 export function buildScheduledTaskSummary(
   dueTasks: any[],
   scheduledTasks: any[],
+  recurringProblems: RecurringTask[] = [],
 ): string {
   // Nothing to report
-  if (dueTasks.length === 0 && scheduledTasks.length === 0) return "";
+  if (dueTasks.length === 0 && scheduledTasks.length === 0 && recurringProblems.length === 0) return "";
 
   const lines: string[] = ["\n## Scheduled Tasks"];
 
@@ -95,6 +115,19 @@ export function buildScheduledTaskSummary(
         )}" — in ${minsUntil}m`,
       );
     }
+  }
+
+  // Surface recurring task failures/pauses
+  if (recurringProblems.length > 0) {
+    lines.push(`\n**⚠️ Recurring Task Problems (${recurringProblems.length}):**`);
+    for (const task of recurringProblems) {
+      const status = task.status === "paused"
+        ? `PAUSED after ${task.consecutiveFailures} failures`
+        : `${task.consecutiveFailures} consecutive failure(s)`;
+      const error = task.lastError ? ` — Last error: ${task.lastError.substring(0, 120)}` : "";
+      lines.push(`- "${task.name}" (${task.id}): ${status}${error}`);
+    }
+    lines.push("Tell the user about these recurring task problems and suggest they check the task or re-run it.");
   }
 
   lines.push("");

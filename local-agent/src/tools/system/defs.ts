@@ -166,7 +166,7 @@ export const systemTools: DotBotTool[] = [
   {
     id: "system.restart",
     name: "restart_self",
-    description: "Gracefully restart the DotBot local agent. The agent process exits with a restart signal and the launcher automatically restarts it. Use when you need to pick up configuration changes, recover from a bad state, or after a self-update. Only works when running under the launcher (production mode) — in dev mode (tsx watch) the process will simply exit.",
+    description: "Gracefully restart  local agent. The agent process exits with a restart signal and the launcher automatically restarts it. Use when you need to pick up configuration changes, recover from a bad state, or after a self-update. Only works when running under the launcher (production mode) — in dev mode (tsx watch) the process will simply exit.",
     source: "core",
     category: "system",
     executor: "local",
@@ -185,7 +185,7 @@ export const systemTools: DotBotTool[] = [
   {
     id: "system.health_check",
     name: "health_check",
-    description: "Run a comprehensive health check of the DotBot installation. Checks Node.js, Git, Python, Tesseract, server connection, LLM API, Discord, Brave Search, memory system, and directory structure. Returns structured results with pass/fail for each component.",
+    description: "Run a comprehensive health check of the sourceCode path installation. Checks Node.js, Git, Python, Tesseract, server connection, LLM API, Discord, Brave Search, memory system, and directory structure. Returns structured results with pass/fail for each component.",
     source: "core",
     category: "system",
     executor: "local",
@@ -199,7 +199,7 @@ export const systemTools: DotBotTool[] = [
   {
     id: "system.update",
     name: "update_self",
-    description: "Update DotBot to the latest version. Runs git pull in the install directory, rebuilds all packages, and restarts. Returns the git diff summary showing what changed. Only works when installed from git (not dev mode).",
+    description: "Update sourceCode ( see your path ) to the latest version. Use when the user says 'update yourself', 'update dotbot', 'pull latest', 'get the latest version', or when the update checker reports a new version is available. Runs git pull in the install directory, rebuilds all packages, and restarts. Returns the git diff summary showing what changed. Only works when installed from git (not dev mode).",
     source: "core",
     category: "system",
     executor: "local",
@@ -215,7 +215,7 @@ export const systemTools: DotBotTool[] = [
   {
     id: "system.version",
     name: "version_info",
-    description: "Get the current DotBot version, platform, Node.js version, install directory, and uptime. Use when the user asks 'what version are you?' or 'what version is this?'.",
+    description: "Get the current sourceCode version, platform, Node.js version, install directory, and uptime. Use when the user asks 'what version are you?' or 'what version is this?'.",
     source: "core",
     category: "system",
     executor: "local",

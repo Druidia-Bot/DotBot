@@ -301,6 +301,6 @@ describe("Heartbeat Integration — Prompt", () => {
 
     // selectModel should have been called with fast tier
     const { selectModel } = await import("#llm/selection/model-selector.js");
-    expect(selectModel).toHaveBeenCalledWith({ explicitRole: "workhorse" });
+    expect(selectModel).toHaveBeenCalledWith({ explicitRole: "assistant" });
   });
 });

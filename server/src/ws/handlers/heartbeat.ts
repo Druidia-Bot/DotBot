@@ -31,6 +31,11 @@ export async function handleHeartbeatRequest(
   const startTime = Date.now();
 
   try {
+    // Update device timezone from heartbeat (tracks travel / DST changes)
+    if (message.payload.timezone) {
+      device.session.timezone = message.payload.timezone;
+    }
+
     const result = await runHeartbeat({
       deviceId,
       userId: device.session.userId,

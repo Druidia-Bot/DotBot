@@ -219,6 +219,17 @@ export function getPlatformForUser(userId: string): "windows" | "linux" | "macos
 }
 
 /**
+ * Get the IANA timezone for a user's connected local-agent device.
+ * Updated on each heartbeat from the client's Intl.DateTimeFormat().resolvedOptions().timeZone.
+ * Returns undefined if no device is connected or timezone hasn't been reported yet.
+ */
+export function getTimezoneForUser(userId: string): string | undefined {
+  const deviceId = getDeviceForUser(userId);
+  if (!deviceId) return undefined;
+  return devices.get(deviceId)?.session.timezone;
+}
+
+/**
  * Check if a user has ANY connected devices (including non-memory-capable ones like browsers).
  * Used for cleanup logic when determining if a userId's session should be cleared.
  */

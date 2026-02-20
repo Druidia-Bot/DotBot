@@ -56,14 +56,18 @@ function calculateNextDaily(
 ): Date {
   const [hours, minutes] = parseTime(time);
 
-  // Create target in the specified timezone
-  const target = dateInTimezone(after, timezone);
-  target.setHours(hours, minutes, 0, 0);
+  // Get current wall-clock date in the target timezone
+  const wall = getWallClock(after, timezone);
+
+  // Build today's target in the target timezone, then convert to UTC
+  let target = wallClockToUTC(wall.year, wall.month, wall.day, hours, minutes, timezone);
 
   // If target is in the past or exactly now, advance to tomorrow
   if (target <= after) {
-    target.setDate(target.getDate() + 1);
-    target.setHours(hours, minutes, 0, 0);
+    // Advance wall-clock day by 1
+    const tomorrow = new Date(after.getTime() + 86_400_000);
+    const wallTomorrow = getWallClock(tomorrow, timezone);
+    target = wallClockToUTC(wallTomorrow.year, wallTomorrow.month, wallTomorrow.day, hours, minutes, timezone);
   }
 
   return target;
@@ -77,17 +81,25 @@ function calculateNextWeekly(
 ): Date {
   const [hours, minutes] = parseTime(time);
 
-  const target = dateInTimezone(after, timezone);
-  target.setHours(hours, minutes, 0, 0);
+  // Get current wall-clock date in the target timezone
+  const wall = getWallClock(after, timezone);
 
-  // Advance to the correct day of week
-  const currentDay = target.getDay();
-  let daysUntil = dayOfWeek - currentDay;
+  // Figure out how many days until the target day of week
+  // wall.dayOfWeek is 0=Sun..6=Sat
+  let daysUntil = dayOfWeek - wall.dayOfWeek;
   if (daysUntil < 0) daysUntil += 7;
-  if (daysUntil === 0 && target <= after) daysUntil = 7;
 
-  target.setDate(target.getDate() + daysUntil);
-  target.setHours(hours, minutes, 0, 0);
+  // Build candidate in the target timezone
+  const candidateMs = after.getTime() + daysUntil * 86_400_000;
+  const candidateWall = getWallClock(new Date(candidateMs), timezone);
+  let target = wallClockToUTC(candidateWall.year, candidateWall.month, candidateWall.day, hours, minutes, timezone);
+
+  // If same day but already past, advance by 7 days
+  if (daysUntil === 0 && target <= after) {
+    const nextWeekMs = after.getTime() + 7 * 86_400_000;
+    const nextWeekWall = getWallClock(new Date(nextWeekMs), timezone);
+    target = wallClockToUTC(nextWeekWall.year, nextWeekWall.month, nextWeekWall.day, hours, minutes, timezone);
+  }
 
   return target;
 }
@@ -117,51 +129,78 @@ function parseTime(time: string): [number, number] {
   return [h, m];
 }
 
-/**
- * Create a Date object adjusted for a timezone.
- * Uses Intl.DateTimeFormat to get the offset, then adjusts.
- *
- * ⚠️ LIMITATION: This is a simplified timezone handler for basic use cases.
- * It may not handle DST transitions correctly or work reliably across all timezones.
- * For production use with complex timezone requirements, consider using:
- * - luxon (https://moment.github.io/luxon/)
- * - date-fns-tz (https://github.com/marnusw/date-fns-tz)
- *
- * Current implementation works for common timezones (America/New_York, Europe/London, etc.)
- * but may fail on DST boundaries or with historical dates.
- */
-function dateInTimezone(date: Date, timezone: string): Date {
-  try {
-    // Get the timezone offset by formatting and parsing
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
-    const parts = formatter.formatToParts(date);
-    const get = (type: string) =>
-      parseInt(parts.find(p => p.type === type)?.value || "0");
+/** Wall-clock components in a target timezone. */
+interface WallClock {
+  year: number;
+  month: number;   // 1-12
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+  dayOfWeek: number; // 0=Sun..6=Sat
+}
 
-    // Reconstruct date in target timezone
-    // NOTE: This creates a local Date object with the timezone's wall-clock time
-    // DST transitions may cause unexpected behavior
-    const tzDate = new Date(
-      get("year"),
-      get("month") - 1,
-      get("day"),
-      get("hour"),
-      get("minute"),
-      get("second")
-    );
-    return tzDate;
-  } catch (err) {
-    // Invalid timezone — fall back to original date
-    // In production, this should log the error for debugging
-    return new Date(date);
+/**
+ * Read the wall-clock time in a timezone for a given UTC instant.
+ */
+function getWallClock(date: Date, timezone: string): WallClock {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    weekday: "short",
+  });
+  const parts = formatter.formatToParts(date);
+  const get = (type: string) =>
+    parseInt(parts.find(p => p.type === type)?.value || "0");
+
+  // Intl weekday "short" in en-US: Sun, Mon, Tue, Wed, Thu, Fri, Sat
+  const weekdayStr = parts.find(p => p.type === "weekday")?.value || "Sun";
+  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+  return {
+    year: get("year"),
+    month: get("month"),
+    day: get("day"),
+    hour: get("hour"),
+    minute: get("minute"),
+    second: get("second"),
+    dayOfWeek: dayMap[weekdayStr] ?? 0,
+  };
+}
+
+/**
+ * Convert a wall-clock time in a timezone to a UTC Date.
+ *
+ * Strategy: construct a UTC guess, read what wall-clock that produces in the
+ * target timezone, then adjust by the difference. This handles DST correctly
+ * because we measure the actual offset at the target instant.
+ */
+function wallClockToUTC(
+  year: number, month: number, day: number,
+  hour: number, minute: number,
+  timezone: string,
+): Date {
+  const desiredMs = Date.UTC(year, month - 1, day, hour, minute, 0, 0);
+
+  // Initial guess: treat the wall-clock values as UTC
+  let candidate = new Date(desiredMs);
+
+  // Two iterations: the first corrects by the offset at the guess point,
+  // the second corrects for DST boundaries where the offset at the guess
+  // differs from the offset at the target.
+  for (let i = 0; i < 2; i++) {
+    const wall = getWallClock(candidate, timezone);
+    const wallMs = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute, 0, 0);
+    const drift = wallMs - desiredMs;
+    if (drift === 0) break;
+    candidate = new Date(candidate.getTime() - drift);
   }
+
+  return candidate;
 }

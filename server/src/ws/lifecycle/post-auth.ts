@@ -45,7 +45,11 @@ export async function checkIncompleteWorkspaces(deviceId: string, userId: string
       folders = JSON.parse(listResult);
       if (!Array.isArray(folders)) return;
     } catch {
-      folders = listResult.split("\n").map(s => s.trim()).filter(Boolean);
+      // directory.list returns lines like "[DIR]  agent_xxx" — extract just the name
+      folders = listResult.split("\n")
+        .map(s => s.trim())
+        .filter(s => s.startsWith("[DIR]"))
+        .map(s => s.replace(/^\[DIR]\s+/, ""));
     }
     if (folders.length === 0) return;
 

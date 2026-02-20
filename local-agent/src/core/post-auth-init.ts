@@ -36,8 +36,8 @@ export { notifyActivity };
 
 /**
  * Re-send credentialed MCP configs to the server.
- * Called on EVERY successful auth (including WS reconnects) because
- * the server clears blobs on disconnect. Safe to call multiple times —
+ * Called on EVERY successful auth (including WS reconnects) so the
+ * server always has fresh blobs. Safe to call multiple times —
  * the server debounces initMcpForDevice.
  */
 export async function resendMcpConfigs(): Promise<void> {

@@ -21,6 +21,22 @@ import { createComponentLogger } from "#logging.js";
 
 const log = createComponentLogger("ws.scheduler");
 
+/** Max time a scheduled task can run before being killed. */
+const TASK_EXECUTION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+/** Race a promise against a timeout. Rejects with a clear error if the timeout fires first. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Scheduled task "${label}" timed out after ${ms / 1000}s`));
+    }, ms);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
 /**
  * Wire both deferred and recurring schedulers to the prompt pipeline.
  * Must be called once during server creation.
@@ -58,7 +74,11 @@ function wireDeferredScheduler(apiKey: string, provider: string): void {
       prompt: task.originalPrompt.substring(0, 80),
     });
 
-    await handlePrompt(deviceId, syntheticMessage, apiKey, provider);
+    await withTimeout(
+      handlePrompt(deviceId, syntheticMessage, apiKey, provider),
+      TASK_EXECUTION_TIMEOUT_MS,
+      task.originalPrompt.substring(0, 60),
+    );
     return `Deferred task ${task.id} executed via prompt pipeline`;
   });
 }
@@ -98,7 +118,11 @@ function wireRecurringScheduler(apiKey: string, provider: string): void {
       flow: "handlePrompt → receptionist → persona writer → orchestrator → judge",
     });
 
-    await handlePrompt(deviceId, syntheticMessage, apiKey, provider);
+    await withTimeout(
+      handlePrompt(deviceId, syntheticMessage, apiKey, provider),
+      TASK_EXECUTION_TIMEOUT_MS,
+      task.name,
+    );
     return `Recurring task "${task.name}" executed successfully via V2 pipeline`;
   });
 }

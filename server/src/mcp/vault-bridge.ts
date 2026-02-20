@@ -27,6 +27,7 @@ export function storeMcpBlobs(deviceId: string, blobs: Record<string, string>): 
   for (const [name, blob] of Object.entries(blobs)) {
     deviceBlobs.set(name, blob);
   }
+  log.info("MCP blobs stored", { deviceId, blobCount: Object.keys(blobs).length, storedKeys: [...deviceBlobs.keys()] });
 }
 
 /**
@@ -45,7 +46,9 @@ export async function vaultDecryptForMcp(
   const deviceBlobs = blobStore.get(deviceId);
   const blob = deviceBlobs?.get(credentialName);
   if (!blob) {
-    log.warn("MCP credential blob not available", { credentialName });
+    log.warn("MCP credential blob not available", {
+      credentialName, deviceId, storedKeys: deviceBlobs ? [...deviceBlobs.keys()] : [],
+    });
     return null;
   }
 
@@ -67,5 +70,6 @@ export async function vaultDecryptForMcp(
  * Clear stored blobs for a specific device.
  */
 export function clearMcpBlobs(deviceId: string): void {
+  log.info("clearMcpBlobs called", { deviceId, hadBlobs: blobStore.has(deviceId) });
   blobStore.delete(deviceId);
 }

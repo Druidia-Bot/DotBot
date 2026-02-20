@@ -13,6 +13,7 @@
  */
 
 import { createComponentLogger } from "#logging.js";
+import { getTimezoneForUser } from "#ws/devices.js";
 import {
   createRecurringTask,
   listRecurringTasks,
@@ -118,7 +119,7 @@ function handleCreate(userId: string, args: Record<string, any>): ScheduleToolRe
     prompt,
     personaHint: persona_hint,
     schedule,
-    timezone: timezone || undefined,
+    timezone: timezone || getTimezoneForUser(userId) || undefined,
     priority: priority || undefined,
   });
 
@@ -154,7 +155,7 @@ function handleList(userId: string, args: Record<string, any>): ScheduleToolResu
         ? " [CANCELLED]"
         : "";
     const lastRun = t.lastRunAt ? ` | Last run: ${t.lastRunAt.toISOString()}` : "";
-    return `- **${t.name}** (${t.id}): ${scheduleDesc}${statusInfo}\n  Next: ${t.nextRunAt.toISOString()}${lastRun}`;
+    return `- **${t.name}** (${t.id}): ${scheduleDesc} (${t.timezone})${statusInfo}\n  Next: ${t.nextRunAt.toISOString()}${lastRun}`;
   });
 
   return {

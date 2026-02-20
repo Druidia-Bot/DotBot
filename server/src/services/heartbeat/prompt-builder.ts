@@ -38,8 +38,8 @@ export async function buildHeartbeatPrompt(ctx: PromptContext): Promise<BuiltPro
       ? `\nNote: ${ctx.consecutiveFailures} previous heartbeat(s) failed — this is a recovery check.`
       : "";
 
-  const { dueTasks, scheduledTasks } = fetchSchedulerData(ctx.userId);
-  const scheduledTaskInfo = buildScheduledTaskSummary(dueTasks, scheduledTasks);
+  const { dueTasks, scheduledTasks, recurringProblems } = fetchSchedulerData(ctx.userId);
+  const scheduledTaskInfo = buildScheduledTaskSummary(dueTasks, scheduledTasks, recurringProblems);
 
   const userMessage = await loadPrompt("services/heartbeat/heartbeat.md", {
     CurrentTime: ctx.currentTime,

@@ -267,6 +267,11 @@ export function createWSServer(options: {
               const device = devices.get(deviceId);
               if (device) {
                 const { configs, credentialBlobs } = message.payload;
+                log.info("mcp_configs received", {
+                  deviceId,
+                  configNames: configs?.map((c: any) => c.name) ?? [],
+                  blobKeys: credentialBlobs ? Object.keys(credentialBlobs) : [],
+                });
                 if (credentialBlobs) storeMcpBlobs(deviceId, credentialBlobs);
                 initMcpForDevice(deviceId, device.session.userId, configs).catch(err => {
                   log.error("MCP gateway init failed", err instanceof Error ? err : new Error(String(err)), { deviceId });
@@ -326,16 +331,16 @@ function handleClose(ws: WebSocket, connectionKey: string | null, deviceId: stri
   }
   if (deviceId) {
     cleanupResolveTracking(deviceId);
-    // NOTE: Do NOT shutdownMcpForDevice here — a late WS close event can race
-    // with a fresh initMcpForDevice from a reconnecting agent, killing the new
-    // MCP connections. initMcpForDevice already calls shutdown at the top.
-    // Blobs are cleared so they're re-sent on reconnect.
-    clearMcpBlobs(deviceId);
+    // NOTE: Do NOT shutdownMcpForDevice or clearMcpBlobs here — a late WS
+    // close event can race with a fresh initMcpForDevice from a reconnecting
+    // agent. initMcpForDevice already calls shutdown at the top, and
+    // storeMcpBlobs overwrites existing blobs on reconnect.
   }
 
   // Clean up V2 orchestrator state if this was the user's last device
   if (!hasAnyConnectedDevices(userId)) {
     log.info("User's last device disconnected — cleaning up V2 session state", { userId });
     cleanupUserSession(userId);
+    if (deviceId) clearMcpBlobs(deviceId);
   }
 }
